@@ -171,10 +171,36 @@
                 </div>
             </div>
 
+            <div id="view-stock" class="view-content h-full">
+                <div class="flex justify-between items-center mb-8">
+                    <div>
+                        <h2 class="text-3xl font-black text-slate-800 uppercase italic tracking-tighter">Наявність (Свій Склад)</h2>
+                        <p class="text-slate-400 font-medium text-sm">Облік товарів, що повернулися з відмов НП</p>
+                    </div>
+                    <button onclick="openStockModal()" class="bg-emerald-600 text-white px-6 py-3 rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-200">
+                        <i class="fa-solid fa-boxes-packing mr-2"></i> Додати товар в наявність
+                    </button>
+                </div>
+
+                <div class="bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/40 border border-slate-100 overflow-hidden">
+                    <table class="w-full text-left">
+                        <thead>
+                            <tr class="bg-slate-50/50 border-b border-slate-100">
+                                <th class="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Модель (Артикул / Назва)</th>
+                                <th class="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Колір</th>
+                                <th class="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Розмір</th>
+                                <th class="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Кількість в наявності</th>
+                                <th class="px-8 py-5"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="stockTable" class="divide-y divide-slate-50"></tbody>
+                    </table>
+                </div>
+            </div>
+
             <div id="view-dashboard" class="view-content h-full flex flex-col items-center justify-center text-center"><i class="fa-solid fa-chart-pie text-6xl text-slate-200 mb-6"></i><h3 class="text-xl font-bold text-slate-400">Розділ "Дашборд"</h3></div>
             <div id="view-archive" class="view-content h-full flex flex-col items-center justify-center text-center"><i class="fa-solid fa-box-archive text-6xl text-slate-200 mb-6"></i><h3 class="text-xl font-bold text-slate-400">Розділ "Архів"</h3></div>
             <div id="view-deleted" class="view-content h-full flex flex-col items-center justify-center text-center"><i class="fa-solid fa-trash-can text-6xl text-slate-200 mb-6"></i><h3 class="text-xl font-bold text-slate-400">Розділ "Видалені"</h3></div>
-            <div id="view-stock" class="view-content h-full flex flex-col items-center justify-center text-center"><i class="fa-solid fa-boxes-stacked text-6xl text-slate-200 mb-6"></i><h3 class="text-xl font-bold text-slate-400">Розділ "Наявність"</h3></div>
             <div id="view-export" class="view-content h-full flex flex-col items-center justify-center text-center"><i class="fa-solid fa-file-export text-6xl text-slate-200 mb-6"></i><h3 class="text-xl font-bold text-slate-400">Розділ "Вигрузка"</h3></div>
             <div id="view-stats" class="view-content h-full flex flex-col items-center justify-center text-center"><i class="fa-solid fa-chart-line text-6xl text-slate-200 mb-6"></i><h3 class="text-xl font-bold text-slate-400">Розділ "Статистика"</h3></div>
             <div id="view-users" class="view-content h-full flex flex-col items-center justify-center text-center"><i class="fa-solid fa-users text-6xl text-slate-200 mb-6"></i><h3 class="text-xl font-bold text-slate-400">Розділ "Користувачі"</h3></div>
@@ -314,6 +340,39 @@
         </div>
     </div>
 
+    <div id="stockModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] hidden items-center justify-center p-6">
+        <div class="bg-white w-full max-w-xl rounded-[2.5rem] shadow-2xl overflow-hidden">
+            <div class="p-8 border-b border-slate-100 flex justify-between items-center bg-emerald-50/50">
+                <h3 class="text-xl font-black text-slate-800 uppercase italic">Додати товар в наявність</h3>
+                <button onclick="closeModal('stockModal')" class="text-slate-400 hover:text-rose-500 transition-colors"><i class="fa-solid fa-xmark text-xl"></i></button>
+            </div>
+            <form id="addStockForm" class="p-10 grid grid-cols-1 gap-6">
+                <div>
+                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Артикул моделі (зі Складу)</label>
+                    <select name="product_id" id="stockProductSelect" required class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl focus:ring-2 focus:ring-emerald-500/20 outline-none font-bold text-sm">
+                    </select>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Колір</label>
+                        <input type="text" name="color" required placeholder="напр. Чорний" class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-bold text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Розмір</label>
+                        <input type="text" name="size" required placeholder="напр. S, M, L, 41" class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-bold text-sm">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Кількість (штук)</label>
+                    <input type="number" name="quantity" required min="1" value="1" class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-black text-sm">
+                </div>
+                <div class="pt-2">
+                    <button type="submit" class="w-full bg-emerald-600 text-white py-4 rounded-xl font-black text-sm uppercase tracking-widest hover:bg-emerald-700 transition-all">Зберегти в наявність</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <script>
         const statusConfig = {
             'Новий': 'bg-blue-50 text-blue-600 ring-blue-100',
@@ -334,7 +393,7 @@
             const btn = document.getElementById(`btn-${view}`);
             if (btn) btn.classList.add('active');
 
-            const titles = { 'orders': 'ЗАМОВЛЕННЯ', 'warehouse': 'СКЛАД', 'archive': 'АРХІВ', 'deleted': 'ВИДАЛЕНІ' };
+            const titles = { 'orders': 'ЗАМОВЛЕННЯ', 'warehouse': 'СКЛАД', 'stock': 'НАЯВНІСТЬ', 'archive': 'АРХІВ', 'deleted': 'ВИДАЛЕНІ' };
             document.getElementById('current-view-title').innerText = titles[view] || view.toUpperCase();
 
             document.querySelectorAll('.view-content').forEach(el => el.classList.remove('active'));
@@ -347,6 +406,7 @@
         function refreshData() {
             if (['orders', 'archive', 'deleted'].includes(currentView)) loadOrders();
             if (currentView === 'warehouse') loadWarehouseData();
+            if (currentView === 'stock') loadStockData();
         }
 
         // --- ЛОГІКА ЗАМОВЛЕНЬ ---
@@ -355,12 +415,7 @@
                 const search = document.getElementById('searchInput').value;
                 const res = await fetch(`/api/orders?view=${currentView}&search=${encodeURIComponent(search)}`);
                 const data = await res.json();
-                
-                if (data.error) {
-                    alert("Помилка завантаження бази замовлень: " + data.error);
-                    return;
-                }
-                
+                if (data.error) return alert("Помилка бази замовлень: " + data.error);
                 renderOrders(data);
             } catch (e) { console.error(e); }
         }
@@ -417,8 +472,8 @@
             try {
                 const res = await fetch(`/api/orders/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ [field]: value }) });
                 const result = await res.json();
-                if (result.error) alert("Помилка оновлення поля: " + result.error);
-            } catch (e) { alert("Помилка мережі при оновленні."); }
+                if (result.error) alert("Помилка оновлення замовлення: " + result.error);
+            } catch (e) { alert("Помилка мережі."); }
             loadOrders();
         }
 
@@ -427,16 +482,14 @@
             try {
                 const supRes = await fetch('/api/warehouse/suppliers');
                 const supData = await supRes.json();
-                if (supData.error) throw new Error("БД Постачальники: " + supData.error);
                 suppliersList = Array.isArray(supData) ? supData : [];
                 renderSuppliers();
                 
                 const prodRes = await fetch('/api/warehouse/products');
                 const prodData = await prodRes.json();
-                if (prodData.error) throw new Error("БД Товари: " + prodData.error);
                 currentProducts = Array.isArray(prodData) ? prodData : [];
                 renderProducts(currentProducts);
-            } catch (e) { alert("Помилка завантаження складу: " + e.message); }
+            } catch (e) { alert("Помилка завантаження складу."); }
         }
 
         function renderSuppliers() {
@@ -451,26 +504,20 @@
                 </div>
             `).join('');
 
-            const optionsHtml = `<option value="">-- Оберіть постачальника --</option>` + 
-                suppliersList.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
-                
+            const optionsHtml = `<option value="">-- Оберіть постачальника --</option>` + suppliersList.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
             select.innerHTML = optionsHtml;
             editSelect.innerHTML = optionsHtml;
         }
 
         function renderProducts(products) {
             const table = document.getElementById('productsTable');
-            if(!products.length) return table.innerHTML = `<tr><td colspan="5" class="p-10 text-center text-slate-400 font-medium">База товарів порожня</td></tr>`;
+            if(!products.length) return table.innerHTML = `<tr><td colspan="5" class="p-10 text-center text-slate-400 font-medium">База порожня</td></tr>`;
             
             table.innerHTML = products.map(p => {
                 const profit = p.price - p.cost;
-                
-                // Модифіковано: Відображення посилань рядками у форматі текстового лінка (Додано!)
                 const linksHtml = p.links ? p.links.split('\n').filter(l=>l.trim()).map(link => {
                     let cleanLink = link.trim();
-                    if (!/^https?:\/\//i.test(cleanLink)) {
-                        cleanLink = 'https://' + cleanLink;
-                    }
+                    if (!/^https?:\/\//i.test(cleanLink)) cleanLink = 'https://' + cleanLink;
                     return `<a href="${cleanLink}" target="_blank" class="text-indigo-600 hover:underline text-[11px] font-medium block truncate max-w-[220px] mb-1"><i class="fa-solid fa-arrow-up-right-from-square text-[9px] mr-1 opacity-70"></i>${link.trim()}</a>`;
                 }).join('') : '<span class="text-slate-300 text-[10px]">Немає</span>';
 
@@ -478,18 +525,13 @@
                 <tr class="hover:bg-slate-50 transition-all group border-b border-slate-50 last:border-0">
                     <td class="px-6 py-5">
                         <div class="text-[12px] font-black text-slate-800 uppercase tracking-tighter">${p.article}</div>
-                        <div class="text-[10px] text-slate-500 font-medium leading-tight mt-0.5">${p.name}</div>
+                        <div class="text-[10px] text-slate-500 font-medium mt-0.5">${p.name}</div>
                     </td>
                     <td class="px-6 py-5">
-                        <div class="flex items-center gap-2 text-[10px] font-bold">
-                            <span class="text-rose-500">Соб: ${p.cost}</span> / 
-                            <span class="text-slate-600">Сайт: ${p.price}</span>
-                        </div>
+                        <div class="text-[10px] font-bold"><span class="text-rose-500">Соб: ${p.cost}</span> / <span class="text-slate-600">Сайт: ${p.price}</span></div>
                         <div class="mt-1 text-[11px] font-black text-emerald-600 bg-emerald-50 inline-block px-2 py-0.5 rounded">Різниця: +${profit} грн</div>
                     </td>
-                    <td class="px-6 py-5">
-                        <span class="text-[11px] font-bold text-slate-700 bg-slate-100 px-2.5 py-1 rounded-md"><i class="fa-solid fa-truck-fast text-[9px] text-slate-400 mr-1"></i> ${p.supplier_name || 'Не вказано'}</span>
-                    </td>
+                    <td class="px-6 py-5"><span class="text-[11px] font-bold text-slate-700 bg-slate-100 px-2.5 py-1 rounded-md">${p.supplier_name || 'Не вказано'}</span></td>
                     <td class="px-6 py-5 max-w-[220px]">${linksHtml}</td>
                     <td class="px-6 py-5 text-right whitespace-nowrap">
                         <button onclick="editProduct(${p.id})" class="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-indigo-500 transition-all p-2 mr-1 bg-slate-50 rounded-lg"><i class="fa-solid fa-pen-to-square"></i></button>
@@ -499,11 +541,9 @@
             }).join('');
         }
 
-        // --- ДІЇ З РЕДАГУВАННЯ ТА СТВОРЕННЯ (Додано!) ---
         function editProduct(id) {
             const p = currentProducts.find(prod => prod.id === id);
             if (!p) return;
-            
             const form = document.getElementById('editProductForm');
             form.dataset.id = id;
             form.article.value = p.article;
@@ -512,47 +552,111 @@
             form.price.value = p.price;
             form.supplier_id.value = p.supplier_id || '';
             form.links.value = p.links || '';
-            
             openModal('editProductModal');
         }
 
         document.getElementById('editProductForm').onsubmit = async (e) => {
             e.preventDefault();
-            const id = e.target.dataset.id;
-            const data = Object.fromEntries(new FormData(e.target));
-            await fetch(`/api/warehouse/products/${id}`, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data) });
-            closeModal('editProductModal');
-            loadWarehouseData();
+            await fetch(`/api/warehouse/products/${e.target.dataset.id}`, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify(Object.fromEntries(new FormData(e.target))) });
+            closeModal('editProductModal'); loadWarehouseData();
         };
 
         document.getElementById('addSupplierForm').onsubmit = async (e) => {
             e.preventDefault();
-            const name = e.target.name.value;
-            await fetch('/api/warehouse/suppliers', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({name}) });
+            await fetch('/api/warehouse/suppliers', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({name: e.target.name.value}) });
             e.target.reset(); loadWarehouseData();
         };
 
         async function deleteSupplier(id) {
-            if(confirm('Видалити постачальника? Товари залишаться без прив\'язки.')) {
-                await fetch(`/api/warehouse/suppliers/${id}`, { method: 'DELETE' });
-                loadWarehouseData();
-            }
+            if(confirm('Видалити постачальника?')) { await fetch(`/api/warehouse/suppliers/${id}`, { method: 'DELETE' }); loadWarehouseData(); }
         }
 
         document.getElementById('addProductForm').onsubmit = async (e) => {
             e.preventDefault();
-            const data = Object.fromEntries(new FormData(e.target));
-            await fetch('/api/warehouse/products', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data) });
+            await fetch('/api/warehouse/products', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(Object.fromEntries(new FormData(e.target))) });
             closeModal('productModal'); e.target.reset(); loadWarehouseData();
         };
 
         async function deleteProduct(id) {
-            if(confirm('Видалити товар з бази?')) {
-                await fetch(`/api/warehouse/products/${id}`, { method: 'DELETE' });
-                loadWarehouseData();
+            if(confirm('Видалити товар з бази?')) { await fetch(`/api/warehouse/products/${id}`, { method: 'DELETE' }); loadWarehouseData(); }
+        }
+
+
+        // --- ЛОГІКА НАЯВНОСТІ (Додано!) ---
+        async function loadStockData() {
+            try {
+                // Завантажуємо продукти для випадаючого списку моделі
+                const prodRes = await fetch('/api/warehouse/products');
+                currentProducts = await prodRes.json();
+                
+                const select = document.getElementById('stockProductSelect');
+                select.innerHTML = `<option value="">-- Оберіть модель товару --</option>` + 
+                    currentProducts.map(p => `<option value="${p.id}">[${p.article}] ${p.name}</option>`).join('');
+
+                // Завантажуємо наявність
+                const stockRes = await fetch('/api/stock');
+                const stockData = await stockRes.json();
+                renderStock(stockData);
+            } catch (e) { alert("Помилка завантаження наявності."); }
+        }
+
+        function renderStock(stockItems) {
+            const table = document.getElementById('stockTable');
+            if (!Array.isArray(stockItems) || stockItems.length === 0) {
+                table.innerHTML = `<tr><td colspan="5" class="px-8 py-20 text-center text-slate-300 font-medium">Ваш склад наявності порожній</td></tr>`;
+                return;
+            }
+            
+            table.innerHTML = stockItems.map(item => `
+                <tr class="hover:bg-slate-50 transition-all group border-b border-slate-50 last:border-0">
+                    <td class="px-8 py-5">
+                        <div class="text-[12px] font-black text-slate-800 uppercase tracking-tighter">${item.article}</div>
+                        <div class="text-[10px] text-slate-500 font-medium mt-0.5">${item.product_name}</div>
+                    </td>
+                    <td class="px-6 py-5"><span class="text-xs font-bold text-slate-700 bg-slate-100 px-3 py-1 rounded-lg">${item.color}</span></td>
+                    <td class="px-6 py-5"><span class="text-xs font-black text-indigo-600 bg-indigo-50 px-3 py-1 rounded-lg">${item.size}</span></td>
+                    <td class="px-6 py-5">
+                        <div class="flex items-center gap-2">
+                            <button onclick="quickChangeQty(${item.id}, ${item.quantity - 1})" class="w-7 h-7 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-black transition-colors flex items-center justify-center">-</button>
+                            <span class="font-black text-sm text-slate-800 w-8 text-center">${item.quantity}</span>
+                            <button onclick="quickChangeQty(${item.id}, ${item.quantity + 1})" class="w-7 h-7 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-black transition-colors flex items-center justify-center">+</button>
+                        </div>
+                    </td>
+                    <td class="px-8 py-5 text-right">
+                        <button onclick="deleteStockItem(${item.id})" class="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-rose-500 transition-all p-2 bg-slate-50 rounded-lg"><i class="fa-solid fa-trash-can"></i></button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function openStockModal() { openModal('stockModal'); }
+
+        document.getElementById('addStockForm').onsubmit = async (e) => {
+            e.preventDefault();
+            const data = Object.fromEntries(new FormData(e.target));
+            await fetch('/api/stock', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data) });
+            closeModal('stockModal'); e.target.reset(); loadStockData();
+        };
+
+        async function quickChangeQty(id, newQty) {
+            if (newQty < 0) return;
+            if (newQty === 0) {
+                if (!confirm("Кількість дорівнює 0. Видалити цей рядок з наявності?")) return;
+                await fetch(`/api/stock/${id}`, { method: 'DELETE' });
+            } else {
+                await fetch(`/api/stock/${id}`, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ quantity: newQty }) });
+            }
+            loadStockData();
+        }
+
+        async function deleteStockItem(id) {
+            if (confirm("Видалити товар з наявності?")) {
+                await fetch(`/api/stock/${id}`, { method: 'DELETE' });
+                loadStockData();
             }
         }
 
+        // --- УТИЛІТИ UI ---
         function openModal(id) { document.getElementById(id).classList.add('modal-active'); }
         function closeModal(id) { document.getElementById(id).classList.remove('modal-active'); }
         function debounceSearch() { clearTimeout(window.searchTimer); window.searchTimer = setTimeout(refreshData, 400); }
