@@ -3,269 +3,193 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DressyMood CRM</title>
+    <title>tomireal | Панель управління</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
-        body { font-family: 'Inter', sans-serif; }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+        body { font-family: 'Inter', sans-serif; letter-spacing: -0.01em; }
+        
+        .sidebar-item { color: #94a3b8; transition: all 0.2s; }
+        .sidebar-item:hover { background: rgba(255,255,255,0.05); color: white; }
+        .sidebar-item.active { 
+            background: rgba(139, 92, 246, 0.15); 
+            border-left: 3px solid #8b5cf6; 
+            color: white; 
+        }
+        .sidebar-item.active i { color: #a78bfa; }
+        
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        .sidebar-scrollbar::-webkit-scrollbar { width: 3px; }
+        .sidebar-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
+        
+        .view-content { display: none; }
+        .view-content.active { display: block; animation: fadeIn 0.3s ease; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
-<body class="bg-gray-50 text-gray-800 h-screen flex overflow-hidden">
-    
-    <!-- Sidebar -->
-    <aside class="w-64 bg-gray-900 border-r border-gray-800 hidden md:flex flex-col justify-between">
-        <div>
-            <!-- Logo area -->
-            <div class="h-16 flex items-center px-6 border-b border-gray-800">
-                <h1 class="text-xl font-bold text-white tracking-tight">DressyMood CRM</h1>
+<body class="bg-[#f8fafc] flex h-screen overflow-hidden text-slate-700">
+
+    <aside class="w-72 bg-[#020617] flex flex-col shrink-0 border-r border-slate-800 relative z-20">
+        <div class="px-8 py-8 shrink-0">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 bg-gradient-to-br from-violet-600 to-fuchsia-600 rounded-xl flex items-center justify-center shadow-lg shadow-violet-500/30">
+                    <i class="fa-solid fa-rocket text-white text-lg"></i>
+                </div>
+                <h1 class="text-2xl font-black tracking-tighter text-white uppercase italic">tomireal</h1>
             </div>
-            <!-- Navigation -->
-            <nav class="p-4 space-y-1">
-                <a href="#" id="nav-orders" onclick="switchView('orders')" class="flex items-center px-3 py-2.5 bg-gray-800 text-white rounded-lg group font-medium transition-colors">
-                    <svg class="w-5 h-5 mr-3 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"></path></svg>
-                    Замовлення
-                </a>
-                <a href="#" id="nav-customers" onclick="switchView('customers')" class="flex items-center px-3 py-2.5 text-gray-400 hover:bg-gray-800 hover:text-white rounded-lg group font-medium transition-colors">
-                    <svg class="w-5 h-5 mr-3 text-gray-500 group-hover:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
-                    Клієнти
-                </a>
-                <a href="#" class="flex items-center px-3 py-2.5 text-gray-400 hover:bg-gray-800 hover:text-white rounded-lg group font-medium transition-colors">
-                    <svg class="w-5 h-5 mr-3 text-gray-500 group-hover:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
-                    Налаштування
-                </a>
+        </div>
+
+        <div class="px-5 flex-1 overflow-y-auto sidebar-scrollbar pb-6 space-y-8">
+            <nav class="space-y-1">
+                <button onclick="switchView('orders')" id="btn-orders" class="sidebar-item active w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
+                    <i class="fa-solid fa-layer-group w-5 text-center text-slate-500"></i> Замовлення
+                </button>
+                <button onclick="switchView('dashboard')" id="btn-dashboard" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
+                    <i class="fa-solid fa-chart-pie w-5 text-center text-slate-500"></i> Дашборд
+                </button>
+                <button onclick="switchView('archive')" id="btn-archive" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
+                    <i class="fa-solid fa-box-archive w-5 text-center text-slate-500"></i> Архів
+                </button>
+                <button onclick="switchView('deleted')" id="btn-deleted" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
+                    <i class="fa-solid fa-trash-can w-5 text-center text-slate-500"></i> Видалені
+                </button>
+            </nav>
+
+            <nav class="space-y-1">
+                <button onclick="switchView('warehouse')" id="btn-warehouse" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
+                    <i class="fa-solid fa-warehouse w-5 text-center text-slate-500"></i> Склад
+                </button>
+                <button onclick="switchView('stock')" id="btn-stock" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
+                    <i class="fa-solid fa-boxes-stacked w-5 text-center text-slate-500"></i> Наявність
+                </button>
+                <button onclick="switchView('export')" id="btn-export" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
+                    <i class="fa-solid fa-file-export w-5 text-center text-slate-500"></i> Вигрузка
+                </button>
+            </nav>
+
+            <nav class="space-y-1">
+                <button onclick="switchView('stats')" id="btn-stats" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
+                    <i class="fa-solid fa-chart-line w-5 text-center text-slate-500"></i> Статистика
+                </button>
+                <button onclick="switchView('users')" id="btn-users" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
+                    <i class="fa-solid fa-users w-5 text-center text-slate-500"></i> Користувачі
+                </button>
+                <button onclick="switchView('settings')" id="btn-settings" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
+                    <i class="fa-solid fa-gear w-5 text-center text-slate-500"></i> Налаштування
+                </button>
             </nav>
         </div>
-        
-        <!-- Sidebar Bottom / Logout -->
-        <div class="p-4 border-t border-gray-800">
-            <button onclick="logout()" class="w-full flex items-center px-3 py-2.5 text-sm font-medium text-gray-400 hover:bg-red-500 hover:text-white rounded-lg transition-colors group">
-                <svg class="w-5 h-5 mr-3 text-gray-500 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg>
-                Вийти
-            </button>
+
+        <div class="shrink-0 p-5 bg-[#020617] border-t border-slate-800">
+            <div class="space-y-1 mb-4">
+                <button class="sidebar-item w-full flex items-center gap-4 px-4 py-2.5 rounded-lg text-[13px] font-semibold text-left">
+                    <i class="fa-solid fa-moon w-5 text-center text-slate-500"></i> Тема
+                </button>
+                <button onclick="logout()" class="sidebar-item w-full flex items-center gap-4 px-4 py-2.5 rounded-lg text-[13px] font-semibold text-left hover:text-rose-400">
+                    <i class="fa-solid fa-arrow-right-from-bracket w-5 text-center text-rose-500/50"></i> Вихід
+                </button>
+            </div>
+
+            <div class="flex items-center gap-3 px-2 py-2 rounded-xl bg-white/5 border border-white/5">
+                <div class="w-9 h-9 rounded-full bg-slate-700 flex items-center justify-center font-black text-white text-sm shadow-inner relative overflow-hidden">
+                    <img src="https://ui-avatars.com/api/?name=tomireal&background=8b5cf6&color=fff&bold=true" alt="User" class="w-full h-full object-cover">
+                </div>
+                <div class="flex-1 overflow-hidden">
+                    <div class="text-[13px] font-bold text-white truncate leading-tight">tomireal</div>
+                    <div class="text-[10px] text-emerald-400 font-bold uppercase tracking-widest flex items-center gap-1 mt-0.5">
+                        <div class="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></div> Online
+                    </div>
+                </div>
+            </div>
         </div>
     </aside>
 
-    <!-- Main Content -->
-    <div class="flex-1 flex flex-col overflow-hidden">
-        
-        <!-- Top Header -->
-        <header class="bg-white border-b border-gray-200 h-16 flex items-center justify-between px-4 sm:px-6 lg:px-8">
-            <div class="flex items-center">
-                <button class="md:hidden mr-4 text-gray-500 hover:text-gray-700">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
-                </button>
-                <h2 id="header-title" class="text-lg font-semibold text-gray-800">Панель управління замовленнями</h2>
+    <main class="flex-1 flex flex-col overflow-hidden relative z-10">
+        <header class="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 px-10 flex items-center justify-between shrink-0 z-10">
+            <div class="relative w-96">
+                <i class="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-slate-300"></i>
+                <input type="text" id="searchInput" placeholder="Швидкий пошук у базі..." 
+                    class="w-full pl-11 pr-4 py-2.5 bg-slate-100 border-transparent rounded-xl focus:bg-white focus:ring-4 focus:ring-violet-500/10 focus:border-violet-500 outline-none transition-all text-sm font-medium"
+                    oninput="debounceSearch()">
             </div>
-            
-            <div class="flex items-center space-x-4">
-                <div class="flex items-center space-x-2 bg-blue-50 px-3 py-1.5 rounded-full border border-blue-100">
-                    <span class="w-2 h-2 rounded-full bg-blue-500"></span>
-                    <span class="text-sm font-medium text-blue-800">Всього: <span id="total-orders">0</span></span>
-                </div>
-                <button onclick="logout()" class="md:hidden text-sm font-medium text-gray-600 hover:text-gray-900">
-                    Вийти
+            <div class="flex items-center gap-5">
+                <button onclick="loadData()" class="w-10 h-10 flex items-center justify-center rounded-xl bg-slate-100 text-slate-500 hover:text-violet-600 hover:bg-violet-100 transition-all">
+                    <i class="fa-solid fa-rotate-right"></i>
                 </button>
+                <div class="h-8 w-px bg-slate-200"></div>
+                <div class="text-right">
+                    <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1" id="current-view-title">ЗАМОВЛЕННЯ</div>
+                    <div class="text-[11px] text-slate-600 font-bold">Робоча область</div>
+                </div>
             </div>
         </header>
 
-        <!-- Main scrollable area -->
-        <main class="flex-1 overflow-y-auto bg-gray-50 p-4 sm:p-6 lg:p-8">
-            <div class="max-w-7xl mx-auto">
-                
-                <!-- View: Замовлення -->
-                <div id="view-orders">
-                    <div class="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-                        <div class="overflow-x-auto">
-                            <table class="w-full whitespace-nowrap text-left text-sm min-w-max">
-                                <thead class="bg-gray-50/80 text-gray-500 font-medium border-b border-gray-200">
-                                    <tr>
-                                        <th scope="col" class="px-6 py-4">Дата</th>
-                                        <th scope="col" class="px-6 py-4">Клієнт</th>
-                                        <th scope="col" class="px-6 py-4">Артикул</th>
-                                        <th scope="col" class="px-6 py-4">Розмір / Колір</th>
-                                        <th scope="col" class="px-6 py-4">Статус</th>
-                                    </tr>
-                                </thead>
-                                <tbody class="divide-y divide-gray-100" id="orders-tbody">
-                                    <!-- Строки загружаются через JS -->
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
+        <div class="flex-1 overflow-y-auto p-10 custom-scrollbar bg-[#f8fafc]">
+            <div id="view-orders" class="view-content active h-full flex flex-col items-center justify-center text-center">
+                <div class="w-24 h-24 bg-violet-100 text-violet-600 rounded-full flex items-center justify-center mb-6 shadow-inner">
+                    <i class="fa-solid fa-layer-group text-4xl"></i>
                 </div>
-
-                <!-- View: Клієнти -->
-                <div id="view-customers" class="hidden">
-                    <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-8 text-center flex flex-col items-center justify-center py-20">
-                        <div class="bg-gray-50 text-gray-400 p-4 rounded-full mb-4">
-                            <svg class="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
-                        </div>
-                        <h3 class="text-lg font-medium text-gray-900 mb-1">Розділ "Клієнти"</h3>
-                        <p class="text-gray-500">Цей розділ знаходиться в стадії розробки.</p>
-                    </div>
-                </div>
-
+                <h2 class="text-2xl font-black text-slate-800 uppercase tracking-tighter mb-2">Розділ "Замовлення"</h2>
+                <p class="text-slate-500 font-medium">Дизайн готовий. Готові наповнювати таблицею?</p>
             </div>
-        </main>
-    </div>
+
+            <div id="view-dashboard" class="view-content h-full flex flex-col items-center justify-center text-center">
+                <i class="fa-solid fa-chart-pie text-6xl text-slate-200 mb-6"></i><h3 class="text-xl font-bold text-slate-400">Розділ "Дашборд"</h3>
+            </div>
+            <div id="view-archive" class="view-content h-full flex flex-col items-center justify-center text-center">
+                <i class="fa-solid fa-box-archive text-6xl text-slate-200 mb-6"></i><h3 class="text-xl font-bold text-slate-400">Розділ "Архів"</h3>
+            </div>
+            <div id="view-deleted" class="view-content h-full flex flex-col items-center justify-center text-center">
+                <i class="fa-solid fa-trash-can text-6xl text-slate-200 mb-6"></i><h3 class="text-xl font-bold text-slate-400">Розділ "Видалені"</h3>
+            </div>
+            <div id="view-warehouse" class="view-content h-full flex flex-col items-center justify-center text-center">
+                <i class="fa-solid fa-warehouse text-6xl text-slate-200 mb-6"></i><h3 class="text-xl font-bold text-slate-400">Розділ "Склад"</h3>
+            </div>
+            <div id="view-stock" class="view-content h-full flex flex-col items-center justify-center text-center">
+                <i class="fa-solid fa-boxes-stacked text-6xl text-slate-200 mb-6"></i><h3 class="text-xl font-bold text-slate-400">Розділ "Наявність"</h3>
+            </div>
+            <div id="view-export" class="view-content h-full flex flex-col items-center justify-center text-center">
+                <i class="fa-solid fa-file-export text-6xl text-slate-200 mb-6"></i><h3 class="text-xl font-bold text-slate-400">Розділ "Вигрузка"</h3>
+            </div>
+            <div id="view-stats" class="view-content h-full flex flex-col items-center justify-center text-center">
+                <i class="fa-solid fa-chart-line text-6xl text-slate-200 mb-6"></i><h3 class="text-xl font-bold text-slate-400">Розділ "Статистика"</h3>
+            </div>
+            <div id="view-users" class="view-content h-full flex flex-col items-center justify-center text-center">
+                <i class="fa-solid fa-users text-6xl text-slate-200 mb-6"></i><h3 class="text-xl font-bold text-slate-400">Розділ "Користувачі"</h3>
+            </div>
+            <div id="view-settings" class="view-content h-full flex flex-col items-center justify-center text-center">
+                <i class="fa-solid fa-gear text-6xl text-slate-200 mb-6"></i><h3 class="text-xl font-bold text-slate-400">Розділ "Налаштування"</h3>
+            </div>
+        </div>
+    </main>
 
     <script>
-        // Навигация
-        function switchView(viewName) {
-            document.getElementById('view-orders').classList.add('hidden');
-            document.getElementById('view-customers').classList.add('hidden');
-            
-            const inactiveClass = 'flex items-center px-3 py-2.5 text-gray-400 hover:bg-gray-800 hover:text-white rounded-lg group font-medium transition-colors';
-            document.getElementById('nav-orders').className = inactiveClass;
-            document.getElementById('nav-customers').className = inactiveClass;
-            
-            if (viewName === 'orders') {
-                document.getElementById('view-orders').classList.remove('hidden');
-                document.getElementById('nav-orders').className = 'flex items-center px-3 py-2.5 bg-gray-800 text-white rounded-lg group font-medium transition-colors';
-                document.getElementById('header-title').innerText = 'Панель управління замовленнями';
-            } else if (viewName === 'customers') {
-                document.getElementById('view-customers').classList.remove('hidden');
-                document.getElementById('nav-customers').className = 'flex items-center px-3 py-2.5 bg-gray-800 text-white rounded-lg group font-medium transition-colors';
-                document.getElementById('header-title').innerText = 'Клієнти';
-            }
-        }
+        function switchView(view) {
+            document.querySelectorAll('.sidebar-item').forEach(el => el.classList.remove('active'));
+            const btn = document.getElementById(`btn-${view}`);
+            if (btn) btn.classList.add('active');
 
-        const statusOptions = ['Новий', 'В обробці', 'Оплачений', 'Відправлений'];
+            const titles = {
+                'orders': 'ЗАМОВЛЕННЯ', 'dashboard': 'ДАШБОРД', 'archive': 'АРХІВ',
+                'deleted': 'ВИДАЛЕНІ', 'warehouse': 'СКЛАД', 'stock': 'НАЯВНІСТЬ',
+                'export': 'ВИГРУЗКА', 'stats': 'СТАТИСТИКА', 'users': 'КОРИСТУВАЧІ', 'settings': 'НАЛАШТУВАННЯ'
+            };
+            document.getElementById('current-view-title').innerText = titles[view] || view.toUpperCase();
 
-        // Цвета для разных статусов
-        const statusColors = {
-            'Новий': 'bg-blue-100 text-blue-800',
-            'Новый': 'bg-blue-100 text-blue-800', // Для старых записей
-            'В обробці': 'bg-yellow-100 text-yellow-800',
-            'В обработке': 'bg-yellow-100 text-yellow-800',
-            'Оплачений': 'bg-purple-100 text-purple-800',
-            'Оплачен': 'bg-purple-100 text-purple-800',
-            'Відправлений': 'bg-green-100 text-green-800',
-            'Отправлен': 'bg-green-100 text-green-800'
-        };
-
-        async function fetchOrders() {
-            try {
-                const response = await fetch('/api/orders');
-                
-                // Если не авторизован — редирект на логин
-                if (response.status === 401) {
-                    window.location.href = '/login.html';
-                    return;
-                }
-
-                if (!response.ok) {
-                    throw new Error('Помилка сервера: ' + response.status);
-                }
-
-                const orders = await response.json();
-                renderTable(orders);
-                document.getElementById('total-orders').innerText = orders.length;
-            } catch (error) {
-                console.error('Помилка завантаження:', error);
-                const tbody = document.getElementById('orders-tbody');
-                tbody.innerHTML = '<tr><td colspan="5" class="px-6 py-8 text-center text-red-500">Помилка при завантаженні даних</td></tr>';
-            }
-        }
-
-        function renderTable(orders) {
-            const tbody = document.getElementById('orders-tbody');
-            tbody.innerHTML = '';
-
-            // Проверка на пустой массив
-            if (!orders || orders.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5" class="px-6 py-8 text-center text-gray-500 text-base font-medium">Замовлень поки немає</td></tr>';
-                return;
-            }
-
-            orders.forEach(order => {
-                const dateObj = new Date(order.created_at);
-                const dateStr = dateObj.toLocaleDateString('uk-UA') + ' <span class="text-gray-400">' + dateObj.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' }) + '</span>';
-
-                let currentStatus = order.status || 'Новий';
-                // Поддержка старых статусов из БД
-                if (currentStatus === 'Новый') currentStatus = 'Новий';
-                if (currentStatus === 'В обработке') currentStatus = 'В обробці';
-                if (currentStatus === 'Оплачен') currentStatus = 'Оплачений';
-                if (currentStatus === 'Отправлен') currentStatus = 'Відправлений';
-                
-                let selectOptionsHTML = statusOptions.map(st => {
-                    const selected = st === currentStatus ? 'selected' : '';
-                    return `<option value="${st}" ${selected}>${st}</option>`;
-                }).join('');
-
-                const tr = document.createElement('tr');
-                tr.className = "hover:bg-gray-50/50 transition-colors";
-                tr.innerHTML = `
-                    <td class="px-6 py-4">
-                        <div class="text-gray-900 font-medium">${dateStr}</div>
-                        <div class="text-xs text-gray-400 mt-1">${order.source || 'Невідомий'}</div>
-                    </td>
-                    <td class="px-6 py-4">
-                        <div class="font-medium text-gray-900">${order.full_name}</div>
-                        <div class="text-gray-500 text-sm mt-0.5">${order.phone}</div>
-                    </td>
-                    <td class="px-6 py-4">
-                        <span class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold bg-gray-100 text-gray-800">
-                            ${order.article || '-'}
-                        </span>
-                    </td>
-                    <td class="px-6 py-4">
-                        <div class="text-gray-900 font-medium">${order.size || '-'}</div>
-                        <div class="text-gray-500 text-sm mt-0.5">${order.color || '-'}</div>
-                    </td>
-                    <td class="px-6 py-4">
-                        <select 
-                            onchange="updateStatus(${order.order_id}, this.value, this)"
-                            class="text-xs font-medium border-0 py-1.5 pl-3 pr-8 rounded-lg focus:ring-2 focus:ring-gray-300 transition-colors cursor-pointer appearance-none ${statusColors[currentStatus] || 'bg-gray-100 text-gray-800'}"
-                            style="background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%236B7280%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E'); background-repeat: no-repeat; background-position: right .7rem top 50%; background-size: .65rem auto;"
-                        >
-                            ${selectOptionsHTML}
-                        </select>
-                    </td>
-                `;
-                tbody.appendChild(tr);
-            });
-        }
-
-        async function updateStatus(orderId, newStatus, selectElement) {
-            try {
-                const newColorClass = statusColors[newStatus] || 'bg-gray-100 text-gray-800';
-                selectElement.className = `text-xs font-medium border-0 py-1.5 pl-3 pr-8 rounded-lg focus:ring-2 focus:ring-gray-300 transition-colors cursor-pointer appearance-none ${newColorClass}`;
-
-                const res = await fetch(`/api/orders/${orderId}/status`, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ status: newStatus })
-                });
-
-                if (res.status === 401) {
-                    window.location.href = '/login.html';
-                    return;
-                }
-
-                if (!res.ok) {
-                    alert('Помилка при оновленні статусу');
-                    fetchOrders();
-                }
-            } catch (error) {
-                console.error(error);
-                alert('Помилка мережі при оновленні статусу');
-                fetchOrders();
-            }
+            document.querySelectorAll('.view-content').forEach(el => el.classList.remove('active'));
+            const targetContent = document.getElementById(`view-${view}`);
+            if (targetContent) targetContent.classList.add('active');
         }
 
         async function logout() {
-            try {
-                await fetch('/api/logout', { method: 'POST' });
-                window.location.href = '/login.html';
-            } catch (error) {
-                console.error('Помилка виходу:', error);
-            }
+            await fetch('/api/logout', { method: 'POST' });
+            window.location.href = '/login.html';
         }
 
-        // Загружаем данные при старте
-        fetchOrders();
+        function loadData() { console.log("Оновлення..."); }
+        function debounceSearch() { }
     </script>
 </body>
 </html>
