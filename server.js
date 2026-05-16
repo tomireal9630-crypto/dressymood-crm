@@ -38,7 +38,6 @@ async function updateDatabaseSchema() {
             );
         `);
 
-        // Жорстко додаємо колонки в товари, якщо таблиця вже існувала
         await pool.query(`
             ALTER TABLE products 
             ADD COLUMN IF NOT EXISTS cost NUMERIC DEFAULT 0,
@@ -80,6 +79,7 @@ app.post('/api/login', (req, res) => {
 
 app.post('/api/logout', (req, res) => { req.session.destroy(); res.json({ success: true }); });
 
+// --- API ЗАМОВЛЕНЬ ---
 app.get('/api/orders', checkAuth, async (req, res) => {
   const { view, search } = req.query;
   try {
@@ -140,6 +140,7 @@ app.patch('/api/orders/:id', checkAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// --- API СКЛАДУ (ПОСТАЧАЛЬНИКИ) ---
 app.get('/api/warehouse/suppliers', checkAuth, async (req, res) => {
     try {
         const result = await pool.query('SELECT * FROM suppliers ORDER BY id ASC');
@@ -161,6 +162,7 @@ app.delete('/api/warehouse/suppliers/:id', checkAuth, async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// --- API СКЛАДУ (ТОВАРИ) ---
 app.get('/api/warehouse/products', checkAuth, async (req, res) => {
     try {
         const result = await pool.query(`
@@ -180,6 +182,19 @@ app.post('/api/warehouse/products', checkAuth, async (req, res) => {
             'INSERT INTO products (article, name, cost, price, supplier_id, links) VALUES ($1, $2, $3, $4, $5, $6)',
             [article, name, cost, price, supplier_id || null, links]
         );
+        res.json({ success: true });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// РОУТ ОНОВЛЕННЯ ТОВАРУ (Додано!)
+app.patch('/api/warehouse/products/:id', checkAuth, async (req, res) => {
+    const fields = req.body;
+    if (Object.keys(fields).length === 0) return res.json({ success: true });
+    const setClause = Object.keys(fields).map((key, i) => `${key} = $${i + 1}`).join(', ');
+    const values = Object.values(fields);
+    values.push(req.params.id);
+    try {
+        await pool.query(`UPDATE products SET ${setClause} WHERE id = $${values.length}`, values);
         res.json({ success: true });
     } catch (err) { res.status(500).json({ error: err.message }); }
 });

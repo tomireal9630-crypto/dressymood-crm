@@ -89,11 +89,11 @@
         <header class="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 px-10 flex items-center justify-between shrink-0 z-10">
             <div class="relative w-96">
                 <i class="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-slate-300"></i>
-                <input type="text" id="searchInput" placeholder="Пошук..." 
+                <input type="text" id="searchInput" placeholder="Швидкий пошук..." oninput="debounceSearch()"
                     class="w-full pl-11 pr-4 py-2.5 bg-slate-100 border-transparent rounded-xl focus:bg-white focus:ring-4 focus:ring-violet-500/10 focus:border-violet-500 outline-none transition-all text-sm font-medium">
             </div>
             <div class="flex items-center gap-5">
-                <button onclick="loadOrders(); loadWarehouseData();" class="w-10 h-10 flex items-center justify-center rounded-xl bg-slate-100 text-slate-500 hover:text-violet-600 hover:bg-violet-100 transition-all">
+                <button onclick="refreshData()" class="w-10 h-10 flex items-center justify-center rounded-xl bg-slate-100 text-slate-500 hover:text-violet-600 hover:bg-violet-100 transition-all">
                     <i class="fa-solid fa-rotate-right"></i>
                 </button>
                 <div class="h-8 w-px bg-slate-200"></div>
@@ -152,7 +152,7 @@
                                     <th class="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Артикул / Назва</th>
                                     <th class="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Фінанси (Соб / Сайт / Різниця)</th>
                                     <th class="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Постачальник</th>
-                                    <th class="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Посилання</th>
+                                    <th class="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Посилання на сайти</th>
                                     <th class="px-6 py-5"></th>
                                 </tr>
                             </thead>
@@ -185,7 +185,7 @@
     <div id="orderModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] hidden items-center justify-center p-6">
         <div class="bg-white w-full max-w-2xl rounded-[2.5rem] shadow-2xl overflow-hidden">
             <div class="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-                <h3 class="text-xl font-black text-slate-800 uppercase italic">Новий замовлення</h3>
+                <h3 class="text-xl font-black text-slate-800 uppercase italic">Нове замовлення</h3>
                 <button onclick="closeModal('orderModal')" class="text-slate-400 hover:text-rose-500 transition-colors"><i class="fa-solid fa-xmark text-xl"></i></button>
             </div>
             <form id="addOrderForm" class="p-10 grid grid-cols-2 gap-6">
@@ -275,6 +275,45 @@
         </div>
     </div>
 
+    <div id="editProductModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] hidden items-center justify-center p-6">
+        <div class="bg-white w-full max-w-2xl rounded-[2.5rem] shadow-2xl overflow-hidden">
+            <div class="p-8 border-b border-slate-100 flex justify-between items-center bg-indigo-50/50">
+                <h3 class="text-xl font-black text-slate-800 uppercase italic">Редагувати товар</h3>
+                <button onclick="closeModal('editProductModal')" class="text-slate-400 hover:text-rose-500 transition-colors"><i class="fa-solid fa-xmark text-xl"></i></button>
+            </div>
+            <form id="editProductForm" class="p-10 grid grid-cols-2 gap-6">
+                <div>
+                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Артикул</label>
+                    <input type="text" name="article" required class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none font-bold text-sm">
+                </div>
+                <div>
+                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Назва товару</label>
+                    <input type="text" name="name" required class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none font-bold text-sm">
+                </div>
+                <div>
+                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Собівартість (грн)</label>
+                    <input type="number" name="cost" required class="w-full px-5 py-3 bg-rose-50/50 border border-rose-100 rounded-xl text-rose-600 font-black outline-none">
+                </div>
+                <div>
+                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Ціна на сайті (грн)</label>
+                    <input type="number" name="price" required class="w-full px-5 py-3 bg-emerald-50/50 border border-emerald-100 rounded-xl text-emerald-600 font-black outline-none">
+                </div>
+                <div class="col-span-2">
+                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Постачальник</label>
+                    <select name="supplier_id" id="editSupplierSelect" class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none font-bold text-sm">
+                    </select>
+                </div>
+                <div class="col-span-2">
+                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Посилання на сайти (кожне з нового рядка)</label>
+                    <textarea name="links" rows="3" class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none font-medium text-xs leading-relaxed placeholder-slate-300"></textarea>
+                </div>
+                <div class="col-span-2 pt-2">
+                    <button type="submit" class="w-full bg-indigo-600 text-white py-4 rounded-xl font-black text-sm uppercase tracking-widest hover:bg-indigo-700 transition-all">Зберегти зміни</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <script>
         const statusConfig = {
             'Новий': 'bg-blue-50 text-blue-600 ring-blue-100',
@@ -287,6 +326,7 @@
 
         let currentView = 'orders';
         let suppliersList = [];
+        let currentProducts = [];
 
         function switchView(view) {
             currentView = view;
@@ -301,19 +341,37 @@
             const targetContent = document.getElementById(`view-${view}`);
             if (targetContent) targetContent.classList.add('active');
 
-            if (['orders', 'archive', 'deleted'].includes(view)) loadOrders();
-            if (view === 'warehouse') loadWarehouseData();
+            refreshData();
+        }
+
+        function refreshData() {
+            if (['orders', 'archive', 'deleted'].includes(currentView)) loadOrders();
+            if (currentView === 'warehouse') loadWarehouseData();
         }
 
         // --- ЛОГІКА ЗАМОВЛЕНЬ ---
         async function loadOrders() {
             try {
-                const res = await fetch(`/api/orders?view=${currentView}`);
+                const search = document.getElementById('searchInput').value;
+                const res = await fetch(`/api/orders?view=${currentView}&search=${encodeURIComponent(search)}`);
                 const data = await res.json();
-                const table = document.getElementById('ordersTable');
-                if(!Array.isArray(data) || !data.length) return table.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-slate-400">Пусто</td></tr>`;
                 
-                table.innerHTML = data.map(o => `
+                if (data.error) {
+                    alert("Помилка завантаження бази замовлень: " + data.error);
+                    return;
+                }
+                
+                renderOrders(data);
+            } catch (e) { console.error(e); }
+        }
+
+        function renderOrders(orders) {
+            const table = document.getElementById('ordersTable');
+            if (!Array.isArray(orders) || orders.length === 0) {
+                table.innerHTML = `<tr><td colspan="6" class="px-8 py-20 text-center text-slate-300 font-medium">Тут поки порожньо</td></tr>`;
+                return;
+            }
+            table.innerHTML = orders.map(o => `
                 <tr class="hover:bg-slate-50 transition-all group">
                     <td class="px-8 py-6">
                         <div class="font-bold text-slate-800 text-sm">${o.fullName}</div>
@@ -326,27 +384,26 @@
                         </div>
                     </td>
                     <td class="px-6 py-6">
-                        <input type="text" value="${o.ttn || ''}" onchange="update(${o.id}, 'ttn', this.value)" placeholder="Ввести ТТН..."
+                        <input type="text" value="${o.ttn || ''}" onchange="updateOrder(${o.id}, 'ttn', this.value)" placeholder="Ввести ТТН..."
                             class="w-full max-w-[150px] text-xs font-mono font-bold bg-slate-50 border border-slate-100 rounded-lg px-3 py-2 focus:bg-white focus:ring-2 focus:ring-violet-500/20 outline-none transition-all">
                     </td>
                     <td class="px-6 py-6">
-                        <select onchange="update(${o.id}, 'status', this.value)" 
+                        <select onchange="updateOrder(${o.id}, 'status', this.value)" 
                             class="text-[10px] font-black px-3 py-1.5 rounded-full ring-1 ring-inset cursor-pointer focus:outline-none transition-all ${statusConfig[o.status] || 'bg-slate-100'}">
                             ${Object.keys(statusConfig).map(s => `<option value="${s}" ${o.status === s ? 'selected' : ''}>${s.toUpperCase()}</option>`).join('')}
                         </select>
                     </td>
                     <td class="px-6 py-6">
-                        <input type="text" value="${o.comment || ''}" onchange="update(${o.id}, 'comment', this.value)" placeholder="Замітка..."
+                        <input type="text" value="${o.comment || ''}" onchange="updateOrder(${o.id}, 'comment', this.value)" placeholder="Замітка..."
                             class="w-full bg-transparent text-[11px] text-slate-400 border-none outline-none focus:text-slate-800 italic">
                     </td>
                     <td class="px-8 py-6 text-right">
                         ${currentView !== 'deleted' ? 
-                            `<button onclick="update(${o.id}, 'status', 'Видалено')" class="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-rose-500 transition-all p-2 bg-slate-50 rounded-lg"><i class="fa-solid fa-trash-can"></i></button>` : 
-                            `<button onclick="update(${o.id}, 'status', 'Новий')" class="text-violet-500 text-[10px] font-black uppercase hover:underline">Відновити</button>`
+                            `<button onclick="updateOrder(${o.id}, 'status', 'Видалено')" class="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-rose-500 transition-all p-2 bg-slate-50 rounded-lg"><i class="fa-solid fa-trash-can"></i></button>` : 
+                            `<button onclick="updateOrder(${o.id}, 'status', 'Новий')" class="text-violet-500 text-[10px] font-black uppercase hover:underline">Відновити</button>`
                         }
                     </td>
                 </tr>`).join('');
-            } catch (e) { console.error(e); }
         }
 
         document.getElementById('addOrderForm').onsubmit = async (e) => {
@@ -356,7 +413,7 @@
             closeModal('orderModal'); e.target.reset(); loadOrders();
         };
 
-        async function update(id, field, value) {
+        async function updateOrder(id, field, value) {
             try {
                 const res = await fetch(`/api/orders/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ [field]: value }) });
                 const result = await res.json();
@@ -368,47 +425,37 @@
         // --- ЛОГІКА СКЛАДУ ---
         async function loadWarehouseData() {
             try {
-                // Завантажуємо постачальників
                 const supRes = await fetch('/api/warehouse/suppliers');
-                if (supRes.status === 401) return window.location.href = '/login.html';
                 const supData = await supRes.json();
-                
-                // Перевірка на помилку сервера
                 if (supData.error) throw new Error("БД Постачальники: " + supData.error);
-                
                 suppliersList = Array.isArray(supData) ? supData : [];
                 renderSuppliers();
                 
-                // Завантажуємо товари
                 const prodRes = await fetch('/api/warehouse/products');
                 const prodData = await prodRes.json();
-                
                 if (prodData.error) throw new Error("БД Товари: " + prodData.error);
-                renderProducts(Array.isArray(prodData) ? prodData : []);
-                
-            } catch (e) { 
-                console.error(e);
-                alert("Помилка завантаження складу: " + e.message); 
-            }
+                currentProducts = Array.isArray(prodData) ? prodData : [];
+                renderProducts(currentProducts);
+            } catch (e) { alert("Помилка завантаження складу: " + e.message); }
         }
 
         function renderSuppliers() {
             const list = document.getElementById('suppliersList');
             const select = document.getElementById('supplierSelect');
+            const editSelect = document.getElementById('editSupplierSelect');
             
-            if(!suppliersList.length) {
-                list.innerHTML = `<div class="text-[10px] text-slate-400 text-center py-4">Список порожній</div>`;
-            } else {
-                list.innerHTML = suppliersList.map(s => `
-                    <div class="flex justify-between items-center bg-slate-50 px-4 py-2.5 rounded-lg border border-slate-100 group">
-                        <span class="text-xs font-bold text-slate-700">${s.name}</span>
-                        <button onclick="deleteSupplier(${s.id})" class="text-slate-300 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-all"><i class="fa-solid fa-xmark"></i></button>
-                    </div>
-                `).join('');
-            }
+            list.innerHTML = suppliersList.map(s => `
+                <div class="flex justify-between items-center bg-slate-50 px-4 py-2.5 rounded-lg border border-slate-100 group">
+                    <span class="text-xs font-bold text-slate-700">${s.name}</span>
+                    <button onclick="deleteSupplier(${s.id})" class="text-slate-300 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-all"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+            `).join('');
 
-            select.innerHTML = `<option value="">-- Оберіть постачальника --</option>` + 
+            const optionsHtml = `<option value="">-- Оберіть постачальника --</option>` + 
                 suppliersList.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+                
+            select.innerHTML = optionsHtml;
+            editSelect.innerHTML = optionsHtml;
         }
 
         function renderProducts(products) {
@@ -417,9 +464,15 @@
             
             table.innerHTML = products.map(p => {
                 const profit = p.price - p.cost;
-                const linksHtml = p.links ? p.links.split('\\n').filter(l=>l.trim()).map((link, i) => 
-                    `<a href="${link.trim()}" target="_blank" class="inline-flex items-center gap-1 bg-indigo-50 text-indigo-600 px-2 py-1 rounded text-[9px] font-bold uppercase hover:bg-indigo-100 mb-1 mr-1 transition-colors"><i class="fa-solid fa-link"></i> Лінк ${i+1}</a>`
-                ).join('') : '<span class="text-slate-300 text-[10px]">Немає</span>';
+                
+                // Модифіковано: Відображення посилань рядками у форматі текстового лінка (Додано!)
+                const linksHtml = p.links ? p.links.split('\n').filter(l=>l.trim()).map(link => {
+                    let cleanLink = link.trim();
+                    if (!/^https?:\/\//i.test(cleanLink)) {
+                        cleanLink = 'https://' + cleanLink;
+                    }
+                    return `<a href="${cleanLink}" target="_blank" class="text-indigo-600 hover:underline text-[11px] font-medium block truncate max-w-[220px] mb-1"><i class="fa-solid fa-arrow-up-right-from-square text-[9px] mr-1 opacity-70"></i>${link.trim()}</a>`;
+                }).join('') : '<span class="text-slate-300 text-[10px]">Немає</span>';
 
                 return `
                 <tr class="hover:bg-slate-50 transition-all group border-b border-slate-50 last:border-0">
@@ -437,15 +490,41 @@
                     <td class="px-6 py-5">
                         <span class="text-[11px] font-bold text-slate-700 bg-slate-100 px-2.5 py-1 rounded-md"><i class="fa-solid fa-truck-fast text-[9px] text-slate-400 mr-1"></i> ${p.supplier_name || 'Не вказано'}</span>
                     </td>
-                    <td class="px-6 py-5 max-w-[150px] flex-wrap">${linksHtml}</td>
-                    <td class="px-6 py-5 text-right">
-                        <button onclick="deleteProduct(${p.id})" class="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-rose-500 transition-all p-2"><i class="fa-solid fa-trash-can"></i></button>
+                    <td class="px-6 py-5 max-w-[220px]">${linksHtml}</td>
+                    <td class="px-6 py-5 text-right whitespace-nowrap">
+                        <button onclick="editProduct(${p.id})" class="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-indigo-500 transition-all p-2 mr-1 bg-slate-50 rounded-lg"><i class="fa-solid fa-pen-to-square"></i></button>
+                        <button onclick="deleteProduct(${p.id})" class="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-rose-500 transition-all p-2 bg-slate-50 rounded-lg"><i class="fa-solid fa-trash-can"></i></button>
                     </td>
                 </tr>`
             }).join('');
         }
 
-        // --- ДІЇ З БАЗОЮ ---
+        // --- ДІЇ З РЕДАГУВАННЯ ТА СТВОРЕННЯ (Додано!) ---
+        function editProduct(id) {
+            const p = currentProducts.find(prod => prod.id === id);
+            if (!p) return;
+            
+            const form = document.getElementById('editProductForm');
+            form.dataset.id = id;
+            form.article.value = p.article;
+            form.name.value = p.name;
+            form.cost.value = p.cost;
+            form.price.value = p.price;
+            form.supplier_id.value = p.supplier_id || '';
+            form.links.value = p.links || '';
+            
+            openModal('editProductModal');
+        }
+
+        document.getElementById('editProductForm').onsubmit = async (e) => {
+            e.preventDefault();
+            const id = e.target.dataset.id;
+            const data = Object.fromEntries(new FormData(e.target));
+            await fetch(`/api/warehouse/products/${id}`, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data) });
+            closeModal('editProductModal');
+            loadWarehouseData();
+        };
+
         document.getElementById('addSupplierForm').onsubmit = async (e) => {
             e.preventDefault();
             const name = e.target.name.value;
@@ -454,7 +533,7 @@
         };
 
         async function deleteSupplier(id) {
-            if(confirm('Видалити постачальника? Товари цього постачальника залишаться, але без прив\'язки.')) {
+            if(confirm('Видалити постачальника? Товари залишаться без прив\'язки.')) {
                 await fetch(`/api/warehouse/suppliers/${id}`, { method: 'DELETE' });
                 loadWarehouseData();
             }
@@ -474,12 +553,12 @@
             }
         }
 
-        // --- UI ---
         function openModal(id) { document.getElementById(id).classList.add('modal-active'); }
         function closeModal(id) { document.getElementById(id).classList.remove('modal-active'); }
+        function debounceSearch() { clearTimeout(window.searchTimer); window.searchTimer = setTimeout(refreshData, 400); }
         async function logout() { await fetch('/api/logout', { method: 'POST' }); window.location.href = '/login.html'; }
 
-        loadOrders();
+        refreshData();
     </script>
 </body>
 </html>
