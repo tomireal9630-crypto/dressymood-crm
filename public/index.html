@@ -6,7 +6,17 @@
     <title>tomireal | Панель управління</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    <link rel="stylesheet" href="/css/style.css">
+    <style>
+        .sidebar-item { transition: all 0.2s ease; color: #94a3b8; }
+        .sidebar-item:hover, .sidebar-item.active { background-color: rgba(255,255,255,0.06); color: #fff; }
+        .sidebar-item.active i { color: #8b5cf6; }
+        .view-content { display: none; }
+        .view-content.active { display: block; }
+        .modal-active { display: flex !important; }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+    </style>
 </head>
 <body class="bg-[#f8fafc] flex h-screen overflow-hidden text-slate-700">
 
@@ -20,31 +30,31 @@
             </div>
         </div>
 
-        <div class="px-5 flex-1 overflow-y-auto sidebar-scrollbar pb-6 space-y-8">
+        <div class="px-5 flex-1 overflow-y-auto pb-6 space-y-8 custom-scrollbar">
             <nav class="space-y-1">
                 <button onclick="switchView('orders')" id="btn-orders" class="sidebar-item active w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
-                    <i class="fa-solid fa-layer-group w-5 text-center text-slate-500"></i> Замовлення
+                    <i class="fa-solid fa-layer-group w-5 text-center"></i> Замовлення
                 </button>
                 <button onclick="switchView('dashboard')" id="btn-dashboard" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
-                    <i class="fa-solid fa-chart-pie w-5 text-center text-slate-500"></i> Дашборд
+                    <i class="fa-solid fa-chart-pie w-5 text-center"></i> Дашборд
                 </button>
                 <button onclick="switchView('archive')" id="btn-archive" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
-                    <i class="fa-solid fa-box-archive w-5 text-center text-slate-500"></i> Архів
+                    <i class="fa-solid fa-box-archive w-5 text-center"></i> Архів
                 </button>
                 <button onclick="switchView('deleted')" id="btn-deleted" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
-                    <i class="fa-solid fa-trash-can w-5 text-center text-slate-500"></i> Видалені
+                    <i class="fa-solid fa-trash-can w-5 text-center"></i> Видалені
                 </button>
             </nav>
 
             <nav class="space-y-1">
                 <button onclick="switchView('warehouse')" id="btn-warehouse" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
-                    <i class="fa-solid fa-warehouse w-5 text-center text-slate-500"></i> Склад
+                    <i class="fa-solid fa-warehouse w-5 text-center"></i> Склад
                 </button>
                 <button onclick="switchView('stock')" id="btn-stock" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
-                    <i class="fa-solid fa-boxes-stacked w-5 text-center text-slate-500"></i> Наявність
+                    <i class="fa-solid fa-boxes-stacked w-5 text-center"></i> Наявність
                 </button>
                 <button onclick="switchView('export')" id="btn-export" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
-                    <i class="fa-solid fa-file-export w-5 text-center text-slate-500"></i> Вигрузка
+                    <i class="fa-solid fa-file-export w-5 text-center"></i> Вигрузка
                 </button>
             </nav>
         </div>
@@ -60,7 +70,7 @@
         <header class="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 px-10 flex items-center justify-between shrink-0 z-10">
             <div class="relative w-96">
                 <i class="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-slate-300"></i>
-                <input type="text" id="searchInput" placeholder="Швидкий пошук..." oninput="debounceSearch()"
+                <input type="text" id="searchInput" placeholder="Швидкий пошук замовлень..." oninput="debounceSearch()"
                     class="w-full pl-11 pr-4 py-2.5 bg-slate-100 border-transparent rounded-xl focus:bg-white focus:ring-4 focus:ring-violet-500/10 focus:border-violet-500 outline-none transition-all text-sm font-medium">
             </div>
             <div class="flex items-center gap-5">
@@ -198,7 +208,7 @@
                 </div>
                 <div>
                     <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Телефон</label>
-                    <input type="text" id="orderPhoneInput" required placeholder="+380 (XX) XXX-XX-XX" class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-black text-sm">
+                    <input type="text" id="orderPhoneInput" name="phone" required placeholder="+380 (XX) XXX-XX-XX" class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-black text-sm">
                 </div>
                 <div>
                     <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Джерело</label>
@@ -378,22 +388,26 @@
             if (currentView === 'stock') loadStockData();
         }
 
-        // --- БЕЗПЕЧНА МАСКА ТЕЛЕФОНУ ---
+        // --- МОДИФІКОВАНО: СТАБІЛЬНА МАСКА ТЕЛЕФОНУ БЕЗ ЗАЛИПАНЬ ---
         const phoneField = document.getElementById('orderPhoneInput');
         if (phoneField) {
             phoneField.addEventListener('input', function (e) {
-                let clearVal = e.target.value.replace(/\\D/g, "");
-                if (!clearVal.startsWith("380")) clearVal = "380" + clearVal;
-                clearVal = clearVal.substring(0, 12);
-                let masked = "+380 ";
-                if (clearVal.length > 3) masked += "(" + clearVal.substring(3, 5);
-                if (clearVal.length > 5) masked += ") " + clearVal.substring(5, 8);
-                if (clearVal.length > 8) masked += "-" + clearVal.substring(8, 10);
-                if (clearVal.length > 10) masked += "-" + clearVal.substring(10, 12);
-                e.target.value = masked;
+                let num = e.target.value.replace(/\\D/g, '');
+                if (!num.startsWith('380')) {
+                    num = '380' + num;
+                }
+                num = num.substring(0, 12);
+                
+                let format = '+380';
+                if (num.length > 3) format += ' (' + num.substring(3, 5);
+                if (num.length > 5) format += ') ' + num.substring(5, 8);
+                if (num.length > 8) format += '-' + num.substring(8, 10);
+                if (num.length > 10) format += '-' + num.substring(10, 12);
+                
+                e.target.value = format;
             });
             phoneField.addEventListener('focus', function (e) {
-                if (!e.target.value || e.target.value === '+380 ') e.target.value = '+380 ';
+                if (!e.target.value || e.target.value === '+380') e.target.value = '+380 ';
             });
         }
 
@@ -616,9 +630,9 @@
                     <td class="px-6 py-5"><span class="text-xs font-black text-indigo-600 bg-indigo-50 px-3 py-1 rounded-lg">\${item.size}</span></td>
                     <td class="px-6 py-5">
                         <div class="flex items-center gap-2">
-                            <button onclick="quickChangeQty(\${item.id}, \${item.quantity - 1})" class="w-7 h-7 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-black transition-colors flex items-center justify-center">-</button>
+                            <button onclick="quickChangeQty(\${item.id}, \${item.quantity - 1})" class="w-7 h-7 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-black flex items-center justify-center">-</button>
                             <span class="font-black text-sm text-slate-800 w-8 text-center">\${item.quantity}</span>
-                            <button onclick="quickChangeQty(\${item.id}, \${item.quantity + 1})" class="w-7 h-7 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-black transition-colors flex items-center justify-center">+</button>
+                            <button onclick="quickChangeQty(\${item.id}, \${item.quantity + 1})" class="w-7 h-7 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-black flex items-center justify-center">+</button>
                         </div>
                     </td>
                     <td class="px-8 py-5 text-right">

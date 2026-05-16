@@ -7,7 +7,7 @@ const session = require('express-session');
 const app = express();
 const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
 
-// --- АВТОМАТИЧНЕ ОНОВЛЕННЯ БАЗИ ДАНИХ (БЕЗ ПОМИЛОК) ---
+// --- АВТОМАТИЧНЕ ОНОВЛЕННЯ БАЗИ ДАНИХ ---
 async function updateDatabaseSchema() {
     try {
         await pool.query(`
