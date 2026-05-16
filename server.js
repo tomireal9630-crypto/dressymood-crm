@@ -27,7 +27,7 @@ const checkAuth = (req, res, next) => {
     }
     // Если запрос к API (кроме публичных) — возвращаем JSON ошибку
     if (req.originalUrl.startsWith('/api/')) {
-        return res.status(401).json({ error: 'Не авторизован' });
+        return res.status(401).json({ error: 'Не авторизований' });
     }
     // Иначе перенаправляем на страницу логина
     res.redirect('/login.html');
@@ -49,16 +49,16 @@ app.post('/api/login', (req, res) => {
     
     if (username === process.env.ADMIN_USERNAME && password === process.env.ADMIN_PASSWORD) {
         req.session.isAuthenticated = true;
-        res.json({ message: 'Успешный вход' });
+        res.json({ message: 'Успішний вхід' });
     } else {
-        res.status(401).json({ error: 'Неверный логин или пароль' });
+        res.status(401).json({ error: 'Невірний логін або пароль' });
     }
 });
 
 // Эндпоинт выхода
 app.post('/api/logout', (req, res) => {
     req.session.destroy();
-    res.json({ message: 'Вышли из системы' });
+    res.json({ message: 'Вийшли з системи' });
 });
 
 // POST-эндпоинт для приема заявок (оставляем ОТКРЫТЫМ, чтобы сайт мог создавать заказы)
@@ -94,12 +94,12 @@ app.post('/api/orders', async (req, res) => {
         console.log({ orderId, customerId, article, size, color, source });
 
         res.status(201).json({ 
-            message: 'Заявка успешно создана в базе данных', 
+            message: 'Заявка успішно створена в базі даних', 
             orderId: orderId 
         });
     } catch (error) {
         console.error('Ошибка при сохранении заявки:', error);
-        res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+        res.status(500).json({ error: 'Внутрішня помилка сервера' });
     }
 });
 
@@ -125,7 +125,7 @@ app.get('/api/orders', checkAuth, async (req, res) => {
         res.json(result.rows);
     } catch (error) {
         console.error('Ошибка при получении заявок:', error);
-        res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+        res.status(500).json({ error: 'Внутрішня помилка сервера' });
     }
 });
 
@@ -136,16 +136,17 @@ app.patch('/api/orders/:id/status', checkAuth, async (req, res) => {
     
     try {
         await db.query('UPDATE orders SET status = $1 WHERE id = $2', [status, id]);
-        res.json({ message: 'Статус успешно обновлен' });
+        res.json({ message: 'Статус успішно оновлено' });
     } catch (error) {
         console.error('Ошибка при обновлении статуса:', error);
-        res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+        res.status(500).json({ error: 'Внутрішня помилка сервера' });
     }
 });
 
 app.listen(PORT, async () => {
     try {
-        await db.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'Новый';`);
+        await db.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'Новий';`);
+        await db.query(`ALTER TABLE orders ALTER COLUMN status SET DEFAULT 'Новий';`); // Обновляем дефолт
     } catch (e) {
         // Игнорируем ошибку при запуске
     }

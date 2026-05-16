@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="uk">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -17,7 +17,7 @@
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-8 gap-4">
             <div>
                 <h1 class="text-3xl font-bold text-gray-900 tracking-tight">DressyMood CRM</h1>
-                <p class="mt-1 text-sm text-gray-500">Панель управления заказами</p>
+                <p class="mt-1 text-sm text-gray-500">Панель управління замовленнями</p>
             </div>
             <div class="flex items-center space-x-4 w-full sm:w-auto justify-between sm:justify-end">
                 <div class="bg-white p-3 sm:p-4 rounded-xl shadow-sm border border-gray-100 flex items-center space-x-3 sm:space-x-4">
@@ -27,14 +27,14 @@
                         </svg>
                     </div>
                     <div>
-                        <p class="text-xs sm:text-sm font-medium text-gray-500">Всего заказов</p>
+                        <p class="text-xs sm:text-sm font-medium text-gray-500">Всього замовлень</p>
                         <p class="text-xl sm:text-2xl font-semibold text-gray-900 leading-none" id="total-orders">0</p>
                     </div>
                 </div>
                 
                 <!-- Кнопка Выйти -->
                 <button onclick="logout()" class="text-sm font-medium text-gray-700 bg-white border border-gray-200 hover:bg-gray-50 hover:text-gray-900 px-4 py-2 rounded-xl shadow-sm transition-colors focus:ring-2 focus:ring-gray-200">
-                    Выйти
+                    Вийти
                 </button>
             </div>
         </div>
@@ -46,9 +46,9 @@
                     <thead class="bg-gray-50/80 text-gray-500 font-medium border-b border-gray-200">
                         <tr>
                             <th scope="col" class="px-6 py-4">Дата</th>
-                            <th scope="col" class="px-6 py-4">Клиент</th>
+                            <th scope="col" class="px-6 py-4">Клієнт</th>
                             <th scope="col" class="px-6 py-4">Артикул</th>
-                            <th scope="col" class="px-6 py-4">Размер / Цвет</th>
+                            <th scope="col" class="px-6 py-4">Розмір / Колір</th>
                             <th scope="col" class="px-6 py-4">Статус</th>
                         </tr>
                     </thead>
@@ -61,13 +61,17 @@
     </div>
 
     <script>
-        const statusOptions = ['Новый', 'В обработке', 'Оплачен', 'Отправлен'];
+        const statusOptions = ['Новий', 'В обробці', 'Оплачений', 'Відправлений'];
 
         // Цвета для разных статусов
         const statusColors = {
-            'Новый': 'bg-blue-100 text-blue-800',
+            'Новий': 'bg-blue-100 text-blue-800',
+            'Новый': 'bg-blue-100 text-blue-800', // Для старых записей
+            'В обробці': 'bg-yellow-100 text-yellow-800',
             'В обработке': 'bg-yellow-100 text-yellow-800',
+            'Оплачений': 'bg-purple-100 text-purple-800',
             'Оплачен': 'bg-purple-100 text-purple-800',
+            'Відправлений': 'bg-green-100 text-green-800',
             'Отправлен': 'bg-green-100 text-green-800'
         };
 
@@ -82,16 +86,16 @@
                 }
 
                 if (!response.ok) {
-                    throw new Error('Ошибка сервера: ' + response.status);
+                    throw new Error('Помилка сервера: ' + response.status);
                 }
 
                 const orders = await response.json();
                 renderTable(orders);
                 document.getElementById('total-orders').innerText = orders.length;
             } catch (error) {
-                console.error('Ошибка загрузки:', error);
+                console.error('Помилка завантаження:', error);
                 const tbody = document.getElementById('orders-tbody');
-                tbody.innerHTML = '<tr><td colspan="5" class="px-6 py-8 text-center text-red-500">Ошибка при загрузке данных</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="5" class="px-6 py-8 text-center text-red-500">Помилка при завантаженні даних</td></tr>';
             }
         }
 
@@ -101,15 +105,20 @@
 
             // Проверка на пустой массив
             if (!orders || orders.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5" class="px-6 py-8 text-center text-gray-500 text-base font-medium">Заказов пока нет</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="5" class="px-6 py-8 text-center text-gray-500 text-base font-medium">Замовлень поки немає</td></tr>';
                 return;
             }
 
             orders.forEach(order => {
                 const dateObj = new Date(order.created_at);
-                const dateStr = dateObj.toLocaleDateString('ru-RU') + ' <span class="text-gray-400">' + dateObj.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) + '</span>';
+                const dateStr = dateObj.toLocaleDateString('uk-UA') + ' <span class="text-gray-400">' + dateObj.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' }) + '</span>';
 
-                const currentStatus = order.status || 'Новый';
+                let currentStatus = order.status || 'Новий';
+                // Поддержка старых статусов из БД
+                if (currentStatus === 'Новый') currentStatus = 'Новий';
+                if (currentStatus === 'В обработке') currentStatus = 'В обробці';
+                if (currentStatus === 'Оплачен') currentStatus = 'Оплачений';
+                if (currentStatus === 'Отправлен') currentStatus = 'Відправлений';
                 
                 let selectOptionsHTML = statusOptions.map(st => {
                     const selected = st === currentStatus ? 'selected' : '';
@@ -121,7 +130,7 @@
                 tr.innerHTML = `
                     <td class="px-6 py-4">
                         <div class="text-gray-900 font-medium">${dateStr}</div>
-                        <div class="text-xs text-gray-400 mt-1">${order.source || 'Неизвестен'}</div>
+                        <div class="text-xs text-gray-400 mt-1">${order.source || 'Невідомий'}</div>
                     </td>
                     <td class="px-6 py-4">
                         <div class="font-medium text-gray-900">${order.full_name}</div>
@@ -167,12 +176,12 @@
                 }
 
                 if (!res.ok) {
-                    alert('Ошибка при обновлении статуса');
+                    alert('Помилка при оновленні статусу');
                     fetchOrders();
                 }
             } catch (error) {
                 console.error(error);
-                alert('Ошибка сети при обновлении статуса');
+                alert('Помилка мережі при оновленні статусу');
                 fetchOrders();
             }
         }
@@ -182,7 +191,7 @@
                 await fetch('/api/logout', { method: 'POST' });
                 window.location.href = '/login.html';
             } catch (error) {
-                console.error('Ошибка выхода:', error);
+                console.error('Помилка виходу:', error);
             }
         }
 
