@@ -345,6 +345,15 @@
     </div>
 
     <script>
+        const statusConfig = {
+            'Новий': 'bg-blue-50 text-blue-600 ring-blue-100',
+            'В роботі': 'bg-amber-50 text-amber-600 ring-amber-100',
+            'Відправлено': 'bg-violet-50 text-violet-600 ring-violet-100',
+            'Завершено': 'bg-emerald-50 text-emerald-600 ring-emerald-100',
+            'Відмова': 'bg-rose-50 text-rose-600 ring-rose-100',
+            'Видалено': 'bg-slate-100 text-slate-400 ring-slate-200'
+        };
+
         let currentView = 'orders';
         let suppliersList = [];
         let currentProducts = [];
@@ -382,6 +391,9 @@
                 if (clearVal.length > 8) masked += "-" + clearVal.substring(8, 10);
                 if (clearVal.length > 10) masked += "-" + clearVal.substring(10, 12);
                 e.target.value = masked;
+            });
+            phoneField.addEventListener('focus', function (e) {
+                if (!e.target.value || e.target.value === '+380 ') e.target.value = '+380 ';
             });
         }
 
@@ -433,9 +445,9 @@
                 const search = document.getElementById('searchInput').value;
                 const res = await fetch(\`/api/orders?view=\${currentView}&search=\${encodeURIComponent(search)}\`);
                 const data = await res.json();
-                if (data.error) return alert("Помилка бази даних.");
+                if (data.error) return alert("Помилка завантаження бази.");
                 renderOrders(data);
-            } catch (e) { alert("Сервер недоступний."); }
+            } catch (e) { console.error(e); }
         }
 
         function renderOrders(orders) {
@@ -610,7 +622,7 @@
                         </div>
                     </td>
                     <td class="px-8 py-5 text-right">
-                        <button onclick="if(confirm('Ви видалити товар з наявності?')) deleteStockItem(\${item.id})" class="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-rose-500 transition-all p-2 bg-slate-50 rounded-lg"><i class="fa-solid fa-trash-can"></i></button>
+                        <button onclick="if(confirm('Ви впевнені, що хочете видалити цей товар з наявності?')) deleteStockItem(\${item.id})" class="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-rose-500 transition-all p-2 bg-slate-50 rounded-lg"><i class="fa-solid fa-trash-can"></i></button>
                     </td>
                 </tr>\`).join('');
         }
@@ -640,16 +652,6 @@
         function closeModal(id) { document.getElementById(id).classList.remove('modal-active'); }
         function debounceSearch() { clearTimeout(window.searchTimer); window.searchTimer = setTimeout(refreshData, 400); }
         async function logout() { await fetch('/api/logout', { method: 'POST' }); window.location.href = '/login.html'; }
-
-        // Додамо визначення statusConfig (яке зникло)
-        const statusConfig = {
-            'Новий': 'bg-blue-50 text-blue-600 ring-blue-100',
-            'В роботі': 'bg-amber-50 text-amber-600 ring-amber-100',
-            'Відправлено': 'bg-violet-50 text-violet-600 ring-violet-100',
-            'Завершено': 'bg-emerald-50 text-emerald-600 ring-emerald-100',
-            'Відмова': 'bg-rose-50 text-rose-600 ring-rose-100',
-            'Видалено': 'bg-slate-100 text-slate-400 ring-slate-200'
-        };
 
         refreshData();
     </script>
