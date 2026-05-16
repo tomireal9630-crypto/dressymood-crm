@@ -31,38 +31,77 @@
         </div>
 
         <div class="px-5 flex-1 overflow-y-auto pb-6 space-y-8 custom-scrollbar">
-            <nav class="space-y-1">
-                <button onclick="switchView('orders')" id="btn-orders" class="sidebar-item active w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
-                    <i class="fa-solid fa-layer-group w-5 text-center"></i> Замовлення
-                </button>
-                <button onclick="switchView('dashboard')" id="btn-dashboard" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
-                    <i class="fa-solid fa-chart-pie w-5 text-center"></i> Дашборд
-                </button>
-                <button onclick="switchView('archive')" id="btn-archive" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
-                    <i class="fa-solid fa-box-archive w-5 text-center"></i> Архів
-                </button>
-                <button onclick="switchView('deleted')" id="btn-deleted" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
-                    <i class="fa-solid fa-trash-can w-5 text-center"></i> Видалені
-                </button>
-            </nav>
+            <!-- Основне -->
+            <div>
+                <div class="text-[10px] font-black text-slate-500 uppercase tracking-widest px-4 mb-3">Основне</div>
+                <nav class="space-y-1">
+                    <button onclick="switchView('orders')" id="btn-orders" class="sidebar-item active w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
+                        <i class="fa-solid fa-layer-group w-5 text-center"></i> Замовлення
+                    </button>
+                    <button onclick="switchView('dashboard')" id="btn-dashboard" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
+                        <i class="fa-solid fa-chart-pie w-5 text-center"></i> Дашборд
+                    </button>
+                    <button onclick="switchView('archive')" id="btn-archive" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
+                        <i class="fa-solid fa-box-archive w-5 text-center"></i> Архів
+                    </button>
+                    <button onclick="switchView('deleted')" id="btn-deleted" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
+                        <i class="fa-solid fa-trash-can w-5 text-center"></i> Видалені
+                    </button>
+                </nav>
+            </div>
 
-            <nav class="space-y-1">
-                <button onclick="switchView('warehouse')" id="btn-warehouse" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
-                    <i class="fa-solid fa-warehouse w-5 text-center"></i> Склад
-                </button>
-                <button onclick="switchView('stock')" id="btn-stock" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
-                    <i class="fa-solid fa-boxes-stacked w-5 text-center"></i> Наявність
-                </button>
-                <button onclick="switchView('export')" id="btn-export" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
-                    <i class="fa-solid fa-file-export w-5 text-center"></i> Вигрузка
-                </button>
-            </nav>
+            <!-- Склад -->
+            <div>
+                <div class="text-[10px] font-black text-slate-500 uppercase tracking-widest px-4 mb-3">Склад</div>
+                <nav class="space-y-1">
+                    <button onclick="switchView('warehouse')" id="btn-warehouse" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
+                        <i class="fa-solid fa-warehouse w-5 text-center"></i> Склад
+                    </button>
+                    <button onclick="switchView('stock')" id="btn-stock" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
+                        <i class="fa-solid fa-boxes-stacked w-5 text-center"></i> Наявність
+                    </button>
+                    <button onclick="switchView('export')" id="btn-export" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
+                        <i class="fa-solid fa-file-export w-5 text-center"></i> Вигрузка
+                    </button>
+                </nav>
+            </div>
+
+            <!-- Система -->
+            <div>
+                <div class="text-[10px] font-black text-slate-500 uppercase tracking-widest px-4 mb-3">Система</div>
+                <nav class="space-y-1">
+                    <button onclick="switchView('statistics')" id="btn-statistics" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
+                        <i class="fa-solid fa-chart-line w-5 text-center"></i> Статистика
+                    </button>
+                    <button onclick="switchView('users')" id="btn-users" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
+                        <i class="fa-solid fa-users w-5 text-center"></i> Користувачі
+                    </button>
+                    <button onclick="switchView('settings')" id="btn-settings" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
+                        <i class="fa-solid fa-gear w-5 text-center"></i> Налаштування
+                    </button>
+                </nav>
+            </div>
         </div>
 
         <div class="shrink-0 p-5 bg-[#020617] border-t border-slate-800">
-            <button onclick="logout()" class="sidebar-item w-full flex items-center gap-4 px-4 py-2.5 rounded-lg text-[13px] font-semibold text-left hover:text-rose-400">
-                <i class="fa-solid fa-arrow-right-from-bracket w-5 text-center text-rose-500/50"></i> Вихід
-            </button>
+            <div class="space-y-1 mb-4">
+                <button onclick="switchView('theme')" id="btn-theme" class="sidebar-item w-full flex items-center gap-4 px-4 py-2.5 rounded-lg text-[13px] font-semibold text-left">
+                    <i class="fa-solid fa-palette w-5 text-center"></i> Тема
+                </button>
+                <button onclick="logout()" class="sidebar-item w-full flex items-center gap-4 px-4 py-2.5 rounded-lg text-[13px] font-semibold text-left hover:text-rose-400">
+                    <i class="fa-solid fa-arrow-right-from-bracket w-5 text-center text-rose-500/50"></i> Вихід
+                </button>
+            </div>
+            
+            <div class="flex items-center gap-3 px-4 py-2">
+                <div class="w-8 h-8 rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 flex items-center justify-center text-white font-bold text-xs shadow-lg shadow-violet-500/20">
+                    T
+                </div>
+                <div>
+                    <div class="text-white text-xs font-bold tracking-wide">tomireal</div>
+                    <div class="text-slate-500 text-[10px] font-medium mt-0.5">Адміністратор</div>
+                </div>
+            </div>
         </div>
     </aside>
 
