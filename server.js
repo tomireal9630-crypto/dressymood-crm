@@ -62,23 +62,36 @@ app.get('/api/orders', checkAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// СТВОРЕННЯ ЗАМОВЛЕННЯ (Повернули!)
+// Безпечне створення замовлення (без ON CONFLICT)
 app.post('/api/orders/manual', checkAuth, async (req, res) => {
     const { fullName, phone, article, size, color, price, cost, source } = req.body;
     try {
-        const cust = await pool.query(
-            'INSERT INTO customers (full_name, phone) VALUES ($1, $2) ON CONFLICT (phone) DO UPDATE SET full_name = $1 RETURNING id',
-            [fullName, phone]
-        );
+        // Перевіряємо чи є вже клієнт з таким телефоном
+        let custResult = await pool.query('SELECT id FROM customers WHERE phone = $1', [phone]);
+        let customerId;
+        
+        if (custResult.rows.length > 0) {
+            customerId = custResult.rows[0].id;
+            // Оновлюємо ім'я, якщо воно змінилося
+            await pool.query('UPDATE customers SET full_name = $1 WHERE id = $2', [fullName, customerId]);
+        } else {
+            // Створюємо нового клієнта
+            const newCust = await pool.query('INSERT INTO customers (full_name, phone) VALUES ($1, $2) RETURNING id', [fullName, phone]);
+            customerId = newCust.rows[0].id;
+        }
+
+        // Вставляємо замовлення
         const order = await pool.query(
             'INSERT INTO orders (customer_id, article, size, color, status, price, cost, source) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id',
-            [cust.rows[0].id, article, size || '', color || '', 'Новий', price || 0, cost || 0, source || 'Вручну']
+            [customerId, article, size || '', color || '', 'Новий', price || 0, cost || 0, source || 'Вручну']
         );
         res.json({ success: true, id: order.rows[0].id });
-    } catch (err) { res.status(500).json({ error: err.message }); }
+    } catch (err) { 
+        res.status(500).json({ error: err.message }); 
+    }
 });
 
-// РЕДАГУВАННЯ ЗАМОВЛЕННЯ (ТТН, Статуси - Повернули!)
+// Редагування замовлення
 app.patch('/api/orders/:id', checkAuth, async (req, res) => {
   const fields = req.body;
   const setClause = Object.keys(fields).map((key, i) => `${key} = $${i + 1}`).join(', ');

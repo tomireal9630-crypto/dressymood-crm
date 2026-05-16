@@ -239,13 +239,23 @@
                 const search = document.getElementById('searchInput').value;
                 const res = await fetch(`/api/orders?view=${currentView}&search=${encodeURIComponent(search)}`);
                 if (res.status === 401) return window.location.href = '/login.html';
-                renderOrders(await res.json());
-            } catch (e) { console.error(e); }
+                const data = await res.json();
+                
+                if (data.error) {
+                    alert("Помилка завантаження бази: " + data.error);
+                    return;
+                }
+                
+                renderOrders(data);
+            } catch (e) { 
+                console.error(e);
+                alert("Не вдалося підключитися до сервера при завантаженні даних.");
+            }
         }
 
         function renderOrders(orders) {
             const table = document.getElementById('ordersTable');
-            if (orders.length === 0) {
+            if (!Array.isArray(orders) || orders.length === 0) {
                 table.innerHTML = `<tr><td colspan="6" class="px-8 py-20 text-center text-slate-300 font-medium">Тут поки порожньо</td></tr>`;
                 return;
             }
@@ -287,25 +297,45 @@
         document.getElementById('addOrderForm').onsubmit = async (e) => {
             e.preventDefault();
             const data = Object.fromEntries(new FormData(e.target));
-            await fetch('/api/orders/manual', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(data)
-            });
-            closeModal(); e.target.reset(); loadData();
+            try {
+                const res = await fetch('/api/orders/manual', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                const result = await res.json();
+                
+                if (result.error) {
+                    alert("Помилка збереження замовлення: " + result.error);
+                } else {
+                    closeModal(); 
+                    e.target.reset(); 
+                    loadData();
+                }
+            } catch (err) {
+                alert("Помилка мережі при спробі зберегти замовлення.");
+            }
         };
 
         async function update(id, field, value) {
-            await fetch(`/api/orders/${id}`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ [field]: value })
-            });
+            try {
+                const res = await fetch(`/api/orders/${id}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ [field]: value })
+                });
+                const result = await res.json();
+                if (result.error) {
+                    alert("Помилка оновлення поля: " + result.error);
+                }
+            } catch (e) {
+                alert("Помилка мережі при оновленні.");
+            }
             loadData();
         }
 
-        function openModal() { document.getElementById('orderModal').classList.add('modal-active'); }
         function closeModal() { document.getElementById('orderModal').classList.remove('modal-active'); }
+        function openModal() { document.getElementById('orderModal').classList.add('modal-active'); }
         function debounceSearch() { clearTimeout(window.searchTimer); window.searchTimer = setTimeout(loadData, 400); }
         async function logout() { await fetch('/api/logout', { method: 'POST' }); window.location.href = '/login.html'; }
 
