@@ -1,155 +1,111 @@
+require('dotenv').config();
 const express = require('express');
-const db = require('./db');
+const { Pool } = require('pg');
 const path = require('path');
 const session = require('express-session');
-require('dotenv').config();
 
 const app = express();
-const PORT = 3000;
+const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
 
-app.use(express.json());
-
-// Отдаем статику ДО всех маршрутов, чтобы login.html и стили были доступны
-app.use(express.static(path.join(__dirname, 'public'), { index: false }));
-
-// Настройка сессий
 app.use(session({
-    secret: process.env.SESSION_SECRET || 'fallback_secret',
-    resave: false,
-    saveUninitialized: false,
-    cookie: { secure: false } // В реальном проекте с HTTPS поставить true
+  secret: process.env.SESSION_SECRET || 'tomireal_space_layout',
+  resave: false,
+  saveUninitialized: false,
+  cookie: { secure: false, maxAge: 24 * 60 * 60 * 1000 }
 }));
 
-// Middleware для проверки авторизации
+app.use(express.json());
+app.use(express.static(path.join(__dirname, 'public')));
+
 const checkAuth = (req, res, next) => {
-    if (req.session.isAuthenticated) {
-        return next();
-    }
-    // Если запрос к API (кроме публичных) — возвращаем JSON ошибку
-    if (req.originalUrl.startsWith('/api/')) {
-        return res.status(401).json({ error: 'Не авторизований' });
-    }
-    // Иначе перенаправляем на страницу логина
-    res.redirect('/login.html');
+  if (req.session.isLoggedIn) next();
+  else req.path.startsWith('/api/') ? res.status(401).json({ error: 'Auth' }) : res.redirect('/login.html');
 };
 
-// Явный роут для страницы входа
-app.get('/login.html', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'login.html'));
-});
-
-// Защищаем корень (index.html)
-app.get('/', checkAuth, (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
-// Эндпоинт входа
 app.post('/api/login', (req, res) => {
-    const { username, password } = req.body;
-    
-    if (username === process.env.ADMIN_USERNAME && password === process.env.ADMIN_PASSWORD) {
-        req.session.isAuthenticated = true;
-        res.json({ message: 'Успішний вхід' });
-    } else {
-        res.status(401).json({ error: 'Невірний логін або пароль' });
-    }
+  const { username, password } = req.body;
+  if (username === process.env.ADMIN_USERNAME && password === process.env.ADMIN_PASSWORD) {
+    req.session.isLoggedIn = true;
+    res.json({ success: true });
+  } else res.status(401).json({ error: 'Error' });
 });
 
-// Эндпоинт выхода
-app.post('/api/logout', (req, res) => {
-    req.session.destroy();
-    res.json({ message: 'Вийшли з системи' });
-});
+app.post('/api/logout', (req, res) => { req.session.destroy(); res.json({ success: true }); });
 
-// POST-эндпоинт для приема заявок (оставляем ОТКРЫТЫМ, чтобы сайт мог создавать заказы)
-app.post('/api/orders', async (req, res) => {
-    const { fullName, phone, article, size, color, source } = req.body;
-
-    try {
-        let customerQuery = await db.query('SELECT id FROM customers WHERE phone = $1', [phone]);
-        let customerId;
-
-        if (customerQuery.rows.length > 0) {
-            customerId = customerQuery.rows[0].id;
-        } else {
-            const newCustomer = await db.query(
-                'INSERT INTO customers (full_name, phone) VALUES ($1, $2) RETURNING id',
-                [fullName, phone]
-            );
-            customerId = newCustomer.rows[0].id;
-        }
-
-        const newOrder = await db.query(
-            'INSERT INTO orders (customer_id, source) VALUES ($1, $2) RETURNING id, created_at',
-            [customerId, source]
-        );
-        const orderId = newOrder.rows[0].id;
-
-        await db.query(
-            'INSERT INTO order_items (order_id, product_article, size, color) VALUES ($1, $2, $3, $4)',
-            [orderId, article, size, color]
-        );
-
-        console.log('\n--- Новая заявка сохранена в БД ---');
-        console.log({ orderId, customerId, article, size, color, source });
-
-        res.status(201).json({ 
-            message: 'Заявка успішно створена в базі даних', 
-            orderId: orderId 
-        });
-    } catch (error) {
-        console.error('Ошибка при сохранении заявки:', error);
-        res.status(500).json({ error: 'Внутрішня помилка сервера' });
-    }
-});
-
-// GET-эндпоинт для вывода заявок из БД (ЗАЩИЩЕН)
+// Отримання замовлень
 app.get('/api/orders', checkAuth, async (req, res) => {
+  const { view, search } = req.query;
+  try {
+    let query = `
+      SELECT o.id, c.full_name as "fullName", c.phone, o.article, o.size, o.color, 
+             o.status, o.ttn, o.price, o.cost, o.comment, o.source, o.created_at as "createdAt"
+      FROM orders o
+      JOIN customers c ON o.customer_id = c.id
+    `;
+    const params = [];
+    const conditions = [];
+
+    if (view === 'archive') conditions.push("o.status IN ('Завершено', 'Відмова')");
+    else if (view === 'deleted') conditions.push("o.status = 'Видалено'");
+    else conditions.push("o.status NOT IN ('Завершено', 'Відмова', 'Видалено')");
+
+    if (search) {
+      params.push(`%${search}%`);
+      conditions.push(`(c.full_name ILIKE $1 OR c.phone ILIKE $1 OR o.article ILIKE $1)`);
+    }
+
+    if (conditions.length > 0) query += " WHERE " + conditions.join(" AND ");
+    query += ` ORDER BY o.created_at DESC`;
+
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// СТВОРЕННЯ ЗАМОВЛЕННЯ (Повернули!)
+app.post('/api/orders/manual', checkAuth, async (req, res) => {
+    const { fullName, phone, article, size, color, price, cost, source } = req.body;
     try {
-        const result = await db.query(`
+        const cust = await pool.query(
+            'INSERT INTO customers (full_name, phone) VALUES ($1, $2) ON CONFLICT (phone) DO UPDATE SET full_name = $1 RETURNING id',
+            [fullName, phone]
+        );
+        const order = await pool.query(
+            'INSERT INTO orders (customer_id, article, size, color, status, price, cost, source) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id',
+            [cust.rows[0].id, article, size || '', color || '', 'Новий', price || 0, cost || 0, source || 'Вручну']
+        );
+        res.json({ success: true, id: order.rows[0].id });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// РЕДАГУВАННЯ ЗАМОВЛЕННЯ (ТТН, Статуси - Повернули!)
+app.patch('/api/orders/:id', checkAuth, async (req, res) => {
+  const fields = req.body;
+  const setClause = Object.keys(fields).map((key, i) => `${key} = $${i + 1}`).join(', ');
+  const values = Object.values(fields);
+  values.push(req.params.id);
+  try {
+    await pool.query(`UPDATE orders SET ${setClause} WHERE id = $${values.length}`, values);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Статистика
+app.get('/api/stats', checkAuth, async (req, res) => {
+    try {
+        const result = await pool.query(`
             SELECT 
-                o.id as order_id, 
-                c.full_name, 
-                c.phone, 
-                oi.product_article as article, 
-                oi.size, 
-                oi.color, 
-                o.source, 
-                o.created_at,
-                o.status
-            FROM orders o
-            JOIN customers c ON o.customer_id = c.id
-            JOIN order_items oi ON oi.order_id = o.id
-            ORDER BY o.created_at DESC
+                COUNT(*) as total,
+                COALESCE(SUM(price), 0) as revenue,
+                COALESCE(SUM(price - cost), 0) as profit,
+                COUNT(*) FILTER (WHERE status = 'Новий') as new_count
+            FROM orders WHERE status != 'Видалено'
         `);
-        res.json(result.rows);
-    } catch (error) {
-        console.error('Ошибка при получении заявок:', error);
-        res.status(500).json({ error: 'Внутрішня помилка сервера' });
-    }
+        res.json(result.rows[0]);
+    } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// PATCH-эндпоинт для обновления статуса заказа (ЗАЩИЩЕН)
-app.patch('/api/orders/:id/status', checkAuth, async (req, res) => {
-    const { id } = req.params;
-    const { status } = req.body;
-    
-    try {
-        await db.query('UPDATE orders SET status = $1 WHERE id = $2', [status, id]);
-        res.json({ message: 'Статус успішно оновлено' });
-    } catch (error) {
-        console.error('Ошибка при обновлении статуса:', error);
-        res.status(500).json({ error: 'Внутрішня помилка сервера' });
-    }
-});
+app.get('/', checkAuth, (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
-app.listen(PORT, async () => {
-    try {
-        await db.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'Новий';`);
-        await db.query(`ALTER TABLE orders ALTER COLUMN status SET DEFAULT 'Новий';`); // Обновляем дефолт
-    } catch (e) {
-        // Игнорируем ошибку при запуске
-    }
-    console.log(`Сервер запущен на порту ${PORT}`);
-    console.log(`Админ-панель доступна по адресу: http://localhost:${PORT}`);
-});
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`tomireal CRM running on ${PORT}`));
