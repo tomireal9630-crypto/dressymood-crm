@@ -15,6 +15,9 @@ async function updateDatabaseSchema() {
             ADD COLUMN IF NOT EXISTS article VARCHAR(255) DEFAULT '',
             ADD COLUMN IF NOT EXISTS size VARCHAR(50) DEFAULT '',
             ADD COLUMN IF NOT EXISTS color VARCHAR(50) DEFAULT '',
+            ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'Новий',
+            ADD COLUMN IF NOT EXISTS ttn VARCHAR(255) DEFAULT '',
+            ADD COLUMN IF NOT EXISTS price NUMERIC DEFAULT 0,
             ADD COLUMN IF NOT EXISTS cost NUMERIC DEFAULT 0,
             ADD COLUMN IF NOT EXISTS source VARCHAR(100) DEFAULT 'Вручну',
             ADD COLUMN IF NOT EXISTS comment TEXT DEFAULT '';
