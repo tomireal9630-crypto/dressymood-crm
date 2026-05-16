@@ -7,6 +7,26 @@ const session = require('express-session');
 const app = express();
 const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
 
+// --- АВТОМАТИЧНЕ ОНОВЛЕННЯ БАЗИ ДАНИХ ---
+async function updateDatabaseSchema() {
+    try {
+        await pool.query(`
+            ALTER TABLE orders 
+            ADD COLUMN IF NOT EXISTS article VARCHAR(255) DEFAULT '',
+            ADD COLUMN IF NOT EXISTS size VARCHAR(50) DEFAULT '',
+            ADD COLUMN IF NOT EXISTS color VARCHAR(50) DEFAULT '',
+            ADD COLUMN IF NOT EXISTS cost NUMERIC DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS source VARCHAR(100) DEFAULT 'Вручну',
+            ADD COLUMN IF NOT EXISTS comment TEXT DEFAULT '';
+        `);
+        console.log("Таблиці бази даних успішно перевірені та оновлені.");
+    } catch (err) {
+        console.error("Помилка оновлення бази даних:", err);
+    }
+}
+updateDatabaseSchema();
+// -----------------------------------------
+
 app.use(session({
   secret: process.env.SESSION_SECRET || 'tomireal_space_layout',
   resave: false,
@@ -32,7 +52,6 @@ app.post('/api/login', (req, res) => {
 
 app.post('/api/logout', (req, res) => { req.session.destroy(); res.json({ success: true }); });
 
-// Отримання замовлень
 app.get('/api/orders', checkAuth, async (req, res) => {
   const { view, search } = req.query;
   try {
@@ -62,36 +81,28 @@ app.get('/api/orders', checkAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// Безпечне створення замовлення (без ON CONFLICT)
 app.post('/api/orders/manual', checkAuth, async (req, res) => {
     const { fullName, phone, article, size, color, price, cost, source } = req.body;
     try {
-        // Перевіряємо чи є вже клієнт з таким телефоном
         let custResult = await pool.query('SELECT id FROM customers WHERE phone = $1', [phone]);
         let customerId;
         
         if (custResult.rows.length > 0) {
             customerId = custResult.rows[0].id;
-            // Оновлюємо ім'я, якщо воно змінилося
             await pool.query('UPDATE customers SET full_name = $1 WHERE id = $2', [fullName, customerId]);
         } else {
-            // Створюємо нового клієнта
             const newCust = await pool.query('INSERT INTO customers (full_name, phone) VALUES ($1, $2) RETURNING id', [fullName, phone]);
             customerId = newCust.rows[0].id;
         }
 
-        // Вставляємо замовлення
         const order = await pool.query(
             'INSERT INTO orders (customer_id, article, size, color, status, price, cost, source) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id',
             [customerId, article, size || '', color || '', 'Новий', price || 0, cost || 0, source || 'Вручну']
         );
         res.json({ success: true, id: order.rows[0].id });
-    } catch (err) { 
-        res.status(500).json({ error: err.message }); 
-    }
+    } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// Редагування замовлення
 app.patch('/api/orders/:id', checkAuth, async (req, res) => {
   const fields = req.body;
   const setClause = Object.keys(fields).map((key, i) => `${key} = $${i + 1}`).join(', ');
@@ -103,7 +114,6 @@ app.patch('/api/orders/:id', checkAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// Статистика
 app.get('/api/stats', checkAuth, async (req, res) => {
     try {
         const result = await pool.query(`
