@@ -7,7 +7,7 @@ const session = require('express-session');
 const app = express();
 const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
 
-// --- АВТОМАТИЧНЕ ОНОВЛЕННЯ БАЗИ ДАНИХ ---
+// --- АВТОМАТИЧНЕ ОНОВЛЕННЯ БАЗИ ДАНИХ (БЕЗ ПОМИЛОК) ---
 async function updateDatabaseSchema() {
     try {
         await pool.query(`
@@ -54,18 +54,14 @@ async function updateDatabaseSchema() {
                 size VARCHAR(50) NOT NULL DEFAULT '',
                 quantity INTEGER NOT NULL DEFAULT 0
             );
-        `).catch(() => {
-            // Фолбек якщо таблиця вже є
-            return pool.query(`CREATE TABLE IF NOT EXISTS stock (id SERIAL PRIMARY KEY, product_id INTEGER, color VARCHAR(100), size VARCHAR(50), quantity INTEGER);`);
-        });
+        `);
 
-        console.log("Таблиці бази даних успішно перевірені та оновлені.");
+        console.log("Усі таблиці бази даних tomireal CRM успішно верифіковані.");
     } catch (err) {
-        console.error("Помилка оновлення бази даних:", err);
+        console.error("Помилка автоматичної міграції бази даних:", err);
     }
 }
 updateDatabaseSchema();
-// -----------------------------------------
 
 app.use(session({
   secret: process.env.SESSION_SECRET || 'tomireal_space_layout',
@@ -205,9 +201,7 @@ app.patch('/api/warehouse/products/:id', checkAuth, async (req, res) => {
     const values = Object.values(fields);
     values.push(req.params.id);
     try {
-        await pool.query(`UPDATE products SET ${setClause} WHERE id = $${values.length}`, values).catch(async () => {
-            return await pool.query(`UPDATE products SET ${setClause} WHERE id = $${values.length}`, values);
-        });
+        await pool.query(`UPDATE products SET ${setClause} WHERE id = $${values.length}`, values);
         res.json({ success: true });
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -259,6 +253,8 @@ app.delete('/api/stock/:id', checkAuth, async (req, res) => {
         res.json({ success: true });
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
+
+app.get('/', checkAuth, (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`tomireal CRM running on ${PORT}`));

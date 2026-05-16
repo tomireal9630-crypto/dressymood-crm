@@ -50,11 +50,9 @@
         </div>
 
         <div class="shrink-0 p-5 bg-[#020617] border-t border-slate-800">
-            <div class="space-y-1 mb-4">
-                <button onclick="logout()" class="sidebar-item w-full flex items-center gap-4 px-4 py-2.5 rounded-lg text-[13px] font-semibold text-left hover:text-rose-400">
-                    <i class="fa-solid fa-arrow-right-from-bracket w-5 text-center text-rose-500/50"></i> Вихід
-                </button>
-            </div>
+            <button onclick="logout()" class="sidebar-item w-full flex items-center gap-4 px-4 py-2.5 rounded-lg text-[13px] font-semibold text-left hover:text-rose-400">
+                <i class="fa-solid fa-arrow-right-from-bracket w-5 text-center text-rose-500/50"></i> Вихід
+            </button>
         </div>
     </aside>
 
@@ -213,7 +211,7 @@
                 </div>
                 <div class="col-span-2 border-t border-slate-50 pt-2"></div>
                 <div class="col-span-2">
-                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Оберіть товар з бази</label>
+                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Оберіть товар з бази складу</label>
                     <select id="orderProductSelect" onchange="onOrderProductSelectChange(this.value)" required class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-bold text-sm border-indigo-200">
                     </select>
                     <input type="hidden" name="article" id="orderHiddenArticle">
@@ -347,19 +345,10 @@
     </div>
 
     <script>
-        const statusConfig = {
-            'Новий': 'bg-blue-50 text-blue-600 ring-blue-100',
-            'В роботі': 'bg-amber-50 text-amber-600 ring-amber-100',
-            'Відправлено': 'bg-violet-50 text-violet-600 ring-violet-100',
-            'Завершено': 'bg-emerald-50 text-emerald-600 ring-emerald-100',
-            'Відмова': 'bg-rose-50 text-rose-600 ring-rose-100',
-            'Видалено': 'bg-slate-100 text-slate-400 ring-slate-200'
-        };
-
         let currentView = 'orders';
         let suppliersList = [];
         let currentProducts = [];
-        let allStockItems = []; // Глобальний масив для живого індикатора відмов
+        let allStockItems = [];
 
         function switchView(view) {
             currentView = view;
@@ -380,37 +369,33 @@
             if (currentView === 'stock') loadStockData();
         }
 
-        // --- МАСКА УКРАЇНСЬКОГО ТЕЛЕФОНУ ---
-        document.getElementById('orderPhoneInput').addEventListener('input', function (e) {
-            let x = e.target.value.replace(/\\D/g, '').match(/(\\d{0,3})(\\d{0,2})(\\d{0,3})(\\d{0,2})(\\d{0,2})/);
-            if (!x[1] || x[1] !== '380') {
-                e.target.value = '+380 ';
-                return;
-            }
-            e.target.value = !x[2] ? '+380 ' : '+380 (' + x[2] + (x[3] ? ') ' + x[3] : '') + (x[4] ? '-' + x[4] : '') + (x[5] ? '-' + x[5] : '');
-        });
-        document.getElementById('orderPhoneInput').addEventListener('focus', function (e) {
-            if (!e.target.value) e.target.value = '+380 ';
-        });
+        // --- БЕЗПЕЧНА МАСКА ТЕЛЕФОНУ ---
+        const phoneField = document.getElementById('orderPhoneInput');
+        if (phoneField) {
+            phoneField.addEventListener('input', function (e) {
+                let clearVal = e.target.value.replace(/\\D/g, "");
+                if (!clearVal.startsWith("380")) clearVal = "380" + clearVal;
+                clearVal = clearVal.substring(0, 12);
+                let masked = "+380 ";
+                if (clearVal.length > 3) masked += "(" + clearVal.substring(3, 5);
+                if (clearVal.length > 5) masked += ") " + clearVal.substring(5, 8);
+                if (clearVal.length > 8) masked += "-" + clearVal.substring(8, 10);
+                if (clearVal.length > 10) masked += "-" + clearVal.substring(10, 12);
+                e.target.value = masked;
+            });
+        }
 
         // --- ЛОГІКА СИНХРОНІЗАЦІЇ ЗАМОВЛЕНЬ ---
         async function openOrderModal() {
             try {
-                // Завантажуємо продукти складу для селекту в замовленнях
                 const prodRes = await fetch('/api/warehouse/products');
                 currentProducts = await prodRes.json();
-                
-                const select = document.getElementById('orderProductSelect');
-                select.innerHTML = \`<option value="">-- Оберіть модель товару зі Складу --</option>\` + 
-                    currentProducts.map(p => \`<option value="\${p.id}">[\${p.article}] \${p.name}</option>\`).join('');
-
-                // Тягнемо всю наявність відмов для живої підказки
+                document.getElementById('orderProductSelect').innerHTML = \`<option value="">-- Оберіть модель товару зі Складу --</option>\` + currentProducts.map(p => \`<option value="\${p.id}">[\${p.article}] \${p.name}</option>\`).join('');
                 const stockRes = await fetch('/api/stock');
                 allStockItems = await stockRes.json();
-
                 document.getElementById('stockHintBox').innerHTML = '';
                 openModal('orderModal');
-            } catch (e) { alert("Помилка підготовки форми замовлення."); }
+            } catch (e) { alert("Помилка зв'язку з базою даних."); }
         }
 
         function onOrderProductSelectChange(productId) {
@@ -432,18 +417,9 @@
             const color = document.getElementById('orderColorInput').value.trim().toLowerCase();
             const size = document.getElementById('orderSizeInput').value.trim().toLowerCase();
             const hintBox = document.getElementById('stockHintBox');
+            if (!productId || !color || !size) { hintBox.innerHTML = ''; return; }
 
-            if (!productId || !color || !size) {
-                hintBox.innerHTML = '';
-                return;
-            }
-
-            const match = allStockItems.find(item => 
-                item.product_id == productId && 
-                item.color.trim().toLowerCase() === color && 
-                item.size.trim().toLowerCase() === size
-            );
-
+            const match = allStockItems.find(item => item.product_id == productId && item.color.trim().toLowerCase() === color && item.size.trim().toLowerCase() === size);
             if (match && match.quantity > 0) {
                 hintBox.innerHTML = \`<div class="bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-black p-3 rounded-xl flex items-center gap-2"><i class="fa-solid fa-circle-check animate-pulse"></i> 🟢 Є в наявності (відмова): \${match.quantity} шт. Можна відправити з дому!</div>\`;
             } else {
@@ -451,13 +427,15 @@
             }
         }
 
-        // --- ЗАМОВЛЕННЯ: ЗАВАНТАЖЕННЯ ТА ДІЇ ---
+        // --- ЗАМОВЛЕННЯ ---
         async function loadOrders() {
             try {
                 const search = document.getElementById('searchInput').value;
                 const res = await fetch(\`/api/orders?view=\${currentView}&search=\${encodeURIComponent(search)}\`);
-                renderOrders(await res.json());
-            } catch (e) { console.error(e); }
+                const data = await res.json();
+                if (data.error) return alert("Помилка бази даних.");
+                renderOrders(data);
+            } catch (e) { alert("Сервер недоступний."); }
         }
 
         function renderOrders(orders) {
@@ -476,17 +454,13 @@
                         <div class="text-[11px] font-black text-slate-800 uppercase">\${o.article} <span class="text-slate-400 text-[10px] font-bold">(\${o.color || '-'} / \${o.size || '-'})</span></div>
                         <div class="mt-1"><span class="text-[9px] font-black bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded border border-emerald-200/50">\${o.price - o.cost} грн</span></div>
                     </td>
-                    <td class="px-6 py-6">
-                        <input type="text" value="\${o.ttn || ''}" onchange="updateOrder(\${o.id}, 'ttn', this.value)" placeholder="Ввести ТТН..." class="w-full max-w-[150px] text-xs font-mono font-bold bg-slate-50 border border-slate-100 rounded-lg px-3 py-2 outline-none">
-                    </td>
+                    <td class="px-6 py-6"><input type="text" value="\${o.ttn || ''}" onchange="updateOrder(\${o.id}, 'ttn', this.value)" placeholder="Ввести ТТН..." class="w-full max-w-[150px] text-xs font-mono font-bold bg-slate-50 border border-slate-100 rounded-lg px-3 py-2 outline-none"></td>
                     <td class="px-6 py-6">
                         <select onchange="updateOrder(\${o.id}, 'status', this.value)" class="text-[10px] font-black px-3 py-1.5 rounded-full ring-1 ring-inset cursor-pointer \${statusConfig[o.status] || 'bg-slate-100'}">
                             \${Object.keys(statusConfig).map(s => \`<option value="\${s}" \${o.status === s ? 'selected' : ''}>\${s.toUpperCase()}</option>\`).join('')}
                         </select>
                     </td>
-                    <td class="px-6 py-6">
-                        <input type="text" value="\${o.comment || ''}" onchange="updateOrder(\${o.id}, 'comment', this.value)" placeholder="Замітка..." class="w-full bg-transparent text-[11px] text-slate-400 border-none outline-none italic">
-                    </td>
+                    <td class="px-6 py-6"><input type="text" value="\${o.comment || ''}" onchange="updateOrder(\${o.id}, 'comment', this.value)" placeholder="Замітка..." class="w-full bg-transparent text-[11px] text-slate-400 border-none outline-none italic"></td>
                     <td class="px-8 py-6 text-right">
                         \${currentView !== 'deleted' ? 
                             \`<button onclick="if(confirm('Ви впевнені, що хочете видалити це замовлення?')) updateOrder(\${o.id}, 'status', 'Видалено')" class="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-rose-500 transition-all p-2 bg-slate-50 rounded-lg"><i class="fa-solid fa-trash-can"></i></button>\` : 
@@ -498,18 +472,14 @@
 
         document.getElementById('addOrderForm').onsubmit = async (e) => {
             e.preventDefault();
-            const form = e.target;
             const ln = document.getElementById('orderLastName').value.trim();
             const fn = document.getElementById('orderFirstName').value.trim();
             const pat = document.getElementById('orderPatronymic').value.trim();
             const full = [ln, fn, pat].filter(Boolean).join(' ');
-
-            const data = Object.fromEntries(new FormData(form));
+            const data = Object.fromEntries(new FormData(e.target));
             data.fullName = full;
-            data.phone = document.getElementById('orderPhoneInput').value;
-
             await fetch('/api/orders/manual', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
-            closeModal('orderModal'); form.reset(); loadOrders();
+            closeModal('orderModal'); e.target.reset(); loadOrders();
         };
 
         async function updateOrder(id, field, value) {
@@ -517,13 +487,12 @@
             loadOrders();
         }
 
-        // --- ЛОГІКА СКЛАДУ ---
+        // --- СКЛАД ---
         async function loadWarehouseData() {
             try {
                 const supRes = await fetch('/api/warehouse/suppliers');
                 suppliersList = await supRes.json();
                 renderSuppliers();
-                
                 const prodRes = await fetch('/api/warehouse/products');
                 currentProducts = await prodRes.json();
                 renderProducts(currentProducts);
@@ -535,11 +504,10 @@
             const select = document.getElementById('supplierSelect');
             const editSelect = document.getElementById('editSupplierSelect');
             
-            // Захист від випадкового видалення постачальника (Додано!)
             list.innerHTML = suppliersList.map(s => \`
                 <div class="flex justify-between items-center bg-slate-50 px-4 py-2.5 rounded-lg border border-slate-100 group">
                     <span class="text-xs font-bold text-slate-700">\${s.name}</span>
-                    <button onclick="if(confirm('Ви впевнені, що хочете видалити цього постачальника? Товари залишаться без прив\\\'язки.')) deleteSupplier(\${s.id})" class="text-slate-300 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-all"><i class="fa-solid fa-xmark"></i></button>
+                    <button onclick="if(confirm('Ви впевнені, що хочете видалити цього постачальника?')) deleteSupplier(\${s.id})" class="text-slate-300 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-all"><i class="fa-solid fa-xmark"></i></button>
                 </div>
             \`).join('');
 
@@ -573,7 +541,7 @@
                     <td class="px-6 py-5 max-w-[220px]">\${linksHtml}</td>
                     <td class="px-6 py-5 text-right whitespace-nowrap">
                         <button onclick="editProduct(\${p.id})" class="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-indigo-500 transition-all p-2 mr-1 bg-slate-50 rounded-lg"><i class="fa-solid fa-pen-to-square"></i></button>
-                        <button onclick="if(confirm('Ви впевнені, що хочете видалити цей товар з бази?')) deleteProduct(\${p.id})" class="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-rose-500 transition-all p-2 bg-slate-50 rounded-lg"><i class="fa-solid fa-trash-can"></i></button>
+                        <button onclick="if(confirm('Ви впевнені, що хочете видалити цей товар?')) deleteProduct(\${p.id})" class="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-rose-500 transition-all p-2 bg-slate-50 rounded-lg"><i class="fa-solid fa-trash-can"></i></button>
                     </td>
                 </tr>\`
             }).join('');
@@ -600,7 +568,7 @@
             e.target.reset(); loadWarehouseData();
         };
 
-        async function deleteSupplier(id) { await fetch(\`/api/warehouse/suppliers/\${id}\`, { method: 'DELETE' }); }
+        async function deleteSupplier(id) { await fetch(\`/api/warehouse/suppliers/\${id}\`, { method: 'DELETE' }); loadWarehouseData(); }
         async function deleteProduct(id) { await fetch(\`/api/warehouse/products/\${id}\`, { method: 'DELETE' }); loadWarehouseData(); }
 
         document.getElementById('addProductForm').onsubmit = async (e) => {
@@ -609,13 +577,12 @@
             closeModal('productModal'); e.target.reset(); loadWarehouseData();
         };
 
-        // --- ЛОГІКА НАЯВНОСТІ ---
+        // --- НАЯВНІСТЬ ---
         async function loadStockData() {
             try {
                 const prodRes = await fetch('/api/warehouse/products');
                 currentProducts = await prodRes.json();
                 document.getElementById('stockProductSelect').innerHTML = \`<option value="">-- Оберіть модель товару --</option>\` + currentProducts.map(p => \`<option value="\${p.id}">[\${p.article}] \${p.name}</option>\`).join('');
-
                 const stockRes = await fetch('/api/stock');
                 renderStock(await stockRes.json());
             } catch (e) { console.error(e); }
@@ -643,7 +610,7 @@
                         </div>
                     </td>
                     <td class="px-8 py-5 text-right">
-                        <button onclick="if(confirm('Ви впевнені, що хочете видалити цей товар з наявності?')) deleteStockItem(\${item.id})" class="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-rose-500 transition-all p-2 bg-slate-50 rounded-lg"><i class="fa-solid fa-trash-can"></i></button>
+                        <button onclick="if(confirm('Ви видалити товар з наявності?')) deleteStockItem(\${item.id})" class="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-rose-500 transition-all p-2 bg-slate-50 rounded-lg"><i class="fa-solid fa-trash-can"></i></button>
                     </td>
                 </tr>\`).join('');
         }
@@ -659,7 +626,7 @@
         async function quickChangeQty(id, newQty) {
             if (newQty < 0) return;
             if (newQty === 0) {
-                if (!confirm("Кількість дорівнює 0. Видалити цей рядок з наявності?")) return;
+                if (!confirm("Видалити цей товар з наявності?")) return;
                 await fetch(\`/api/stock/\${id}\`, { method: 'DELETE' });
             } else {
                 await fetch(\`/api/stock/\${id}\`, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ quantity: newQty }) });
@@ -669,11 +636,20 @@
 
         async function deleteStockItem(id) { await fetch(\`/api/stock/\${id}\`, { method: 'DELETE' }); loadStockData(); }
 
-        // --- УТИЛІТИ ---
         function openModal(id) { document.getElementById(id).classList.add('modal-active'); }
         function closeModal(id) { document.getElementById(id).classList.remove('modal-active'); }
         function debounceSearch() { clearTimeout(window.searchTimer); window.searchTimer = setTimeout(refreshData, 400); }
         async function logout() { await fetch('/api/logout', { method: 'POST' }); window.location.href = '/login.html'; }
+
+        // Додамо визначення statusConfig (яке зникло)
+        const statusConfig = {
+            'Новий': 'bg-blue-50 text-blue-600 ring-blue-100',
+            'В роботі': 'bg-amber-50 text-amber-600 ring-amber-100',
+            'Відправлено': 'bg-violet-50 text-violet-600 ring-violet-100',
+            'Завершено': 'bg-emerald-50 text-emerald-600 ring-emerald-100',
+            'Відмова': 'bg-rose-50 text-rose-600 ring-rose-100',
+            'Видалено': 'bg-slate-100 text-slate-400 ring-slate-200'
+        };
 
         refreshData();
     </script>
