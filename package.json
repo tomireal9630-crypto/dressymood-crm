@@ -1,0 +1,15 @@
+{
+  "name": "crm-dressymood-backend",
+  "version": "1.0.0",
+  "description": "CRM Backend MVP",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "express": "^4.19.2",
+    "express-session": "^1.19.0",
+    "pg": "^8.20.0"
+  }
+}
