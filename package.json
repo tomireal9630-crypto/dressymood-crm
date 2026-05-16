@@ -8,7 +8,7 @@
   },
   "dependencies": {
     "dotenv": "^17.4.2",
-    "express": "^4.19.2",
+    "express": "^4.22.2",
     "express-session": "^1.19.0",
     "pg": "^8.20.0"
   }
