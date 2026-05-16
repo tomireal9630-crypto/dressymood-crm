@@ -16,9 +16,6 @@
         .custom-scrollbar::-webkit-scrollbar { width: 6px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
-        .sidebar-scrollbar::-webkit-scrollbar { width: 4px; }
-        .sidebar-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .sidebar-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
     </style>
 </head>
 <body class="bg-[#f8fafc] flex h-screen overflow-hidden text-slate-700">
@@ -33,68 +30,39 @@
             </div>
         </div>
 
-        <div class="px-5 flex-1 overflow-y-auto sidebar-scrollbar pb-6 space-y-8">
+        <div class="px-5 flex-1 overflow-y-auto pb-6 space-y-8 custom-scrollbar">
             <nav class="space-y-1">
                 <button onclick="switchView('orders')" id="btn-orders" class="sidebar-item active w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
-                    <i class="fa-solid fa-layer-group w-5 text-center text-slate-500"></i> Замовлення
+                    <i class="fa-solid fa-layer-group w-5 text-center"></i> Замовлення
                 </button>
                 <button onclick="switchView('dashboard')" id="btn-dashboard" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
-                    <i class="fa-solid fa-chart-pie w-5 text-center text-slate-500"></i> Дашборд
+                    <i class="fa-solid fa-chart-pie w-5 text-center"></i> Дашборд
                 </button>
                 <button onclick="switchView('archive')" id="btn-archive" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
-                    <i class="fa-solid fa-box-archive w-5 text-center text-slate-500"></i> Архів
+                    <i class="fa-solid fa-box-archive w-5 text-center"></i> Архів
                 </button>
                 <button onclick="switchView('deleted')" id="btn-deleted" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
-                    <i class="fa-solid fa-trash-can w-5 text-center text-slate-500"></i> Видалені
+                    <i class="fa-solid fa-trash-can w-5 text-center"></i> Видалені
                 </button>
             </nav>
 
             <nav class="space-y-1">
                 <button onclick="switchView('warehouse')" id="btn-warehouse" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
-                    <i class="fa-solid fa-warehouse w-5 text-center text-slate-500"></i> Склад
+                    <i class="fa-solid fa-warehouse w-5 text-center"></i> Склад
                 </button>
                 <button onclick="switchView('stock')" id="btn-stock" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
-                    <i class="fa-solid fa-boxes-stacked w-5 text-center text-slate-500"></i> Наявність
+                    <i class="fa-solid fa-boxes-stacked w-5 text-center"></i> Наявність
                 </button>
                 <button onclick="switchView('export')" id="btn-export" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
-                    <i class="fa-solid fa-file-export w-5 text-center text-slate-500"></i> Вигрузка
-                </button>
-            </nav>
-
-            <nav class="space-y-1">
-                <button onclick="switchView('stats')" id="btn-stats" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
-                    <i class="fa-solid fa-chart-line w-5 text-center text-slate-500"></i> Статистика
-                </button>
-                <button onclick="switchView('users')" id="btn-users" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
-                    <i class="fa-solid fa-users w-5 text-center text-slate-500"></i> Користувачі
-                </button>
-                <button onclick="switchView('settings')" id="btn-settings" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
-                    <i class="fa-solid fa-gear w-5 text-center text-slate-500"></i> Налаштування
+                    <i class="fa-solid fa-file-export w-5 text-center"></i> Вигрузка
                 </button>
             </nav>
         </div>
 
         <div class="shrink-0 p-5 bg-[#020617] border-t border-slate-800">
-            <div class="space-y-1 mb-4">
-                <button class="sidebar-item w-full flex items-center gap-4 px-4 py-2.5 rounded-lg text-[13px] font-semibold text-left">
-                    <i class="fa-solid fa-moon w-5 text-center text-slate-500"></i> Тема
-                </button>
-                <button onclick="logout()" class="sidebar-item w-full flex items-center gap-4 px-4 py-2.5 rounded-lg text-[13px] font-semibold text-left hover:text-rose-400">
-                    <i class="fa-solid fa-arrow-right-from-bracket w-5 text-center text-rose-500/50"></i> Вихід
-                </button>
-            </div>
-
-            <div class="flex items-center gap-3 px-2 py-2 rounded-xl bg-white/5 border border-white/5">
-                <div class="w-9 h-9 rounded-full bg-slate-700 flex items-center justify-center font-black text-white text-sm shadow-inner relative overflow-hidden">
-                    <img src="https://ui-avatars.com/api/?name=tomireal&background=8b5cf6&color=fff&bold=true" alt="User" class="w-full h-full object-cover">
-                </div>
-                <div class="flex-1 overflow-hidden">
-                    <div class="text-[13px] font-bold text-white truncate leading-tight">tomireal</div>
-                    <div class="text-[10px] text-emerald-400 font-bold uppercase tracking-widest flex items-center gap-1 mt-0.5">
-                        <div class="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></div> Online
-                    </div>
-                </div>
-            </div>
+            <button onclick="logout()" class="sidebar-item w-full flex items-center gap-4 px-4 py-2.5 rounded-lg text-[13px] font-semibold text-left hover:text-rose-400">
+                <i class="fa-solid fa-arrow-right-from-bracket w-5 text-center text-rose-500/50"></i> Вихід
+            </button>
         </div>
     </aside>
 
@@ -102,7 +70,7 @@
         <header class="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 px-10 flex items-center justify-between shrink-0 z-10">
             <div class="relative w-96">
                 <i class="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-slate-300"></i>
-                <input type="text" id="searchInput" placeholder="Швидкий пошук..." oninput="debounceSearch()"
+                <input type="text" id="searchInput" placeholder="Пошук..." oninput="loadOrders()"
                     class="w-full pl-11 pr-4 py-2.5 bg-slate-100 border-transparent rounded-xl focus:bg-white focus:ring-4 focus:ring-violet-500/10 focus:border-violet-500 outline-none transition-all text-sm font-medium">
             </div>
             <div class="flex items-center gap-5">
@@ -165,7 +133,7 @@
                                     <th class="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Артикул / Назва</th>
                                     <th class="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Фінанси (Соб / Сайт / Різниця)</th>
                                     <th class="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Постачальник</th>
-                                    <th class="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Посилання на сайти</th>
+                                    <th class="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Посилання</th>
                                     <th class="px-6 py-5"></th>
                                 </tr>
                             </thead>
@@ -176,7 +144,7 @@
                     <div class="w-80 shrink-0 bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/40 border border-slate-100 p-8">
                         <h3 class="text-sm font-black text-slate-800 uppercase tracking-widest mb-6"><i class="fa-solid fa-truck-fast text-indigo-500 mr-2"></i>Постачальники</h3>
                         <form id="addSupplierForm" class="flex gap-2 mb-6">
-                            <input type="text" name="name" required placeholder="Ім'я..." class="w-full px-4 py-2 bg-slate-50 border border-slate-100 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none text-sm font-bold">
+                            <input type="text" name="name" required placeholder="Ім'я..." class="w-full px-4 py-2 bg-slate-50 border border-slate-100 rounded-xl outline-none text-sm font-bold">
                             <button type="submit" class="bg-slate-800 text-white px-4 py-2 rounded-xl hover:bg-black transition-all"><i class="fa-solid fa-plus"></i></button>
                         </form>
                         <div id="suppliersList" class="space-y-2"></div>
@@ -184,40 +152,11 @@
                 </div>
             </div>
 
-            <div id="view-stock" class="view-content h-full">
-                <div class="flex justify-between items-center mb-8">
-                    <div>
-                        <h2 class="text-3xl font-black text-slate-800 uppercase italic tracking-tighter">Наявність (Свій Склад)</h2>
-                        <p class="text-slate-400 font-medium text-sm">Облік товарів, що повернулися з відмов НП</p>
-                    </div>
-                    <button onclick="openStockModal()" class="bg-emerald-600 text-white px-6 py-3 rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-200">
-                        <i class="fa-solid fa-boxes-packing mr-2"></i> Додати товар в наявність
-                    </button>
-                </div>
-
-                <div class="bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/40 border border-slate-100 overflow-hidden">
-                    <table class="w-full text-left">
-                        <thead>
-                            <tr class="bg-slate-50/50 border-b border-slate-100">
-                                <th class="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Модель (Артикул / Назва)</th>
-                                <th class="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Колір</th>
-                                <th class="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Розмір</th>
-                                <th class="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Кількість в наявності</th>
-                                <th class="px-8 py-5"></th>
-                            </tr>
-                        </thead>
-                        <tbody id="stockTable" class="divide-y divide-slate-50"></tbody>
-                    </table>
-                </div>
-            </div>
-
             <div id="view-dashboard" class="view-content h-full flex flex-col items-center justify-center text-center"><i class="fa-solid fa-chart-pie text-6xl text-slate-200 mb-6"></i><h3 class="text-xl font-bold text-slate-400">Розділ "Дашборд"</h3></div>
             <div id="view-archive" class="view-content h-full flex flex-col items-center justify-center text-center"><i class="fa-solid fa-box-archive text-6xl text-slate-200 mb-6"></i><h3 class="text-xl font-bold text-slate-400">Розділ "Архів"</h3></div>
             <div id="view-deleted" class="view-content h-full flex flex-col items-center justify-center text-center"><i class="fa-solid fa-trash-can text-6xl text-slate-200 mb-6"></i><h3 class="text-xl font-bold text-slate-400">Розділ "Видалені"</h3></div>
+            <div id="view-stock" class="view-content h-full flex flex-col items-center justify-center text-center"><i class="fa-solid fa-boxes-stacked text-6xl text-slate-200 mb-6"></i><h3 class="text-xl font-bold text-slate-400">Розділ "Наявність"</h3></div>
             <div id="view-export" class="view-content h-full flex flex-col items-center justify-center text-center"><i class="fa-solid fa-file-export text-6xl text-slate-200 mb-6"></i><h3 class="text-xl font-bold text-slate-400">Розділ "Вигрузка"</h3></div>
-            <div id="view-stats" class="view-content h-full flex flex-col items-center justify-center text-center"><i class="fa-solid fa-chart-line text-6xl text-slate-200 mb-6"></i><h3 class="text-xl font-bold text-slate-400">Розділ "Статистика"</h3></div>
-            <div id="view-users" class="view-content h-full flex flex-col items-center justify-center text-center"><i class="fa-solid fa-users text-6xl text-slate-200 mb-6"></i><h3 class="text-xl font-bold text-slate-400">Розділ "Користувачі"</h3></div>
-            <div id="view-settings" class="view-content h-full flex flex-col items-center justify-center text-center"><i class="fa-solid fa-gear text-6xl text-slate-200 mb-6"></i><h3 class="text-xl font-bold text-slate-400">Розділ "Налаштування"</h3></div>
         </div>
     </main>
 
@@ -230,15 +169,15 @@
             <form id="addOrderForm" class="p-10 grid grid-cols-2 gap-6">
                 <div class="col-span-2">
                     <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">ПІБ Клієнта</label>
-                    <input type="text" name="fullName" required class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl focus:ring-4 focus:ring-violet-500/10 outline-none font-bold text-sm">
+                    <input type="text" name="fullName" required class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-bold text-sm">
                 </div>
                 <div>
                     <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Телефон</label>
-                    <input type="text" name="phone" required class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl focus:ring-4 focus:ring-violet-500/10 outline-none font-bold text-sm">
+                    <input type="text" name="phone" required class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-bold text-sm">
                 </div>
                 <div>
                     <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Джерело</label>
-                    <select name="source" class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl focus:ring-4 focus:ring-violet-500/10 outline-none font-bold text-sm">
+                    <select name="source" class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-bold text-sm">
                         <option value="Instagram">Instagram</option>
                         <option value="TikTok">TikTok</option>
                         <option value="Сайт">Сайт</option>
@@ -248,7 +187,7 @@
                 <div class="col-span-2 border-t border-slate-50 pt-4 mt-2"></div>
                 <div>
                     <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Артикул товару</label>
-                    <input type="text" name="article" required class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl focus:ring-4 focus:ring-violet-500/10 outline-none font-bold text-sm">
+                    <input type="text" name="article" required class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-bold text-sm">
                 </div>
                 <div class="grid grid-cols-2 gap-4">
                     <div>
@@ -256,17 +195,17 @@
                         <input type="text" name="color" class="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-bold text-sm">
                     </div>
                     <div>
-                        <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Разм.</label>
+                        <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Розм.</label>
                         <input type="text" name="size" class="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-bold text-sm">
                     </div>
                 </div>
                 <div>
                     <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Ціна (грн)</label>
-                    <input type="number" name="price" required class="w-full px-5 py-3 bg-emerald-50/50 border border-emerald-100 rounded-xl text-emerald-600 font-black outline-none">
+                    <input type="number" name="price" required class="w-full px-5 py-3 bg-emerald-50/50 border border-emerald-100 text-emerald-600 font-black outline-none">
                 </div>
                 <div>
                     <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Собівартість (грн)</label>
-                    <input type="number" name="cost" required class="w-full px-5 py-3 bg-rose-50/50 border border-rose-100 rounded-xl text-rose-600 font-black outline-none">
+                    <input type="number" name="cost" required class="w-full px-5 py-3 bg-rose-50/50 border border-rose-100 text-rose-600 font-black outline-none">
                 </div>
                 <div class="col-span-2">
                     <button type="submit" class="w-full bg-slate-900 text-white py-4 rounded-xl font-black text-sm uppercase tracking-widest hover:bg-black transition-all">Зберегти</button>
@@ -284,103 +223,31 @@
             <form id="addProductForm" class="p-10 grid grid-cols-2 gap-6">
                 <div>
                     <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Артикул</label>
-                    <input type="text" name="article" required class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none font-bold text-sm">
+                    <input type="text" name="article" required class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-bold text-sm">
                 </div>
                 <div>
                     <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Назва товару</label>
-                    <input type="text" name="name" required class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none font-bold text-sm">
+                    <input type="text" name="name" required class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-bold text-sm">
                 </div>
                 <div>
                     <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Собівартість (грн)</label>
-                    <input type="number" name="cost" required class="w-full px-5 py-3 bg-rose-50/50 border border-rose-100 rounded-xl text-rose-600 font-black outline-none">
+                    <input type="number" name="cost" required class="w-full px-5 py-3 bg-rose-50/50 border border-rose-100 text-rose-600 font-black outline-none">
                 </div>
                 <div>
                     <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Ціна на сайті (грн)</label>
-                    <input type="number" name="price" required class="w-full px-5 py-3 bg-emerald-50/50 border border-emerald-100 rounded-xl text-emerald-600 font-black outline-none">
+                    <input type="number" name="price" required class="w-full px-5 py-3 bg-emerald-50/50 border border-emerald-100 text-emerald-600 font-black outline-none">
                 </div>
                 <div class="col-span-2">
                     <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Постачальник</label>
-                    <select name="supplier_id" id="supplierSelect" class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none font-bold text-sm">
+                    <select name="supplier_id" id="supplierSelect" class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-bold text-sm">
                     </select>
                 </div>
                 <div class="col-span-2">
                     <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Посилання на сайти (кожне з нового рядка)</label>
-                    <textarea name="links" rows="3" class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none font-medium text-xs leading-relaxed placeholder-slate-300"></textarea>
+                    <textarea name="links" rows="3" class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-medium text-xs"></textarea>
                 </div>
                 <div class="col-span-2 pt-2">
                     <button type="submit" class="w-full bg-indigo-600 text-white py-4 rounded-xl font-black text-sm uppercase tracking-widest hover:bg-indigo-700 transition-all">Зберегти товар</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <div id="editProductModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] hidden items-center justify-center p-6">
-        <div class="bg-white w-full max-w-2xl rounded-[2.5rem] shadow-2xl overflow-hidden">
-            <div class="p-8 border-b border-slate-100 flex justify-between items-center bg-indigo-50/50">
-                <h3 class="text-xl font-black text-slate-800 uppercase italic">Редагувати товар</h3>
-                <button onclick="closeModal('editProductModal')" class="text-slate-400 hover:text-rose-500 transition-colors"><i class="fa-solid fa-xmark text-xl"></i></button>
-            </div>
-            <form id="editProductForm" class="p-10 grid grid-cols-2 gap-6">
-                <div>
-                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Артикул</label>
-                    <input type="text" name="article" required class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none font-bold text-sm">
-                </div>
-                <div>
-                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Назва товару</label>
-                    <input type="text" name="name" required class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none font-bold text-sm">
-                </div>
-                <div>
-                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Собівартість (грн)</label>
-                    <input type="number" name="cost" required class="w-full px-5 py-3 bg-rose-50/50 border border-rose-100 rounded-xl text-rose-600 font-black outline-none">
-                </div>
-                <div>
-                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Ціна на сайті (грн)</label>
-                    <input type="number" name="price" required class="w-full px-5 py-3 bg-emerald-50/50 border border-emerald-100 rounded-xl text-emerald-600 font-black outline-none">
-                </div>
-                <div class="col-span-2">
-                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Постачальник</label>
-                    <select name="supplier_id" id="editSupplierSelect" class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none font-bold text-sm">
-                    </select>
-                </div>
-                <div class="col-span-2">
-                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Посилання на сайти (кожне з нового рядка)</label>
-                    <textarea name="links" rows="3" class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none font-medium text-xs leading-relaxed placeholder-slate-300"></textarea>
-                </div>
-                <div class="col-span-2 pt-2">
-                    <button type="submit" class="w-full bg-indigo-600 text-white py-4 rounded-xl font-black text-sm uppercase tracking-widest hover:bg-indigo-700 transition-all">Зберегти зміни</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <div id="stockModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] hidden items-center justify-center p-6">
-        <div class="bg-white w-full max-w-xl rounded-[2.5rem] shadow-2xl overflow-hidden">
-            <div class="p-8 border-b border-slate-100 flex justify-between items-center bg-emerald-50/50">
-                <h3 class="text-xl font-black text-slate-800 uppercase italic">Додати товар в наявність</h3>
-                <button onclick="closeModal('stockModal')" class="text-slate-400 hover:text-rose-500 transition-colors"><i class="fa-solid fa-xmark text-xl"></i></button>
-            </div>
-            <form id="addStockForm" class="p-10 grid grid-cols-1 gap-6">
-                <div>
-                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Артикул моделі (зі Складу)</label>
-                    <select name="product_id" id="stockProductSelect" required class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl focus:ring-2 focus:ring-emerald-500/20 outline-none font-bold text-sm">
-                    </select>
-                </div>
-                <div class="grid grid-cols-2 gap-4">
-                    <div>
-                        <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Колір</label>
-                        <input type="text" name="color" required placeholder="напр. Чорний" class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-bold text-sm">
-                    </div>
-                    <div>
-                        <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Розмір</label>
-                        <input type="text" name="size" required placeholder="напр. S, M, L, 41" class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-bold text-sm">
-                    </div>
-                </div>
-                <div>
-                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Кількість (штук)</label>
-                    <input type="number" name="quantity" required min="1" value="1" class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-black text-sm">
-                </div>
-                <div class="pt-2">
-                    <button type="submit" class="w-full bg-emerald-600 text-white py-4 rounded-xl font-black text-sm uppercase tracking-widest hover:bg-emerald-700 transition-all">Зберегти в наявність</button>
                 </div>
             </form>
         </div>
@@ -398,19 +265,18 @@
 
         let currentView = 'orders';
         let suppliersList = [];
-        let currentProducts = [];
 
         function switchView(view) {
             currentView = view;
             document.querySelectorAll('.sidebar-item').forEach(el => el.classList.remove('active'));
-            const btn = document.getElementById(\`btn-\${view}\`);
+            const btn = document.getElementById(`btn-${view}`);
             if (btn) btn.classList.add('active');
 
-            const titles = { 'orders': 'ЗАМОВЛЕННЯ', 'warehouse': 'СКЛАД', 'stock': 'НАЯВНІСТЬ', 'archive': 'АРХІВ', 'deleted': 'ВИДАЛЕНІ' };
+            const titles = { 'orders': 'ЗАМОВЛЕННЯ', 'warehouse': 'СКЛАД' };
             document.getElementById('current-view-title').innerText = titles[view] || view.toUpperCase();
 
             document.querySelectorAll('.view-content').forEach(el => el.classList.remove('active'));
-            const targetContent = document.getElementById(\`view-\${view}\`);
+            const targetContent = document.getElementById(`view-${view}`);
             if (targetContent) targetContent.classList.add('active');
 
             refreshData();
@@ -419,59 +285,52 @@
         function refreshData() {
             if (['orders', 'archive', 'deleted'].includes(currentView)) loadOrders();
             if (currentView === 'warehouse') loadWarehouseData();
-            if (currentView === 'stock') loadStockData();
         }
 
         // --- ЛОГІКА ЗАМОВЛЕНЬ ---
         async function loadOrders() {
             try {
                 const search = document.getElementById('searchInput').value;
-                const res = await fetch(\`/api/orders?view=\${currentView}&search=\${encodeURIComponent(search)}\`);
+                const res = await fetch(`/api/orders?view=${currentView}&search=${encodeURIComponent(search)}`);
                 const data = await res.json();
-                if (data.error) return alert("Помилка бази замовлень: " + data.error);
-                renderOrders(data);
-            } catch (e) { console.error(e); }
-        }
-
-        function renderOrders(orders) {
-            const table = document.getElementById('ordersTable');
-            if (!Array.isArray(orders) || orders.length === 0) {
-                table.innerHTML = \`<tr><td colspan="6" class="px-8 py-20 text-center text-slate-300 font-medium">Тут поки порожньо</td></tr>\`;
-                return;
-            }
-            table.innerHTML = orders.map(o => \`
+                const table = document.getElementById('ordersTable');
+                if(!Array.isArray(data) || !data.length) {
+                    table.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-slate-400">Пусто</td></tr>`;
+                    return;
+                }
+                
+                table.innerHTML = data.map(o => `
                 <tr class="hover:bg-slate-50 transition-all group">
                     <td class="px-8 py-6">
-                        <div class="font-bold text-slate-800 text-sm">\${o.fullName}</div>
-                        <div class="text-[10px] text-slate-400 font-bold uppercase tracking-tighter mt-1"><i class="fa-solid fa-phone text-[9px]"></i> \${o.phone}</div>
+                        <div class="font-bold text-slate-800 text-sm">${o.fullName}</div>
+                        <div class="text-[10px] text-slate-400 font-bold uppercase mt-1"><i class="fa-solid fa-phone text-[9px]"></i> ${o.phone}</div>
                     </td>
                     <td class="px-6 py-6">
-                        <div class="text-[11px] font-black text-slate-800 uppercase">\${o.article}</div>
-                        <div class="flex gap-2 mt-1 items-center">
-                            <span class="text-[9px] font-black bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded border border-emerald-200/50">\${o.price - o.cost} грн</span>
-                        </div>
+                        <div class="text-[11px] font-black text-slate-800 uppercase">${o.article} <span class="text-[10px] text-slate-400 font-bold">(${o.color || '-'} / ${o.size || '-'})</span></div>
+                        <div class="mt-1"><span class="text-[9px] font-black bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded border border-emerald-200/50">${o.price - o.cost} грн</span></div>
                     </td>
                     <td class="px-6 py-6">
-                        <input type="text" value="\${o.ttn || ''}" onchange="updateOrder(\${o.id}, 'ttn', this.value)" placeholder="Ввести ТТН..."
-                            class="w-full max-w-[150px] text-xs font-mono font-bold bg-slate-50 border border-slate-100 rounded-lg px-3 py-2 focus:bg-white focus:ring-2 focus:ring-violet-500/20 outline-none transition-all">
+                        <input type="text" value="${o.ttn || ''}" onchange="updateOrder(${o.id}, 'ttn', this.value)" placeholder="Ввести ТТН..."
+                            class="w-full max-w-[150px] text-xs font-mono font-bold bg-slate-50 border border-slate-100 rounded-lg px-3 py-2 outline-none">
                     </td>
                     <td class="px-6 py-6">
-                        <select onchange="updateOrder(\${o.id}, 'status', this.value)" 
-                            class="text-[10px] font-black px-3 py-1.5 rounded-full ring-1 ring-inset cursor-pointer focus:outline-none transition-all \${statusConfig[o.status] || 'bg-slate-100'}">
-                            \${Object.keys(statusConfig).map(s => \`<option value="\${s}" \${o.status === s ? 'selected' : ''}>\${s.toUpperCase()}</option>\`).join('')}
+                        <select onchange="updateOrder(${o.id}, 'status', this.value)" 
+                            class="text-[10px] font-black px-3 py-1.5 rounded-full ring-1 ring-inset cursor-pointer ${statusConfig[o.status] || 'bg-slate-100'}">
+                            ${Object.keys(statusConfig).map(s => `<option value="${s}" ${o.status === s ? 'selected' : ''}>${s.toUpperCase()}</option>`).join('')}
                         </select>
                     </td>
                     <td class="px-6 py-6">
-                        <input type="text" value="\${o.comment || ''}" onchange="updateOrder(\${o.id}, 'comment', this.value)" placeholder="Замітка..."
-                            class="w-full bg-transparent text-[11px] text-slate-400 border-none outline-none focus:text-slate-800 italic">
+                        <input type="text" value="${o.comment || ''}" onchange="updateOrder(${o.id}, 'comment', this.value)" placeholder="Замітка..."
+                            class="w-full bg-transparent text-[11px] text-slate-400 border-none outline-none italic">
                     </td>
                     <td class="px-8 py-6 text-right">
-                        \${currentView !== 'deleted' ? 
-                            \`<button onclick="updateOrder(\${o.id}, 'status', 'Видалено')" class="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-rose-500 transition-all p-2 bg-slate-50 rounded-lg"><i class="fa-solid fa-trash-can"></i></button>\` : 
-                            \`<button onclick="updateOrder(\${o.id}, 'status', 'Новий')" class="text-violet-500 text-[10px] font-black uppercase hover:underline">Відновити</button>\`
+                        ${currentView !== 'deleted' ? 
+                            `<button onclick="updateOrder(${o.id}, 'status', 'Видалено')" class="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-rose-500 transition-all p-2 bg-slate-50 rounded-lg"><i class="fa-solid fa-trash-can"></i></button>` : 
+                            `<button onclick="updateOrder(${o.id}, 'status', 'Новий')" class="text-violet-500 text-[10px] font-black uppercase hover:underline">Відновити</button>`
                         }
                     </td>
-                </tr>\`).join('');
+                </tr>`).join('');
+            } catch (e) { console.error(e); }
         }
 
         document.getElementById('addOrderForm').onsubmit = async (e) => {
@@ -482,11 +341,7 @@
         };
 
         async function updateOrder(id, field, value) {
-            try {
-                const res = await fetch(\`/api/orders/\${id}\`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ [field]: value }) });
-                const result = await res.json();
-                if (result.error) alert("Помилка оновлення замовлення: " + result.error);
-            } catch (e) { alert("Помилка мережі."); }
+            await fetch(`/api/orders/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ [field]: value }) });
             loadOrders();
         }
 
@@ -500,79 +355,58 @@
                 
                 const prodRes = await fetch('/api/warehouse/products');
                 const prodData = await prodRes.json();
-                currentProducts = Array.isArray(prodData) ? prodData : [];
-                renderProducts(currentProducts);
-            } catch (e) { alert("Помилка завантаження складу."); }
+                renderProducts(Array.isArray(prodData) ? prodData : []);
+            } catch (e) { console.error(e); }
         }
 
         function renderSuppliers() {
             const list = document.getElementById('suppliersList');
             const select = document.getElementById('supplierSelect');
-            const editSelect = document.getElementById('editSupplierSelect');
             
-            list.innerHTML = suppliersList.map(s => \`
+            list.innerHTML = suppliersList.map(s => `
                 <div class="flex justify-between items-center bg-slate-50 px-4 py-2.5 rounded-lg border border-slate-100 group">
-                    <span class="text-xs font-bold text-slate-700">\${s.name}</span>
-                    <button onclick="deleteSupplier(\${s.id})" class="text-slate-300 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-all"><i class="fa-solid fa-xmark"></i></button>
+                    <span class="text-xs font-bold text-slate-700">${s.name}</span>
+                    <button onclick="deleteSupplier(${s.id})" class="text-slate-300 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-all"><i class="fa-solid fa-xmark"></i></button>
                 </div>
-            \`).join('');
+            `).join('');
 
-            const optionsHtml = \`<option value="">-- Оберіть постачальника --</option>\` + suppliersList.map(s => \`<option value="\${s.id}">\${s.name}</option>\`).join('');
-            select.innerHTML = optionsHtml;
-            editSelect.innerHTML = optionsHtml;
+            select.innerHTML = `<option value="">-- Оберіть постачальника --</option>` + 
+                suppliersList.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
         }
 
         function renderProducts(products) {
             const table = document.getElementById('productsTable');
-            if(!products.length) return table.innerHTML = \`<tr><td colspan="5" class="p-10 text-center text-slate-400 font-medium">База порожня</td></tr>\`;
+            if(!products.length) return table.innerHTML = `<tr><td colspan="5" class="p-10 text-center text-slate-400 font-medium">База товарів порожня</td></tr>`;
             
             table.innerHTML = products.map(p => {
                 const profit = p.price - p.cost;
-                const linksHtml = p.links ? p.links.split('\\n').filter(l=>l.trim()).map(link => {
-                    let cleanLink = link.trim();
-                    if (!/^https?:\\/\\//i.test(cleanLink)) cleanLink = 'https://' + cleanLink;
-                    return \`<a href="\${cleanLink}" target="_blank" class="text-indigo-600 hover:underline text-[11px] font-medium block truncate max-w-[220px] mb-1"><i class="fa-solid fa-arrow-up-right-from-square text-[9px] mr-1 opacity-70"></i>\${link.trim()}</a>\`;
-                }).join('') : '<span class="text-slate-300 text-[10px]">Немає</span>';
+                const linksHtml = p.links ? p.links.split('\n').filter(l=>l.trim()).map((link, i) => 
+                    `<a href="${link.trim()}" target="_blank" class="inline-flex items-center gap-1 bg-indigo-50 text-indigo-600 px-2 py-1 rounded text-[9px] font-bold uppercase hover:bg-indigo-100 mb-1 mr-1 transition-colors"><i class="fa-solid fa-link"></i> Лінк ${i+1}</a>`
+                ).join('') : '<span class="text-slate-300 text-[10px]">Немає</span>';
 
-                return \`
+                return `
                 <tr class="hover:bg-slate-50 transition-all group border-b border-slate-50 last:border-0">
                     <td class="px-6 py-5">
-                        <div class="text-[12px] font-black text-slate-800 uppercase tracking-tighter">\${p.article}</div>
-                        <div class="text-[10px] text-slate-500 font-medium mt-0.5">\${p.name}</div>
+                        <div class="text-[12px] font-black text-slate-800 uppercase tracking-tighter">${p.article}</div>
+                        <div class="text-[10px] text-slate-500 font-medium mt-0.5">${p.name}</div>
                     </td>
                     <td class="px-6 py-5">
-                        <div class="text-[10px] font-bold"><span class="text-rose-500">Соб: \${p.cost}</span> / <span class="text-slate-600">Сайт: \${p.price}</span></div>
-                        <div class="mt-1 text-[11px] font-black text-emerald-600 bg-emerald-50 inline-block px-2 py-0.5 rounded">Різниця: +\${profit} грн</div>
+                        <div class="flex items-center gap-2 text-[10px] font-bold">
+                            <span class="text-rose-500">Соб: ${p.cost}</span> / 
+                            <span class="text-slate-600">Сайт: ${p.price}</span>
+                        </div>
+                        <div class="mt-1 text-[11px] font-black text-emerald-600 bg-emerald-50 inline-block px-2 py-0.5 rounded">Різниця: +${profit} грн</div>
                     </td>
-                    <td class="px-6 py-5"><span class="text-[11px] font-bold text-slate-700 bg-slate-100 px-2.5 py-1 rounded-md">\${p.supplier_name || 'Не вказано'}</span></td>
-                    <td class="px-6 py-5 max-w-[220px]">\${linksHtml}</td>
-                    <td class="px-6 py-5 text-right whitespace-nowrap">
-                        <button onclick="editProduct(\${p.id})" class="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-indigo-500 transition-all p-2 mr-1 bg-slate-50 rounded-lg"><i class="fa-solid fa-pen-to-square"></i></button>
-                        <button onclick="deleteProduct(\${p.id})" class="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-rose-500 transition-all p-2 bg-slate-50 rounded-lg"><i class="fa-solid fa-trash-can"></i></button>
+                    <td class="px-6 py-5">
+                        <span class="text-[11px] font-bold text-slate-700 bg-slate-100 px-2.5 py-1 rounded-md">${p.supplier_name || 'Не вказано'}</span>
                     </td>
-                </tr>\`
+                    <td class="px-6 py-5 max-w-[150px] flex-wrap">${linksHtml}</td>
+                    <td class="px-6 py-5 text-right">
+                        <button onclick="deleteProduct(${p.id})" class="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-rose-500 transition-all p-2 bg-slate-50 rounded-lg"><i class="fa-solid fa-trash-can"></i></button>
+                    </td>
+                </tr>`
             }).join('');
         }
-
-        function editProduct(id) {
-            const p = currentProducts.find(prod => prod.id === id);
-            if (!p) return;
-            const form = document.getElementById('editProductForm');
-            form.dataset.id = id;
-            form.article.value = p.article;
-            form.name.value = p.name;
-            form.cost.value = p.cost;
-            form.price.value = p.price;
-            form.supplier_id.value = p.supplier_id || '';
-            form.links.value = p.links || '';
-            openModal('editProductModal');
-        }
-
-        document.getElementById('editProductForm').onsubmit = async (e) => {
-            e.preventDefault();
-            await fetch(\`/api/warehouse/products/\${e.target.dataset.id}\`, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify(Object.fromEntries(new FormData(e.target))) });
-            closeModal('editProductModal'); loadWarehouseData();
-        };
 
         document.getElementById('addSupplierForm').onsubmit = async (e) => {
             e.preventDefault();
@@ -580,9 +414,7 @@
             e.target.reset(); loadWarehouseData();
         };
 
-        async function deleteSupplier(id) {
-            if(confirm('Видалити постачальника?')) { await fetch(\`/api/warehouse/suppliers/\${id}\`, { method: 'DELETE' }); loadWarehouseData(); }
-        }
+        async function deleteSupplier(id) { await fetch(`/api/warehouse/suppliers/${id}`, { method: 'DELETE' }); loadWarehouseData(); }
 
         document.getElementById('addProductForm').onsubmit = async (e) => {
             e.preventDefault();
@@ -590,89 +422,11 @@
             closeModal('productModal'); e.target.reset(); loadWarehouseData();
         };
 
-        async function deleteProduct(id) {
-            if(confirm('Видалити товар з бази?')) { await fetch(\`/api/warehouse/products/\${id}\`, { method: 'DELETE' }); loadWarehouseData(); }
-        }
+        async function deleteProduct(id) { await fetch(`/api/warehouse/products/${id}`, { method: 'DELETE' }); loadWarehouseData(); }
 
-
-        // --- ЛОГІКА НАЯВНОСТІ (Додано!) ---
-        async function loadStockData() {
-            try {
-                // Завантажуємо продукти для випадаючого списку моделі
-                const prodRes = await fetch('/api/warehouse/products');
-                currentProducts = await prodRes.json();
-                
-                const select = document.getElementById('stockProductSelect');
-                select.innerHTML = \`<option value="">-- Оберіть модель товару --</option>\` + 
-                    currentProducts.map(p => \`<option value="\${p.id}">[\${p.article}] \${p.name}</option>\`).join('');
-
-                // Завантажуємо наявність
-                const stockRes = await fetch('/api/stock');
-                const stockData = await stockRes.json();
-                renderStock(stockData);
-            } catch (e) { alert("Помилка завантаження наявності."); }
-        }
-
-        function renderStock(stockItems) {
-            const table = document.getElementById('stockTable');
-            if (!Array.isArray(stockItems) || stockItems.length === 0) {
-                table.innerHTML = \`<tr><td colspan="5" class="px-8 py-20 text-center text-slate-300 font-medium">Ваш склад наявності порожній</td></tr>\`;
-                return;
-            }
-            
-            table.innerHTML = stockItems.map(item => \`
-                <tr class="hover:bg-slate-50 transition-all group border-b border-slate-50 last:border-0">
-                    <td class="px-8 py-5">
-                        <div class="text-[12px] font-black text-slate-800 uppercase tracking-tighter">\${item.article}</div>
-                        <div class="text-[10px] text-slate-500 font-medium mt-0.5">\${item.product_name}</div>
-                    </td>
-                    <td class="px-6 py-5"><span class="text-xs font-bold text-slate-700 bg-slate-100 px-3 py-1 rounded-lg">\${item.color}</span></td>
-                    <td class="px-6 py-5"><span class="text-xs font-black text-indigo-600 bg-indigo-50 px-3 py-1 rounded-lg">\${item.size}</span></td>
-                    <td class="px-6 py-5">
-                        <div class="flex items-center gap-2">
-                            <button onclick="quickChangeQty(\${item.id}, \${item.quantity - 1})" class="w-7 h-7 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-black transition-colors flex items-center justify-center">-</button>
-                            <span class="font-black text-sm text-slate-800 w-8 text-center">\${item.quantity}</span>
-                            <button onclick="quickChangeQty(\${item.id}, \${item.quantity + 1})" class="w-7 h-7 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-black transition-colors flex items-center justify-center">+</button>
-                        </div>
-                    </td>
-                    <td class="px-8 py-5 text-right">
-                        <button onclick="deleteStockItem(\${item.id})" class="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-rose-500 transition-all p-2 bg-slate-50 rounded-lg"><i class="fa-solid fa-trash-can"></i></button>
-                    </td>
-                </tr>
-            \`).join('');
-        }
-
-        function openStockModal() { openModal('stockModal'); }
-
-        document.getElementById('addStockForm').onsubmit = async (e) => {
-            e.preventDefault();
-            const data = Object.fromEntries(new FormData(e.target));
-            await fetch('/api/stock', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data) });
-            closeModal('stockModal'); e.target.reset(); loadStockData();
-        };
-
-        async function quickChangeQty(id, newQty) {
-            if (newQty < 0) return;
-            if (newQty === 0) {
-                if (!confirm("Кількість дорівнює 0. Видалити цей рядок з наявності?")) return;
-                await fetch(\`/api/stock/\${id}\`, { method: 'DELETE' });
-            } else {
-                await fetch(\`/api/stock/\${id}\`, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ quantity: newQty }) });
-            }
-            loadStockData();
-        }
-
-        async function deleteStockItem(id) {
-            if (confirm("Видалити товар з наявності?")) {
-                await fetch(\`/api/stock/\${id}\`, { method: 'DELETE' });
-                loadStockData();
-            }
-        }
-
-        // --- УТИЛІТИ UI ---
         function openModal(id) { document.getElementById(id).classList.add('modal-active'); }
         function closeModal(id) { document.getElementById(id).classList.remove('modal-active'); }
-        function debounceSearch() { clearTimeout(window.searchTimer); window.searchTimer = setTimeout(refreshData, 400); }
+        function debounceSearch() { clearTimeout(window.searchTimer); window.searchTimer = setTimeout(loadOrders, 400); }
         async function logout() { await fetch('/api/logout', { method: 'POST' }); window.location.href = '/login.html'; }
 
         refreshData();
