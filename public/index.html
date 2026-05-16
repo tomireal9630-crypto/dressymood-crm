@@ -93,7 +93,7 @@
                     class="w-full pl-11 pr-4 py-2.5 bg-slate-100 border-transparent rounded-xl focus:bg-white focus:ring-4 focus:ring-violet-500/10 focus:border-violet-500 outline-none transition-all text-sm font-medium">
             </div>
             <div class="flex items-center gap-5">
-                <button class="w-10 h-10 flex items-center justify-center rounded-xl bg-slate-100 text-slate-500 hover:text-violet-600 hover:bg-violet-100 transition-all">
+                <button onclick="loadOrders(); loadWarehouseData();" class="w-10 h-10 flex items-center justify-center rounded-xl bg-slate-100 text-slate-500 hover:text-violet-600 hover:bg-violet-100 transition-all">
                     <i class="fa-solid fa-rotate-right"></i>
                 </button>
                 <div class="h-8 w-px bg-slate-200"></div>
@@ -124,6 +124,7 @@
                                 <th class="px-6 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Товар / Фінанси</th>
                                 <th class="px-6 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">ТТН Нова Пошта</th>
                                 <th class="px-6 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Статус</th>
+                                <th class="px-6 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Коментар</th>
                                 <th class="px-8 py-6"></th>
                             </tr>
                         </thead>
@@ -178,14 +179,13 @@
             <div id="view-stats" class="view-content h-full flex flex-col items-center justify-center text-center"><i class="fa-solid fa-chart-line text-6xl text-slate-200 mb-6"></i><h3 class="text-xl font-bold text-slate-400">Розділ "Статистика"</h3></div>
             <div id="view-users" class="view-content h-full flex flex-col items-center justify-center text-center"><i class="fa-solid fa-users text-6xl text-slate-200 mb-6"></i><h3 class="text-xl font-bold text-slate-400">Розділ "Користувачі"</h3></div>
             <div id="view-settings" class="view-content h-full flex flex-col items-center justify-center text-center"><i class="fa-solid fa-gear text-6xl text-slate-200 mb-6"></i><h3 class="text-xl font-bold text-slate-400">Розділ "Налаштування"</h3></div>
-
         </div>
     </main>
 
     <div id="orderModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] hidden items-center justify-center p-6">
         <div class="bg-white w-full max-w-2xl rounded-[2.5rem] shadow-2xl overflow-hidden">
             <div class="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-                <h3 class="text-xl font-black text-slate-800 uppercase italic">Нове замовлення</h3>
+                <h3 class="text-xl font-black text-slate-800 uppercase italic">Новий замовлення</h3>
                 <button onclick="closeModal('orderModal')" class="text-slate-400 hover:text-rose-500 transition-colors"><i class="fa-solid fa-xmark text-xl"></i></button>
             </div>
             <form id="addOrderForm" class="p-10 grid grid-cols-2 gap-6">
@@ -198,8 +198,36 @@
                     <input type="text" name="phone" required class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl focus:ring-4 focus:ring-violet-500/10 outline-none font-bold text-sm">
                 </div>
                 <div>
+                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Джерело</label>
+                    <select name="source" class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl focus:ring-4 focus:ring-violet-500/10 outline-none font-bold text-sm">
+                        <option value="Instagram">Instagram</option>
+                        <option value="TikTok">TikTok</option>
+                        <option value="Сайт">Сайт</option>
+                        <option value="Вручну">Вручну</option>
+                    </select>
+                </div>
+                <div class="col-span-2 border-t border-slate-50 pt-4 mt-2"></div>
+                <div>
                     <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Артикул товару</label>
                     <input type="text" name="article" required class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl focus:ring-4 focus:ring-violet-500/10 outline-none font-bold text-sm">
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Колір</label>
+                        <input type="text" name="color" class="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-bold text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Разм.</label>
+                        <input type="text" name="size" class="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-bold text-sm">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Ціна (грн)</label>
+                    <input type="number" name="price" required class="w-full px-5 py-3 bg-emerald-50/50 border border-emerald-100 rounded-xl text-emerald-600 font-black outline-none">
+                </div>
+                <div>
+                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Собівартість (грн)</label>
+                    <input type="number" name="cost" required class="w-full px-5 py-3 bg-rose-50/50 border border-rose-100 rounded-xl text-rose-600 font-black outline-none">
                 </div>
                 <div class="col-span-2">
                     <button type="submit" class="w-full bg-slate-900 text-white py-4 rounded-xl font-black text-sm uppercase tracking-widest hover:bg-black transition-all">Зберегти</button>
@@ -234,11 +262,11 @@
                 <div class="col-span-2">
                     <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Постачальник</label>
                     <select name="supplier_id" id="supplierSelect" class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none font-bold text-sm">
-                        </select>
+                    </select>
                 </div>
                 <div class="col-span-2">
                     <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Посилання на сайти (кожне з нового рядка)</label>
-                    <textarea name="links" rows="3" class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none font-medium text-xs leading-relaxed placeholder-slate-300" placeholder="https://store.ua/item1&#10;https://othersite.com/item1"></textarea>
+                    <textarea name="links" rows="3" class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none font-medium text-xs leading-relaxed placeholder-slate-300"></textarea>
                 </div>
                 <div class="col-span-2 pt-2">
                     <button type="submit" class="w-full bg-indigo-600 text-white py-4 rounded-xl font-black text-sm uppercase tracking-widest hover:bg-indigo-700 transition-all">Зберегти товар</button>
@@ -248,6 +276,15 @@
     </div>
 
     <script>
+        const statusConfig = {
+            'Новий': 'bg-blue-50 text-blue-600 ring-blue-100',
+            'В роботі': 'bg-amber-50 text-amber-600 ring-amber-100',
+            'Відправлено': 'bg-violet-50 text-violet-600 ring-violet-100',
+            'Завершено': 'bg-emerald-50 text-emerald-600 ring-emerald-100',
+            'Відмова': 'bg-rose-50 text-rose-600 ring-rose-100',
+            'Видалено': 'bg-slate-100 text-slate-400 ring-slate-200'
+        };
+
         let currentView = 'orders';
         let suppliersList = [];
 
@@ -257,7 +294,7 @@
             const btn = document.getElementById(`btn-${view}`);
             if (btn) btn.classList.add('active');
 
-            const titles = { 'orders': 'ЗАМОВЛЕННЯ', 'warehouse': 'СКЛАД' };
+            const titles = { 'orders': 'ЗАМОВЛЕННЯ', 'warehouse': 'СКЛАД', 'archive': 'АРХІВ', 'deleted': 'ВИДАЛЕНІ' };
             document.getElementById('current-view-title').innerText = titles[view] || view.toUpperCase();
 
             document.querySelectorAll('.view-content').forEach(el => el.classList.remove('active'));
@@ -274,17 +311,58 @@
                 const res = await fetch(`/api/orders?view=${currentView}`);
                 const data = await res.json();
                 const table = document.getElementById('ordersTable');
-                if(!Array.isArray(data) || !data.length) return table.innerHTML = `<tr><td colspan="5" class="p-8 text-center text-slate-400">Пусто</td></tr>`;
+                if(!Array.isArray(data) || !data.length) return table.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-slate-400">Пусто</td></tr>`;
                 
                 table.innerHTML = data.map(o => `
-                    <tr class="hover:bg-slate-50 border-b border-slate-50 last:border-0 group">
-                        <td class="px-8 py-5"><div class="font-bold text-slate-800 text-sm">${o.fullName}</div><div class="text-[10px] text-slate-400 uppercase font-bold">${o.phone}</div></td>
-                        <td class="px-6 py-5"><div class="font-black text-[11px] uppercase">${o.article}</div></td>
-                        <td class="px-6 py-5"><span class="px-3 py-1 bg-violet-50 text-violet-600 rounded-full text-[9px] font-black uppercase">${o.status}</span></td>
-                        <td class="px-6 py-5"><button class="text-rose-400 opacity-0 group-hover:opacity-100"><i class="fa-solid fa-trash"></i></button></td>
-                    </tr>
-                `).join('');
+                <tr class="hover:bg-slate-50 transition-all group">
+                    <td class="px-8 py-6">
+                        <div class="font-bold text-slate-800 text-sm">${o.fullName}</div>
+                        <div class="text-[10px] text-slate-400 font-bold uppercase tracking-tighter mt-1"><i class="fa-solid fa-phone text-[9px]"></i> ${o.phone}</div>
+                    </td>
+                    <td class="px-6 py-6">
+                        <div class="text-[11px] font-black text-slate-800 uppercase">${o.article}</div>
+                        <div class="flex gap-2 mt-1 items-center">
+                            <span class="text-[9px] font-black bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded border border-emerald-200/50">${o.price - o.cost} грн</span>
+                        </div>
+                    </td>
+                    <td class="px-6 py-6">
+                        <input type="text" value="${o.ttn || ''}" onchange="update(${o.id}, 'ttn', this.value)" placeholder="Ввести ТТН..."
+                            class="w-full max-w-[150px] text-xs font-mono font-bold bg-slate-50 border border-slate-100 rounded-lg px-3 py-2 focus:bg-white focus:ring-2 focus:ring-violet-500/20 outline-none transition-all">
+                    </td>
+                    <td class="px-6 py-6">
+                        <select onchange="update(${o.id}, 'status', this.value)" 
+                            class="text-[10px] font-black px-3 py-1.5 rounded-full ring-1 ring-inset cursor-pointer focus:outline-none transition-all ${statusConfig[o.status] || 'bg-slate-100'}">
+                            ${Object.keys(statusConfig).map(s => `<option value="${s}" ${o.status === s ? 'selected' : ''}>${s.toUpperCase()}</option>`).join('')}
+                        </select>
+                    </td>
+                    <td class="px-6 py-6">
+                        <input type="text" value="${o.comment || ''}" onchange="update(${o.id}, 'comment', this.value)" placeholder="Замітка..."
+                            class="w-full bg-transparent text-[11px] text-slate-400 border-none outline-none focus:text-slate-800 italic">
+                    </td>
+                    <td class="px-8 py-6 text-right">
+                        ${currentView !== 'deleted' ? 
+                            `<button onclick="update(${o.id}, 'status', 'Видалено')" class="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-rose-500 transition-all p-2 bg-slate-50 rounded-lg"><i class="fa-solid fa-trash-can"></i></button>` : 
+                            `<button onclick="update(${o.id}, 'status', 'Новий')" class="text-violet-500 text-[10px] font-black uppercase hover:underline">Відновити</button>`
+                        }
+                    </td>
+                </tr>`).join('');
             } catch (e) { console.error(e); }
+        }
+
+        document.getElementById('addOrderForm').onsubmit = async (e) => {
+            e.preventDefault();
+            const data = Object.fromEntries(new FormData(e.target));
+            await fetch('/api/orders/manual', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+            closeModal('orderModal'); e.target.reset(); loadOrders();
+        };
+
+        async function update(id, field, value) {
+            try {
+                const res = await fetch(`/api/orders/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ [field]: value }) });
+                const result = await res.json();
+                if (result.error) alert("Помилка оновлення поля: " + result.error);
+            } catch (e) { alert("Помилка мережі при оновленні."); }
+            loadOrders();
         }
 
         // --- ЛОГІКА СКЛАДУ ---

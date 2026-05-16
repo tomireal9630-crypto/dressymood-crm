@@ -7,7 +7,7 @@ const session = require('express-session');
 const app = express();
 const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
 
-// --- АВТОМАТИЧНЕ ОНОВЛЕННЯ БАЗИ ДАНИХ (Розділені запити) ---
+// --- АВТОМАТИЧНЕ ОНОВЛЕННЯ БАЗИ ДАНИХ ---
 async function updateDatabaseSchema() {
     try {
         await pool.query(`
@@ -34,13 +34,19 @@ async function updateDatabaseSchema() {
             CREATE TABLE IF NOT EXISTS products (
                 id SERIAL PRIMARY KEY,
                 article VARCHAR(255) NOT NULL,
-                name VARCHAR(255) NOT NULL,
-                cost NUMERIC DEFAULT 0,
-                price NUMERIC DEFAULT 0,
-                supplier_id INTEGER REFERENCES suppliers(id) ON DELETE SET NULL,
-                links TEXT DEFAULT ''
+                name VARCHAR(255) NOT NULL
             );
         `);
+
+        // Жорстко додаємо колонки в товари, якщо таблиця вже існувала
+        await pool.query(`
+            ALTER TABLE products 
+            ADD COLUMN IF NOT EXISTS cost NUMERIC DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS price NUMERIC DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS supplier_id INTEGER REFERENCES suppliers(id) ON DELETE SET NULL,
+            ADD COLUMN IF NOT EXISTS links TEXT DEFAULT '';
+        `);
+
         console.log("Таблиці бази даних успішно перевірені та оновлені.");
     } catch (err) {
         console.error("Помилка оновлення бази даних:", err);
