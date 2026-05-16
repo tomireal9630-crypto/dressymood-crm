@@ -7,7 +7,7 @@ const session = require('express-session');
 const app = express();
 const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
 
-// --- АВТОМАТИЧНЕ ОНОВЛЕННЯ БАЗИ ДАНИХ ---
+// --- АВТОМАТИЧНЕ ОНОВЛЕННЯ БАЗИ ДАНИХ (Розділені запити) ---
 async function updateDatabaseSchema() {
     try {
         await pool.query(`
@@ -21,12 +21,16 @@ async function updateDatabaseSchema() {
             ADD COLUMN IF NOT EXISTS cost NUMERIC DEFAULT 0,
             ADD COLUMN IF NOT EXISTS source VARCHAR(100) DEFAULT 'Вручну',
             ADD COLUMN IF NOT EXISTS comment TEXT DEFAULT '';
-
+        `);
+        
+        await pool.query(`
             CREATE TABLE IF NOT EXISTS suppliers (
                 id SERIAL PRIMARY KEY,
                 name VARCHAR(255) NOT NULL UNIQUE
             );
+        `);
 
+        await pool.query(`
             CREATE TABLE IF NOT EXISTS products (
                 id SERIAL PRIMARY KEY,
                 article VARCHAR(255) NOT NULL,
@@ -37,7 +41,7 @@ async function updateDatabaseSchema() {
                 links TEXT DEFAULT ''
             );
         `);
-        console.log("Таблиці бази даних успішно перевірені та оновлені (Склад додано).");
+        console.log("Таблиці бази даних успішно перевірені та оновлені.");
     } catch (err) {
         console.error("Помилка оновлення бази даних:", err);
     }
@@ -70,7 +74,6 @@ app.post('/api/login', (req, res) => {
 
 app.post('/api/logout', (req, res) => { req.session.destroy(); res.json({ success: true }); });
 
-// --- API ЗАМОВЛЕНЬ ---
 app.get('/api/orders', checkAuth, async (req, res) => {
   const { view, search } = req.query;
   try {
@@ -131,7 +134,6 @@ app.patch('/api/orders/:id', checkAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// --- API СКЛАДУ (ПОСТАЧАЛЬНИКИ) ---
 app.get('/api/warehouse/suppliers', checkAuth, async (req, res) => {
     try {
         const result = await pool.query('SELECT * FROM suppliers ORDER BY id ASC');
@@ -153,7 +155,6 @@ app.delete('/api/warehouse/suppliers/:id', checkAuth, async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// --- API СКЛАДУ (ТОВАРИ) ---
 app.get('/api/warehouse/products', checkAuth, async (req, res) => {
     try {
         const result = await pool.query(`
