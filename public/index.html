@@ -10,54 +10,90 @@
         body { font-family: 'Inter', sans-serif; }
     </style>
 </head>
-<body class="bg-gray-50 text-gray-800 min-h-screen">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        
-        <!-- Шапка -->
-        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-8 gap-4">
-            <div>
-                <h1 class="text-3xl font-bold text-gray-900 tracking-tight">DressyMood CRM</h1>
-                <p class="mt-1 text-sm text-gray-500">Панель управління замовленнями</p>
+<body class="bg-gray-50 text-gray-800 h-screen flex overflow-hidden">
+    
+    <!-- Sidebar -->
+    <aside class="w-64 bg-white border-r border-gray-200 hidden md:flex flex-col justify-between">
+        <div>
+            <!-- Logo area -->
+            <div class="h-16 flex items-center px-6 border-b border-gray-200">
+                <h1 class="text-xl font-bold text-gray-900 tracking-tight">DressyMood CRM</h1>
             </div>
-            <div class="flex items-center space-x-4 w-full sm:w-auto justify-between sm:justify-end">
-                <div class="bg-white p-3 sm:p-4 rounded-xl shadow-sm border border-gray-100 flex items-center space-x-3 sm:space-x-4">
-                    <div class="p-2 bg-blue-50 rounded-lg">
-                        <svg class="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"></path>
-                        </svg>
-                    </div>
-                    <div>
-                        <p class="text-xs sm:text-sm font-medium text-gray-500">Всього замовлень</p>
-                        <p class="text-xl sm:text-2xl font-semibold text-gray-900 leading-none" id="total-orders">0</p>
-                    </div>
+            <!-- Navigation -->
+            <nav class="p-4 space-y-1">
+                <a href="#" class="flex items-center px-3 py-2.5 bg-blue-50 text-blue-700 rounded-lg group font-medium">
+                    <svg class="w-5 h-5 mr-3 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"></path></svg>
+                    Замовлення
+                </a>
+                <a href="#" class="flex items-center px-3 py-2.5 text-gray-700 hover:bg-gray-100 rounded-lg group font-medium transition-colors">
+                    <svg class="w-5 h-5 mr-3 text-gray-400 group-hover:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
+                    Клієнти
+                </a>
+                <a href="#" class="flex items-center px-3 py-2.5 text-gray-700 hover:bg-gray-100 rounded-lg group font-medium transition-colors">
+                    <svg class="w-5 h-5 mr-3 text-gray-400 group-hover:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                    Налаштування
+                </a>
+            </nav>
+        </div>
+        
+        <!-- Sidebar Bottom / Logout -->
+        <div class="p-4 border-t border-gray-200">
+            <button onclick="logout()" class="w-full flex items-center px-3 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg>
+                Вийти
+            </button>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <div class="flex-1 flex flex-col overflow-hidden">
+        
+        <!-- Top Header -->
+        <header class="bg-white border-b border-gray-200 h-16 flex items-center justify-between px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center">
+                <button class="md:hidden mr-4 text-gray-500 hover:text-gray-700">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+                </button>
+                <h2 class="text-lg font-semibold text-gray-800">Панель управління замовленнями</h2>
+            </div>
+            
+            <div class="flex items-center space-x-4">
+                <div class="flex items-center space-x-2 bg-blue-50 px-3 py-1.5 rounded-full border border-blue-100">
+                    <span class="w-2 h-2 rounded-full bg-blue-500"></span>
+                    <span class="text-sm font-medium text-blue-800">Всього: <span id="total-orders">0</span></span>
                 </div>
-                
-                <!-- Кнопка Выйти -->
-                <button onclick="logout()" class="text-sm font-medium text-gray-700 bg-white border border-gray-200 hover:bg-gray-50 hover:text-gray-900 px-4 py-2 rounded-xl shadow-sm transition-colors focus:ring-2 focus:ring-gray-200">
+                <button onclick="logout()" class="md:hidden text-sm font-medium text-gray-600 hover:text-gray-900">
                     Вийти
                 </button>
             </div>
-        </div>
+        </header>
 
-        <!-- Таблица -->
-        <div class="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-            <div class="overflow-x-auto">
-                <table class="w-full whitespace-nowrap text-left text-sm min-w-max">
-                    <thead class="bg-gray-50/80 text-gray-500 font-medium border-b border-gray-200">
-                        <tr>
-                            <th scope="col" class="px-6 py-4">Дата</th>
-                            <th scope="col" class="px-6 py-4">Клієнт</th>
-                            <th scope="col" class="px-6 py-4">Артикул</th>
-                            <th scope="col" class="px-6 py-4">Розмір / Колір</th>
-                            <th scope="col" class="px-6 py-4">Статус</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-gray-100" id="orders-tbody">
-                        <!-- Строки загружаются через JS -->
-                    </tbody>
-                </table>
+        <!-- Main scrollable area -->
+        <main class="flex-1 overflow-y-auto bg-gray-50 p-4 sm:p-6 lg:p-8">
+            <div class="max-w-7xl mx-auto">
+                
+                <!-- Таблица -->
+                <div class="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+                    <div class="overflow-x-auto">
+                        <table class="w-full whitespace-nowrap text-left text-sm min-w-max">
+                            <thead class="bg-gray-50/80 text-gray-500 font-medium border-b border-gray-200">
+                                <tr>
+                                    <th scope="col" class="px-6 py-4">Дата</th>
+                                    <th scope="col" class="px-6 py-4">Клієнт</th>
+                                    <th scope="col" class="px-6 py-4">Артикул</th>
+                                    <th scope="col" class="px-6 py-4">Розмір / Колір</th>
+                                    <th scope="col" class="px-6 py-4">Статус</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-100" id="orders-tbody">
+                                <!-- Строки загружаются через JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
             </div>
-        </div>
+        </main>
     </div>
 
     <script>
