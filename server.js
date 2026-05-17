@@ -48,6 +48,16 @@ async function updateDatabaseSchema() {
             ADD COLUMN IF NOT EXISTS links TEXT DEFAULT '';
         `);
 
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS stock (
+                id SERIAL PRIMARY KEY,
+                product_id INTEGER REFERENCES products(id) ON DELETE CASCADE,
+                color VARCHAR(100) NOT NULL DEFAULT '',
+                size VARCHAR(50) NOT NULL DEFAULT '',
+                quantity INTEGER NOT NULL DEFAULT 0
+            );
+        `);
+
         console.log("База даних успішно верифікована.");
     } catch (err) {
         console.error("Помилка автоматичної міграції:", err);
@@ -189,6 +199,55 @@ app.post('/api/warehouse/products', checkAuth, async (req, res) => {
 app.delete('/api/warehouse/products/:id', checkAuth, async (req, res) => {
     try {
         await pool.query('DELETE FROM products WHERE id = $1', [req.params.id]);
+        res.json({ success: true });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// --- API НАЯВНОСТІ ---
+app.get('/api/stock', checkAuth, async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT s.*, p.article, p.name as product_name
+            FROM stock s
+            JOIN products p ON s.product_id = p.id
+            ORDER BY p.article ASC, s.size ASC
+        `);
+        res.json(result.rows);
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/stock', checkAuth, async (req, res) => {
+    const { product_id, color, size, quantity } = req.body;
+    try {
+        const existing = await pool.query(
+            'SELECT id, quantity FROM stock WHERE product_id = $1 AND color ILIKE $2 AND size ILIKE $3', 
+            [product_id, (color || '').trim(), (size || '').trim()]
+        );
+
+        if (existing.rows.length > 0) {
+            const newQty = parseInt(existing.rows[0].quantity) + parseInt(quantity);
+            await pool.query('UPDATE stock SET quantity = $1 WHERE id = $2', [newQty, existing.rows[0].id]);
+        } else {
+            await pool.query(
+                'INSERT INTO stock (product_id, color, size, quantity) VALUES ($1, $2, $3, $4)',
+                [product_id, (color || '').trim(), (size || '').trim(), quantity]
+            );
+        }
+        res.json({ success: true });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.patch('/api/stock/:id', checkAuth, async (req, res) => {
+    const { quantity } = req.body;
+    try {
+        await pool.query('UPDATE stock SET quantity = $1 WHERE id = $2', [quantity, req.params.id]);
+        res.json({ success: true });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/stock/:id', checkAuth, async (req, res) => {
+    try {
+        await pool.query('DELETE FROM stock WHERE id = $1', [req.params.id]);
         res.json({ success: true });
     } catch (err) { res.status(500).json({ error: err.message }); }
 });

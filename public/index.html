@@ -194,7 +194,31 @@
             <div id="view-dashboard" class="view-content h-full flex flex-col items-center justify-center text-center"><i class="fa-solid fa-chart-pie text-6xl text-slate-200 mb-6"></i><h3 class="text-xl font-bold text-slate-400">Розділ "Дашборд"</h3></div>
             <div id="view-archive" class="view-content h-full flex flex-col items-center justify-center text-center"><i class="fa-solid fa-box-archive text-6xl text-slate-200 mb-6"></i><h3 class="text-xl font-bold text-slate-400">Розділ "Архів"</h3></div>
             <div id="view-deleted" class="view-content h-full flex flex-col items-center justify-center text-center"><i class="fa-solid fa-trash-can text-6xl text-slate-200 mb-6"></i><h3 class="text-xl font-bold text-slate-400">Розділ "Видалені"</h3></div>
-            <div id="view-stock" class="view-content h-full flex flex-col items-center justify-center text-center"><i class="fa-solid fa-boxes-stacked text-6xl text-slate-200 mb-6"></i><h3 class="text-xl font-bold text-slate-400">Розділ "Наявність"</h3></div>
+            <div id="view-stock" class="view-content h-full">
+                <div class="flex justify-between items-center mb-8">
+                    <div>
+                        <h2 class="text-3xl font-black text-slate-800 uppercase italic tracking-tighter">Наявність товарів</h2>
+                        <p class="text-slate-400 font-medium text-sm">Управління залишками на складі (повернення, тощо)</p>
+                    </div>
+                    <button onclick="openModal('stockModal')" class="bg-amber-500 text-white px-6 py-3 rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-amber-600 transition-all shadow-lg shadow-amber-200">
+                        <i class="fa-solid fa-plus mr-2"></i> Додати товар на склад
+                    </button>
+                </div>
+                
+                <div class="bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/40 border border-slate-100 overflow-hidden">
+                    <table class="w-full text-left">
+                        <thead>
+                            <tr class="bg-slate-50/50 border-b border-slate-100">
+                                <th class="px-8 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Артикул / Товар</th>
+                                <th class="px-6 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Колір / Розмір</th>
+                                <th class="px-6 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Кількість (шт)</th>
+                                <th class="px-8 py-6"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="stockTable" class="divide-y divide-slate-50"></tbody>
+                    </table>
+                </div>
+            </div>
             <div id="view-export" class="view-content h-full flex flex-col items-center justify-center text-center"><i class="fa-solid fa-file-export text-6xl text-slate-200 mb-6"></i><h3 class="text-xl font-bold text-slate-400">Розділ "Вигрузка"</h3></div>
         </div>
     </main>
@@ -292,6 +316,37 @@
         </div>
     </div>
 
+    <div id="stockModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] hidden items-center justify-center p-6">
+        <div class="bg-white w-full max-w-xl rounded-[2.5rem] shadow-2xl overflow-hidden">
+            <div class="p-8 border-b border-slate-100 flex justify-between items-center bg-amber-50/50">
+                <h3 class="text-xl font-black text-slate-800 uppercase italic">Прихід на склад</h3>
+                <button onclick="closeModal('stockModal')" class="text-slate-400 hover:text-rose-500 transition-colors"><i class="fa-solid fa-xmark text-xl"></i></button>
+            </div>
+            <form id="addStockForm" class="p-10 grid grid-cols-2 gap-6">
+                <div class="col-span-2">
+                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Товар (з бази)</label>
+                    <select name="product_id" id="stockProductSelect" required class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-bold text-sm">
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Колір</label>
+                    <input type="text" name="color" class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-bold text-sm">
+                </div>
+                <div>
+                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Розмір</label>
+                    <input type="text" name="size" class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-bold text-sm">
+                </div>
+                <div class="col-span-2">
+                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Кількість (шт)</label>
+                    <input type="number" name="quantity" required value="1" min="1" class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-black text-sm">
+                </div>
+                <div class="col-span-2 pt-2">
+                    <button type="submit" class="w-full bg-amber-500 text-white py-4 rounded-xl font-black text-sm uppercase tracking-widest hover:bg-amber-600 transition-all">Додати в наявність</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <script>
         const statusConfig = {
             'Новий': 'bg-blue-50 text-blue-600 ring-blue-100',
@@ -324,6 +379,7 @@
         function refreshData() {
             if (['orders', 'archive', 'deleted'].includes(currentView)) loadOrders();
             if (currentView === 'warehouse') loadWarehouseData();
+            if (currentView === 'stock') loadStockData();
         }
 
         // --- ЛОГІКА ЗАМОВЛЕНЬ ---
@@ -375,8 +431,12 @@
         document.getElementById('addOrderForm').onsubmit = async (e) => {
             e.preventDefault();
             const data = Object.fromEntries(new FormData(e.target));
-            await fetch('/api/orders/manual', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
-            closeModal('orderModal'); e.target.reset(); loadOrders();
+            try {
+                const res = await fetch('/api/orders/manual', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+                const result = await res.json();
+                if (!res.ok) throw new Error(result.error || 'Помилка сервера');
+                closeModal('orderModal'); e.target.reset(); loadOrders();
+            } catch (err) { alert('Помилка: ' + err.message); }
         };
 
         async function updateOrder(id, field, value) {
@@ -449,19 +509,81 @@
 
         document.getElementById('addSupplierForm').onsubmit = async (e) => {
             e.preventDefault();
-            await fetch('/api/warehouse/suppliers', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({name: e.target.name.value}) });
-            e.target.reset(); loadWarehouseData();
+            try {
+                const res = await fetch('/api/warehouse/suppliers', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({name: e.target.name.value}) });
+                const result = await res.json();
+                if (!res.ok) throw new Error(result.error || 'Помилка сервера');
+                e.target.reset(); loadWarehouseData();
+            } catch (err) { alert('Помилка: ' + err.message); }
         };
 
         async function deleteSupplier(id) { await fetch(`/api/warehouse/suppliers/${id}`, { method: 'DELETE' }); loadWarehouseData(); }
 
         document.getElementById('addProductForm').onsubmit = async (e) => {
             e.preventDefault();
-            await fetch('/api/warehouse/products', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(Object.fromEntries(new FormData(e.target))) });
-            closeModal('productModal'); e.target.reset(); loadWarehouseData();
+            try {
+                const res = await fetch('/api/warehouse/products', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(Object.fromEntries(new FormData(e.target))) });
+                const result = await res.json();
+                if (!res.ok) throw new Error(result.error || 'Помилка сервера');
+                closeModal('productModal'); e.target.reset(); loadWarehouseData();
+            } catch (err) { alert('Помилка: ' + err.message); }
         };
 
         async function deleteProduct(id) { await fetch(`/api/warehouse/products/${id}`, { method: 'DELETE' }); loadWarehouseData(); }
+
+        // --- ЛОГІКА НАЯВНОСТІ ---
+        async function loadStockData() {
+            try {
+                const prodRes = await fetch('/api/warehouse/products');
+                const products = await prodRes.json();
+                document.getElementById('stockProductSelect').innerHTML = `<option value="">-- Оберіть товар --</option>` + 
+                    products.map(p => `<option value="${p.id}">${p.article} (${p.name})</option>`).join('');
+
+                const res = await fetch('/api/stock');
+                const data = await res.json();
+                const table = document.getElementById('stockTable');
+                if(!data.length) return table.innerHTML = `<tr><td colspan="4" class="p-8 text-center text-slate-400 font-medium">Наявність порожня</td></tr>`;
+                
+                table.innerHTML = data.map(s => `
+                <tr class="hover:bg-slate-50 transition-all group">
+                    <td class="px-8 py-5">
+                        <div class="text-[12px] font-black text-slate-800 uppercase tracking-tighter">${s.article}</div>
+                        <div class="text-[10px] text-slate-500 font-medium">${s.product_name}</div>
+                    </td>
+                    <td class="px-6 py-5">
+                        <span class="bg-slate-100 text-slate-700 font-bold px-2 py-1 rounded text-[10px] mr-1">К: ${s.color || '-'}</span>
+                        <span class="bg-slate-100 text-slate-700 font-bold px-2 py-1 rounded text-[10px]">Р: ${s.size || '-'}</span>
+                    </td>
+                    <td class="px-6 py-5">
+                        <input type="number" value="${s.quantity}" min="0" onchange="updateStock(${s.id}, this.value)" 
+                            class="w-20 text-sm font-black bg-slate-50 border border-slate-100 rounded-lg px-3 py-1.5 outline-none focus:border-amber-400">
+                    </td>
+                    <td class="px-8 py-5 text-right">
+                        <button onclick="deleteStock(${s.id})" class="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-rose-500 transition-all p-2 bg-slate-50 rounded-lg"><i class="fa-solid fa-trash-can"></i></button>
+                    </td>
+                </tr>`).join('');
+            } catch (e) { console.error(e); }
+        }
+
+        document.getElementById('addStockForm').onsubmit = async (e) => {
+            e.preventDefault();
+            try {
+                const res = await fetch('/api/stock', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(Object.fromEntries(new FormData(e.target))) });
+                const result = await res.json();
+                if (!res.ok) throw new Error(result.error || 'Помилка сервера');
+                closeModal('stockModal'); e.target.reset(); loadStockData();
+            } catch (err) { alert('Помилка: ' + err.message); }
+        };
+
+        async function updateStock(id, quantity) {
+            await fetch(`/api/stock/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ quantity }) });
+            loadStockData();
+        }
+
+        async function deleteStock(id) {
+            await fetch(`/api/stock/${id}`, { method: 'DELETE' });
+            loadStockData();
+        }
 
         function openModal(id) { document.getElementById(id).classList.add('modal-active'); }
         function closeModal(id) { document.getElementById(id).classList.remove('modal-active'); }
