@@ -109,7 +109,7 @@
         <header class="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 px-10 flex items-center justify-between shrink-0 z-10">
             <div class="relative w-96">
                 <i class="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-slate-300"></i>
-                <input type="text" id="searchInput" placeholder="Пошук..." oninput="loadOrders()"
+                <input type="text" id="searchInput" placeholder="Пошук..." oninput="debounceSearch()"
                     class="w-full pl-11 pr-4 py-2.5 bg-slate-100 border-transparent rounded-xl focus:bg-white focus:ring-4 focus:ring-violet-500/10 focus:border-violet-500 outline-none transition-all text-sm font-medium">
             </div>
             <div class="flex items-center gap-5">
@@ -360,6 +360,16 @@
         let currentView = 'orders';
         let suppliersList = [];
 
+        function esc(v) {
+            return String(v ?? '').replace(/[&<>"']/g, c => (
+                { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+            ));
+        }
+        function safeUrl(v) {
+            const s = String(v ?? '').trim();
+            return /^https?:\/\//i.test(s) ? s : '#';
+        }
+
         function switchView(view) {
             currentView = view;
             document.querySelectorAll('.sidebar-item').forEach(el => el.classList.remove('active'));
@@ -397,25 +407,25 @@
                 table.innerHTML = data.map(o => `
                 <tr class="hover:bg-slate-50 transition-all group">
                     <td class="px-8 py-6">
-                        <div class="font-bold text-slate-800 text-sm">${o.fullName}</div>
-                        <div class="text-[10px] text-slate-400 font-bold uppercase mt-1"><i class="fa-solid fa-phone text-[9px]"></i> ${o.phone}</div>
+                        <div class="font-bold text-slate-800 text-sm">${esc(o.fullName)}</div>
+                        <div class="text-[10px] text-slate-400 font-bold uppercase mt-1"><i class="fa-solid fa-phone text-[9px]"></i> ${esc(o.phone)}</div>
                     </td>
                     <td class="px-6 py-6">
-                        <div class="text-[11px] font-black text-slate-800 uppercase">${o.article} <span class="text-[10px] text-slate-400 font-bold">(${o.color || '-'} / ${o.size || '-'})</span></div>
-                        <div class="mt-1"><span class="text-[9px] font-black bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded border border-emerald-200/50">${o.price - o.cost} грн</span></div>
+                        <div class="text-[11px] font-black text-slate-800 uppercase">${esc(o.article)} <span class="text-[10px] text-slate-400 font-bold">(${esc(o.color || '-')} / ${esc(o.size || '-')})</span></div>
+                        <div class="mt-1"><span class="text-[9px] font-black bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded border border-emerald-200/50">${(Number(o.price) || 0) - (Number(o.cost) || 0)} грн</span></div>
                     </td>
                     <td class="px-6 py-6">
-                        <input type="text" value="${o.ttn || ''}" onchange="updateOrder(${o.id}, 'ttn', this.value)" placeholder="Ввести ТТН..."
+                        <input type="text" value="${esc(o.ttn || '')}" onchange="updateOrder(${o.id}, 'ttn', this.value)" placeholder="Ввести ТТН..."
                             class="w-full max-w-[150px] text-xs font-mono font-bold bg-slate-50 border border-slate-100 rounded-lg px-3 py-2 outline-none">
                     </td>
                     <td class="px-6 py-6">
-                        <select onchange="updateOrder(${o.id}, 'status', this.value)" 
+                        <select onchange="updateOrder(${o.id}, 'status', this.value)"
                             class="text-[10px] font-black px-3 py-1.5 rounded-full ring-1 ring-inset cursor-pointer ${statusConfig[o.status] || 'bg-slate-100'}">
                             ${Object.keys(statusConfig).map(s => `<option value="${s}" ${o.status === s ? 'selected' : ''}>${s.toUpperCase()}</option>`).join('')}
                         </select>
                     </td>
                     <td class="px-6 py-6">
-                        <input type="text" value="${o.comment || ''}" onchange="updateOrder(${o.id}, 'comment', this.value)" placeholder="Замітка..."
+                        <input type="text" value="${esc(o.comment || '')}" onchange="updateOrder(${o.id}, 'comment', this.value)" placeholder="Замітка..."
                             class="w-full bg-transparent text-[11px] text-slate-400 border-none outline-none italic">
                     </td>
                     <td class="px-8 py-6 text-right">
@@ -464,13 +474,13 @@
             
             list.innerHTML = suppliersList.map(s => `
                 <div class="flex justify-between items-center bg-slate-50 px-4 py-2.5 rounded-lg border border-slate-100 group">
-                    <span class="text-xs font-bold text-slate-700">${s.name}</span>
+                    <span class="text-xs font-bold text-slate-700">${esc(s.name)}</span>
                     <button onclick="deleteSupplier(${s.id})" class="text-slate-300 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-all"><i class="fa-solid fa-xmark"></i></button>
                 </div>
             `).join('');
 
-            select.innerHTML = `<option value="">-- Оберіть постачальника --</option>` + 
-                suppliersList.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+            select.innerHTML = `<option value="">-- Оберіть постачальника --</option>` +
+                suppliersList.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('');
         }
 
         function renderProducts(products) {
@@ -478,26 +488,26 @@
             if(!products.length) return table.innerHTML = `<tr><td colspan="5" class="p-10 text-center text-slate-400 font-medium">База товарів порожня</td></tr>`;
             
             table.innerHTML = products.map(p => {
-                const profit = p.price - p.cost;
-                const linksHtml = p.links ? p.links.split('\n').filter(l=>l.trim()).map((link, i) => 
-                    `<a href="${link.trim()}" target="_blank" class="inline-flex items-center gap-1 bg-indigo-50 text-indigo-600 px-2 py-1 rounded text-[9px] font-bold uppercase hover:bg-indigo-100 mb-1 mr-1 transition-colors"><i class="fa-solid fa-link"></i> Лінк ${i+1}</a>`
+                const profit = (Number(p.price) || 0) - (Number(p.cost) || 0);
+                const linksHtml = p.links ? p.links.split('\n').filter(l=>l.trim()).map((link, i) =>
+                    `<a href="${esc(safeUrl(link))}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1 bg-indigo-50 text-indigo-600 px-2 py-1 rounded text-[9px] font-bold uppercase hover:bg-indigo-100 mb-1 mr-1 transition-colors"><i class="fa-solid fa-link"></i> Лінк ${i+1}</a>`
                 ).join('') : '<span class="text-slate-300 text-[10px]">Немає</span>';
 
                 return `
                 <tr class="hover:bg-slate-50 transition-all group border-b border-slate-50 last:border-0">
                     <td class="px-6 py-5">
-                        <div class="text-[12px] font-black text-slate-800 uppercase tracking-tighter">${p.article}</div>
-                        <div class="text-[10px] text-slate-500 font-medium mt-0.5">${p.name}</div>
+                        <div class="text-[12px] font-black text-slate-800 uppercase tracking-tighter">${esc(p.article)}</div>
+                        <div class="text-[10px] text-slate-500 font-medium mt-0.5">${esc(p.name)}</div>
                     </td>
                     <td class="px-6 py-5">
                         <div class="flex items-center gap-2 text-[10px] font-bold">
-                            <span class="text-rose-500">Соб: ${p.cost}</span> / 
-                            <span class="text-slate-600">Сайт: ${p.price}</span>
+                            <span class="text-rose-500">Соб: ${esc(p.cost)}</span> /
+                            <span class="text-slate-600">Сайт: ${esc(p.price)}</span>
                         </div>
                         <div class="mt-1 text-[11px] font-black text-emerald-600 bg-emerald-50 inline-block px-2 py-0.5 rounded">Різниця: +${profit} грн</div>
                     </td>
                     <td class="px-6 py-5">
-                        <span class="text-[11px] font-bold text-slate-700 bg-slate-100 px-2.5 py-1 rounded-md">${p.supplier_name || 'Не вказано'}</span>
+                        <span class="text-[11px] font-bold text-slate-700 bg-slate-100 px-2.5 py-1 rounded-md">${esc(p.supplier_name || 'Не вказано')}</span>
                     </td>
                     <td class="px-6 py-5 max-w-[150px] flex-wrap">${linksHtml}</td>
                     <td class="px-6 py-5 text-right">
@@ -537,7 +547,7 @@
                 const prodRes = await fetch('/api/warehouse/products');
                 const products = await prodRes.json();
                 document.getElementById('stockProductSelect').innerHTML = `<option value="">-- Оберіть товар --</option>` + 
-                    products.map(p => `<option value="${p.id}">${p.article} (${p.name})</option>`).join('');
+                    products.map(p => `<option value="${p.id}">${esc(p.article)} (${esc(p.name)})</option>`).join('');
 
                 const res = await fetch('/api/stock');
                 const data = await res.json();
@@ -547,12 +557,12 @@
                 table.innerHTML = data.map(s => `
                 <tr class="hover:bg-slate-50 transition-all group">
                     <td class="px-8 py-5">
-                        <div class="text-[12px] font-black text-slate-800 uppercase tracking-tighter">${s.article}</div>
-                        <div class="text-[10px] text-slate-500 font-medium">${s.product_name}</div>
+                        <div class="text-[12px] font-black text-slate-800 uppercase tracking-tighter">${esc(s.article)}</div>
+                        <div class="text-[10px] text-slate-500 font-medium">${esc(s.product_name)}</div>
                     </td>
                     <td class="px-6 py-5">
-                        <span class="bg-slate-100 text-slate-700 font-bold px-2 py-1 rounded text-[10px] mr-1">К: ${s.color || '-'}</span>
-                        <span class="bg-slate-100 text-slate-700 font-bold px-2 py-1 rounded text-[10px]">Р: ${s.size || '-'}</span>
+                        <span class="bg-slate-100 text-slate-700 font-bold px-2 py-1 rounded text-[10px] mr-1">К: ${esc(s.color || '-')}</span>
+                        <span class="bg-slate-100 text-slate-700 font-bold px-2 py-1 rounded text-[10px]">Р: ${esc(s.size || '-')}</span>
                     </td>
                     <td class="px-6 py-5">
                         <input type="number" value="${s.quantity}" min="0" onchange="updateStock(${s.id}, this.value)" 

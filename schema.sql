@@ -1,4 +1,7 @@
--- Таблица клиентов
+-- Эта схема соответствует тому, что server.js создаёт автоматически при старте
+-- (функция updateDatabaseSchema). Файл — справочный/для ручного развёртывания.
+
+-- Клиенты
 CREATE TABLE IF NOT EXISTS customers (
     id SERIAL PRIMARY KEY,
     full_name VARCHAR(255) NOT NULL,
@@ -6,29 +9,44 @@ CREATE TABLE IF NOT EXISTS customers (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Таблица товаров (на будущее)
-CREATE TABLE IF NOT EXISTS products (
+-- Поставщики
+CREATE TABLE IF NOT EXISTS suppliers (
     id SERIAL PRIMARY KEY,
-    article VARCHAR(100) NOT NULL UNIQUE,
-    name VARCHAR(255),
-    price DECIMAL(10, 2)
+    name VARCHAR(255) NOT NULL UNIQUE
 );
 
--- Таблица заказов
+-- Товары (база)
+CREATE TABLE IF NOT EXISTS products (
+    id SERIAL PRIMARY KEY,
+    article VARCHAR(255) NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    cost NUMERIC DEFAULT 0,
+    price NUMERIC DEFAULT 0,
+    supplier_id INTEGER REFERENCES suppliers(id) ON DELETE SET NULL,
+    links TEXT DEFAULT ''
+);
+
+-- Заказы
 CREATE TABLE IF NOT EXISTS orders (
     id SERIAL PRIMARY KEY,
     customer_id INTEGER REFERENCES customers(id),
-    source VARCHAR(100),
+    article VARCHAR(255) DEFAULT '',
+    size VARCHAR(50) DEFAULT '',
+    color VARCHAR(50) DEFAULT '',
+    status VARCHAR(50) DEFAULT 'Новий',
+    ttn VARCHAR(255) DEFAULT '',
+    price NUMERIC DEFAULT 0,
+    cost NUMERIC DEFAULT 0,
+    source VARCHAR(100) DEFAULT 'Вручну',
+    comment TEXT DEFAULT '',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Таблица товаров в заказе (позиции заказа)
-CREATE TABLE IF NOT EXISTS order_items (
+-- Наличие на складе (остатки по цвету/размеру)
+CREATE TABLE IF NOT EXISTS stock (
     id SERIAL PRIMARY KEY,
-    order_id INTEGER REFERENCES orders(id),
-    product_article VARCHAR(100),
-    size VARCHAR(50),
-    color VARCHAR(50),
-    quantity INTEGER DEFAULT 1,
-    price DECIMAL(10, 2)
+    product_id INTEGER REFERENCES products(id) ON DELETE CASCADE,
+    color VARCHAR(100) NOT NULL DEFAULT '',
+    size VARCHAR(50) NOT NULL DEFAULT '',
+    quantity INTEGER NOT NULL DEFAULT 0
 );

@@ -3,15 +3,35 @@ const express = require('express');
 const { Pool } = require('pg');
 const path = require('path');
 const session = require('express-session');
+const crypto = require('crypto');
 
 const app = express();
+const isProduction = process.env.NODE_ENV === 'production';
+if (isProduction) app.set('trust proxy', 1);
 const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
 
 // --- АВТОМАТИЧНЕ ОНОВЛЕННЯ БАЗИ ДАНИХ (СТАБІЛЬНЕ) ---
 async function updateDatabaseSchema() {
     try {
         await pool.query(`
-            ALTER TABLE orders 
+            CREATE TABLE IF NOT EXISTS customers (
+                id SERIAL PRIMARY KEY,
+                full_name VARCHAR(255) NOT NULL,
+                phone VARCHAR(50) NOT NULL UNIQUE,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            );
+        `);
+
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS orders (
+                id SERIAL PRIMARY KEY,
+                customer_id INTEGER REFERENCES customers(id),
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            );
+        `);
+
+        await pool.query(`
+            ALTER TABLE orders
             ADD COLUMN IF NOT EXISTS article VARCHAR(255) DEFAULT '',
             ADD COLUMN IF NOT EXISTS size VARCHAR(50) DEFAULT '',
             ADD COLUMN IF NOT EXISTS color VARCHAR(50) DEFAULT '',
@@ -69,7 +89,7 @@ app.use(session({
   secret: process.env.SESSION_SECRET || 'tomireal_space_layout',
   resave: false,
   saveUninitialized: false,
-  cookie: { secure: false, maxAge: 24 * 60 * 60 * 1000 }
+  cookie: { secure: isProduction, httpOnly: true, sameSite: 'lax', maxAge: 24 * 60 * 60 * 1000 }
 }));
 
 app.use(express.json());
@@ -80,9 +100,18 @@ const checkAuth = (req, res, next) => {
   else req.path.startsWith('/api/') ? res.status(401).json({ error: 'Auth' }) : res.redirect('/login.html');
 };
 
+function safeEqual(a, b) {
+  const bufA = Buffer.from(String(a));
+  const bufB = Buffer.from(String(b));
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
+
 app.post('/api/login', (req, res) => {
   const { username, password } = req.body;
-  if (username === process.env.ADMIN_USERNAME && password === process.env.ADMIN_PASSWORD) {
+  const okUser = safeEqual(username || '', process.env.ADMIN_USERNAME || '');
+  const okPass = safeEqual(password || '', process.env.ADMIN_PASSWORD || '');
+  if (okUser && okPass) {
     req.session.isLoggedIn = true;
     res.json({ success: true });
   } else res.status(401).json({ error: 'Error' });
@@ -140,10 +169,13 @@ app.post('/api/orders/manual', checkAuth, async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+const ALLOWED_ORDER_FIELDS = ['article', 'size', 'color', 'status', 'ttn', 'price', 'cost', 'source', 'comment'];
+
 app.patch('/api/orders/:id', checkAuth, async (req, res) => {
-  const fields = req.body;
-  const setClause = Object.keys(fields).map((key, i) => `${key} = $${i + 1}`).join(', ');
-  const values = Object.values(fields);
+  const keys = Object.keys(req.body).filter(k => ALLOWED_ORDER_FIELDS.includes(k));
+  if (keys.length === 0) return res.status(400).json({ error: 'No valid fields to update' });
+  const setClause = keys.map((key, i) => `${key} = $${i + 1}`).join(', ');
+  const values = keys.map(k => req.body[k]);
   values.push(req.params.id);
   try {
     await pool.query(`UPDATE orders SET ${setClause} WHERE id = $${values.length}`, values);
