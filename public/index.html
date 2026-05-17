@@ -8,142 +8,8 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700;800;900&family=EB+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
-    <style>
-        :root{
-            --bg:#08080a; --bg-2:#0e0d10;
-            --panel:#15120c; --panel-2:#1b1710;
-            --gold:#c8a85a; --gold-bright:#ecd49a; --gold-dim:#8c7438;
-            --crimson:#8e2a2a; --crimson-bright:#c0392b;
-            --line:rgba(200,168,90,.20); --line-strong:rgba(200,168,90,.40);
-            --text:#ece3cf; --muted:#9a8e72; --faint:#6f6650;
-        }
-        *{ font-family:'EB Garamond', Georgia, serif; }
-        h1,h2,h3,h4,.cinzel,.sidebar-item,th,button{ font-family:'Cinzel', serif; }
-        body{
-            background:
-              radial-gradient(1200px 700px at 80% -10%, rgba(142,42,42,.18), transparent 60%),
-              radial-gradient(900px 600px at 0% 110%, rgba(200,168,90,.10), transparent 55%),
-              var(--bg) !important;
-            color:var(--text) !important;
-        }
-
-        /* Панели / карты */
-        .bg-white, .bg-\[\#f8fafc\], .bg-white\/80, .bg-slate-50\/50, .bg-slate-50\/60,
-        .bg-slate-50, .bg-slate-100, .bg-indigo-50\/50, .bg-amber-50\/50{
-            background:var(--panel) !important;
-        }
-        .bg-white, .bg-slate-50\/50, .bg-slate-50\/60{
-            border:1px solid var(--line) !important;
-            box-shadow:0 0 0 1px rgba(0,0,0,.4), 0 18px 50px -20px rgba(0,0,0,.9), inset 0 1px 0 rgba(236,212,154,.06) !important;
-        }
-        main, .bg-\[\#f8fafc\]{ background:transparent !important; }
-
-        /* Sidebar — чёрный камень с золотой кромкой */
-        .bg-\[\#020617\]{
-            background:linear-gradient(180deg,#0c0b0e,#070608) !important;
-            border-color:var(--line-strong) !important;
-        }
-        aside{ box-shadow:1px 0 0 var(--line), 14px 0 40px -24px #000; }
-
-        /* Текст */
-        .text-slate-800,.text-slate-700,.text-slate-600{ color:var(--text) !important; }
-        .text-slate-500,.text-slate-400{ color:var(--muted) !important; }
-        .text-slate-300,.text-slate-200{ color:var(--faint) !important; }
-        .text-white{ color:var(--gold-bright) !important; }
-
-        h1,h2,h3,h4{
-            color:var(--gold) !important;
-            letter-spacing:.06em; text-shadow:0 0 18px rgba(200,168,90,.25);
-        }
-        h2{ font-weight:800 !important; }
-
-        /* Границы */
-        [class*="border-slate-"]{ border-color:var(--line) !important; }
-        .divide-slate-50 > *, .divide-slate-100 > *{ border-color:var(--line) !important; }
-
-        /* Поля ввода */
-        input,select,textarea{
-            background:#100d08 !important; color:var(--text) !important;
-            border:1px solid var(--line) !important; border-radius:.6rem;
-        }
-        input::placeholder,textarea::placeholder{ color:var(--faint) !important; }
-        input:focus,select,textarea:focus{ outline:none; }
-        input:focus,textarea:focus,select:focus{
-            border-color:var(--gold) !important;
-            box-shadow:0 0 0 3px rgba(200,168,90,.16) !important;
-        }
-        select option{ background:#100d08; color:var(--text); }
-
-        /* Кнопки — золото и багрянец */
-        button.bg-violet-600,button.bg-indigo-600,button.bg-slate-900,
-        button.bg-amber-500,button.bg-slate-800{
-            background:linear-gradient(180deg,var(--gold),var(--gold-dim)) !important;
-            color:#1b1402 !important; border:1px solid var(--gold-bright) !important;
-            box-shadow:0 8px 24px -10px rgba(200,168,90,.6) !important;
-            text-shadow:none;
-        }
-        button.bg-violet-600:hover,button.bg-indigo-600:hover,button.bg-slate-900:hover,
-        button.bg-amber-500:hover,button.bg-slate-800:hover{
-            filter:brightness(1.12);
-        }
-        button.bg-slate-100{
-            background:#1c1810 !important; color:var(--muted) !important;
-            border:1px solid var(--line) !important;
-        }
-        .text-violet-600,.text-violet-500,.text-indigo-600,.text-indigo-500{ color:var(--gold) !important; }
-        .text-rose-500,.text-rose-400,.hover\:text-rose-500:hover,.hover\:text-rose-400:hover{ color:var(--crimson-bright) !important; }
-
-        /* Логотип-блок в сайдбаре */
-        aside .from-violet-600,aside .bg-gradient-to-br{
-            background:radial-gradient(circle at 30% 30%,var(--gold-bright),var(--gold-dim)) !important;
-            box-shadow:0 0 22px rgba(200,168,90,.45) !important;
-        }
-        .sidebar-item{ transition:all .2s ease; color:var(--muted); border-radius:.55rem;
-            letter-spacing:.05em; font-size:12px !important; }
-        .sidebar-item:hover,.sidebar-item.active{
-            background:linear-gradient(90deg,rgba(200,168,90,.16),transparent) !important;
-            color:var(--gold-bright) !important;
-            box-shadow:inset 2px 0 0 var(--gold);
-        }
-        .sidebar-item.active i,.sidebar-item:hover i{ color:var(--gold) !important; }
-
-        /* Шапка — золотая руническая линия снизу */
-        header{ position:relative; }
-        header::after{
-            content:""; position:absolute; left:0; right:0; bottom:0; height:1px;
-            background:linear-gradient(90deg,transparent,var(--gold),transparent);
-            opacity:.6;
-        }
-
-        /* Цветные бейджи статусов/цен — приглушаем под тему */
-        [class*="bg-emerald-100"]{ background:rgba(58,120,72,.22) !important; color:#9fd8ad !important; border-color:rgba(120,200,140,.3) !important; }
-        td [class*="bg-slate-100"], .bg-slate-100.text-slate-700{ background:#1c1810 !important; color:var(--text) !important; }
-
-        .font-mono, .font-mono *{ font-family:ui-monospace,'SFMono-Regular',Menlo,monospace !important; }
-        .view-content:not(.active){ display:none !important; }
-        .modal-active{ display:flex !important; }
-        .custom-scrollbar::-webkit-scrollbar{ width:7px; height:7px; }
-        .custom-scrollbar::-webkit-scrollbar-track{ background:transparent; }
-        .custom-scrollbar::-webkit-scrollbar-thumb{
-            background:linear-gradient(var(--gold-dim),var(--gold)); border-radius:10px;
-        }
-
-        /* Тематические пилюли статусов (классы задаются в JS) */
-        .st{ border:1px solid var(--line); border-radius:9999px;
-            font-family:'Cinzel',serif; font-weight:700; letter-spacing:.04em; }
-        .st-new{ background:rgba(120,150,210,.16); color:#9fb6e8; border-color:rgba(120,150,210,.35); }
-        .st-work{ background:rgba(200,168,90,.16); color:var(--gold-bright); border-color:var(--line-strong); }
-        .st-move{ background:rgba(120,180,200,.16); color:#9cd2df; border-color:rgba(120,180,200,.32); }
-        .st-good{ background:rgba(58,120,72,.22); color:#9fd8ad; border-color:rgba(120,200,140,.32); }
-        .st-bad{ background:rgba(142,42,42,.25); color:#e29a93; border-color:rgba(192,57,43,.4); }
-        .st-warn{ background:rgba(180,110,50,.2); color:#e3b489; border-color:rgba(200,140,70,.35); }
-        .st-dead{ background:rgba(120,30,30,.35); color:#d6736b; border-color:rgba(192,57,43,.5); }
-
-        /* Анимация появления модалок */
-        .modal-active > div{ animation:riseIn .28s ease; }
-        @keyframes riseIn{ from{ opacity:0; transform:translateY(14px) scale(.98); } to{ opacity:1; transform:none; } }
-    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/style.css">
 </head>
 <body class="bg-[#f8fafc] flex h-screen overflow-hidden text-slate-700">
 
@@ -514,40 +380,40 @@
         </div>
     </div>
 
-    <div id="confirmModal" class="fixed inset-0 bg-black/75 backdrop-blur-sm z-[110] hidden items-center justify-center p-6">
-        <div class="w-full max-w-md rounded-2xl overflow-hidden text-center" style="background:var(--panel);border:1px solid var(--line-strong);box-shadow:0 0 0 1px #000,0 30px 70px -20px #000,0 0 60px -10px rgba(142,42,42,.4)">
-            <div class="pt-8 pb-2">
-                <div class="mx-auto w-14 h-14 rounded-full flex items-center justify-center" style="background:radial-gradient(circle at 30% 30%,#c0392b,#5e1414);box-shadow:0 0 26px rgba(192,57,43,.5)">
-                    <i class="fa-solid fa-fire-flame-curved text-white text-xl"></i>
+    <div id="confirmModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[110] hidden items-center justify-center p-6">
+        <div class="bg-white w-full max-w-md rounded-[2rem] shadow-2xl overflow-hidden text-center">
+            <div class="pt-9 pb-2">
+                <div class="mx-auto w-14 h-14 rounded-2xl bg-rose-100 flex items-center justify-center">
+                    <i class="fa-solid fa-trash-can text-rose-500 text-xl"></i>
                 </div>
             </div>
-            <div class="px-10 py-5">
-                <h3 class="text-xl mb-2">У вогонь Ородруїну?</h3>
-                <p class="text-sm" style="color:var(--muted)">Замовлення буде позначено як видалене. Його можна відновити у розділі «Видалені».</p>
+            <div class="px-10 py-4">
+                <h3 class="text-xl font-black text-slate-800 mb-2">Видалити замовлення?</h3>
+                <p class="text-sm text-slate-400 font-medium">Замовлення буде позначено як видалене. Його можна відновити у розділі «Видалені».</p>
             </div>
-            <div class="flex gap-3 px-10 pb-9 pt-2">
-                <button type="button" onclick="closeModal('confirmModal')" class="flex-1 py-3 rounded-xl font-bold text-sm bg-slate-100">Відміна</button>
-                <button type="button" id="confirmDeleteBtn" class="flex-1 py-3 rounded-xl font-black text-sm uppercase tracking-widest text-white" style="background:linear-gradient(180deg,#c0392b,#7a1f1f);border:1px solid #e07a6e">Видалити</button>
+            <div class="flex gap-3 px-10 pb-9 pt-3">
+                <button type="button" onclick="closeModal('confirmModal')" class="flex-1 py-3 rounded-xl font-bold text-sm text-slate-500 bg-slate-100 hover:bg-slate-200 transition-all">Відміна</button>
+                <button type="button" id="confirmDeleteBtn" class="flex-1 py-3 rounded-xl font-black text-sm uppercase tracking-widest text-white bg-rose-600 hover:bg-rose-700 transition-all">Видалити</button>
             </div>
         </div>
     </div>
 
     <script>
         const statusConfig = {
-            'Новый': 'st-new',
-            'В работе': 'st-work',
-            'Доставка': 'st-move',
-            'В пути': 'st-move',
-            'На почте': 'st-move',
-            'Продажа': 'st-good',
-            'Отказ': 'st-bad',
-            'Возврат': 'st-bad',
-            'Ошибка в ТТН': 'st-warn',
-            'Отбой': 'st-warn',
-            'Не дозвон': 'st-warn',
-            'Не дозвон2': 'st-warn',
-            'Переадресация': 'st-move',
-            '✗✗✗': 'st-dead'
+            'Новый': 'bg-blue-50 text-blue-600 ring-blue-100',
+            'В работе': 'bg-amber-50 text-amber-600 ring-amber-100',
+            'Доставка': 'bg-indigo-50 text-indigo-600 ring-indigo-100',
+            'В пути': 'bg-violet-50 text-violet-600 ring-violet-100',
+            'На почте': 'bg-cyan-50 text-cyan-600 ring-cyan-100',
+            'Продажа': 'bg-emerald-50 text-emerald-600 ring-emerald-100',
+            'Отказ': 'bg-rose-50 text-rose-600 ring-rose-100',
+            'Возврат': 'bg-rose-50 text-rose-500 ring-rose-100',
+            'Ошибка в ТТН': 'bg-orange-50 text-orange-600 ring-orange-100',
+            'Отбой': 'bg-orange-50 text-orange-700 ring-orange-200',
+            'Не дозвон': 'bg-amber-50 text-amber-700 ring-amber-200',
+            'Не дозвон2': 'bg-amber-100 text-amber-800 ring-amber-200',
+            'Переадресация': 'bg-sky-50 text-sky-600 ring-sky-100',
+            '✗✗✗': 'bg-slate-100 text-slate-400 ring-slate-200'
         };
         const STATUSES = Object.keys(statusConfig);
         const DEFAULT_STATUS = 'Новый';
@@ -639,7 +505,7 @@
                         </td>
                         <td class="px-4 py-5">
                             <select onchange="updateOrder(${o.id}, 'status', this.value)"
-                                class="st text-[10px] px-3 py-1.5 cursor-pointer ${statusConfig[o.status] || 'st-new'}">
+                                class="text-[10px] font-black px-3 py-1.5 rounded-full ring-1 ring-inset cursor-pointer ${statusConfig[o.status] || 'bg-slate-100'}">
                                 ${STATUSES.map(s => `<option value="${s}" ${o.status === s ? 'selected' : ''}>${s.toUpperCase()}</option>`).join('')}
                             </select>
                         </td>

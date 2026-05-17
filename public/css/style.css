@@ -1,22 +1,26 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
-body { font-family: 'Inter', sans-serif; letter-spacing: -0.01em; }
+/* Базовые стили CRM. Подключается в index.html и login.html. */
 
-.sidebar-item { color: #94a3b8; transition: all 0.2s; }
-.sidebar-item:hover { background: rgba(255,255,255,0.05); color: white; }
-.sidebar-item.active { 
-    background: rgba(139, 92, 246, 0.15); 
-    border-left: 3px solid #8b5cf6; 
-    color: white; 
+body { font-family: 'Inter', system-ui, -apple-system, sans-serif; letter-spacing: -0.01em; }
+h1, h2, h3, h4, .heading-font {
+    font-family: 'Plus Jakarta Sans', 'Inter', sans-serif;
+    letter-spacing: -0.02em;
 }
-.sidebar-item.active i { color: #a78bfa; }
 
-.custom-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }
+/* Боковое меню (тёмный сайдбар, светлый контент) */
+.sidebar-item { transition: all 0.2s ease; color: #94a3b8; }
+.sidebar-item:hover, .sidebar-item.active { background-color: rgba(255,255,255,0.06); color: #fff; }
+.sidebar-item.active i { color: #8b5cf6; }
+
+/* Переключение вкладок (надёжно перекрывает Tailwind .flex) */
+.view-content:not(.active) { display: none !important; }
+.view-content.active { animation: fadeIn 0.25s ease; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+/* Модальные окна */
+.modal-active { display: flex !important; }
+.modal-active > div { animation: fadeIn 0.2s ease-out; }
+
+/* Скроллбары */
+.custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
 .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
-.sidebar-scrollbar::-webkit-scrollbar { width: 3px; }
-.sidebar-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
-
-.view-content { display: none; }
-.view-content.active { display: block; animation: fadeIn 0.3s ease; }
-@keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
-
-.modal-active { display: flex !important; animation: fadeIn 0.2s ease-out; }
