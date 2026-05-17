@@ -86,16 +86,20 @@ async function updateDatabaseSchema() {
         await pool.query(`
             CREATE TABLE IF NOT EXISTS order_items (
                 id SERIAL PRIMARY KEY,
-                order_id INTEGER REFERENCES orders(id) ON DELETE CASCADE,
-                article VARCHAR(255) DEFAULT '',
-                name VARCHAR(255) DEFAULT '',
-                supplier_id INTEGER REFERENCES suppliers(id) ON DELETE SET NULL,
-                supplier_name VARCHAR(255) DEFAULT '',
-                size VARCHAR(50) DEFAULT '',
-                color VARCHAR(50) DEFAULT '',
-                price NUMERIC DEFAULT 0,
-                quantity INTEGER NOT NULL DEFAULT 1
+                order_id INTEGER REFERENCES orders(id) ON DELETE CASCADE
             );
+        `);
+
+        await pool.query(`
+            ALTER TABLE order_items
+            ADD COLUMN IF NOT EXISTS article VARCHAR(255) DEFAULT '',
+            ADD COLUMN IF NOT EXISTS name VARCHAR(255) DEFAULT '',
+            ADD COLUMN IF NOT EXISTS supplier_id INTEGER REFERENCES suppliers(id) ON DELETE SET NULL,
+            ADD COLUMN IF NOT EXISTS supplier_name VARCHAR(255) DEFAULT '',
+            ADD COLUMN IF NOT EXISTS size VARCHAR(50) DEFAULT '',
+            ADD COLUMN IF NOT EXISTS color VARCHAR(50) DEFAULT '',
+            ADD COLUMN IF NOT EXISTS price NUMERIC DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS quantity INTEGER NOT NULL DEFAULT 1;
         `);
 
         console.log("База даних успішно верифікована.");
