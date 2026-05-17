@@ -39,7 +39,26 @@ CREATE TABLE IF NOT EXISTS orders (
     cost NUMERIC DEFAULT 0,
     source VARCHAR(100) DEFAULT 'Вручну',
     comment TEXT DEFAULT '',
+    delivery_service VARCHAR(50) DEFAULT 'НП',
+    city VARCHAR(255) DEFAULT '',
+    branch TEXT DEFAULT '',
+    payment_type VARCHAR(50) DEFAULT 'на счет',
+    delivery_payment VARCHAR(50) DEFAULT 'Отримувач',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Позиции заказа (несколько товаров в одном заказе)
+CREATE TABLE IF NOT EXISTS order_items (
+    id SERIAL PRIMARY KEY,
+    order_id INTEGER REFERENCES orders(id) ON DELETE CASCADE,
+    article VARCHAR(255) DEFAULT '',
+    name VARCHAR(255) DEFAULT '',
+    supplier_id INTEGER REFERENCES suppliers(id) ON DELETE SET NULL,
+    supplier_name VARCHAR(255) DEFAULT '',
+    size VARCHAR(50) DEFAULT '',
+    color VARCHAR(50) DEFAULT '',
+    price NUMERIC DEFAULT 0,
+    quantity INTEGER NOT NULL DEFAULT 1
 );
 
 -- Наличие на складе (остатки по цвету/размеру)
