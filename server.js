@@ -144,8 +144,8 @@ app.post('/api/login', (req, res) => {
 app.post('/api/logout', (req, res) => { req.session.destroy(); res.json({ success: true }); });
 
 // --- API ЗАМОВЛЕНЬ ---
-const ARCHIVE_STATUSES = ['Виконано', 'Відмова'];
-const DELETED_STATUS = 'Видалено';
+const ARCHIVE_STATUSES = ['Продажа', 'Отказ'];
+const DELETED_STATUS = '✗✗✗';
 
 app.get('/api/orders', checkAuth, async (req, res) => {
   const { view, search, status } = req.query;
