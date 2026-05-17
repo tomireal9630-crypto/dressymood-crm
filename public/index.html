@@ -196,8 +196,77 @@
             </div>
 
             <div id="view-dashboard" class="view-content h-full flex flex-col items-center justify-center text-center"><i class="fa-solid fa-chart-pie text-6xl text-slate-200 mb-6"></i><h3 class="text-xl font-bold text-slate-400">Розділ "Дашборд"</h3></div>
-            <div id="view-archive" class="view-content h-full flex flex-col items-center justify-center text-center"><i class="fa-solid fa-box-archive text-6xl text-slate-200 mb-6"></i><h3 class="text-xl font-bold text-slate-400">Розділ "Архів"</h3></div>
-            <div id="view-deleted" class="view-content h-full flex flex-col items-center justify-center text-center"><i class="fa-solid fa-trash-can text-6xl text-slate-200 mb-6"></i><h3 class="text-xl font-bold text-slate-400">Розділ "Видалені"</h3></div>
+            <div id="view-archive" class="view-content h-full">
+                <div class="flex justify-between items-start mb-6 gap-4 flex-wrap">
+                    <div>
+                        <h2 class="text-3xl font-black text-slate-800 uppercase italic tracking-tighter">Архів</h2>
+                        <p class="text-slate-400 font-medium text-sm">Завершені угоди (продаж та відмова)</p>
+                    </div>
+                    <div class="flex items-end gap-2 flex-wrap bg-white border border-slate-100 rounded-2xl p-3 shadow-sm">
+                        <div>
+                            <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">З дати</label>
+                            <input type="date" id="archiveDateFrom" onchange="loadOrders()" class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
+                        </div>
+                        <div>
+                            <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">По дату</label>
+                            <input type="date" id="archiveDateTo" onchange="loadOrders()" class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
+                        </div>
+                        <button onclick="setArchiveRange('today')" class="px-3 py-2 rounded-lg text-xs font-bold bg-slate-100 text-slate-600 hover:bg-slate-200 transition-all">Сьогодні</button>
+                        <button onclick="setArchiveRange('month')" class="px-3 py-2 rounded-lg text-xs font-bold bg-slate-100 text-slate-600 hover:bg-slate-200 transition-all">Цей місяць</button>
+                        <button onclick="setArchiveRange('7d')" class="px-3 py-2 rounded-lg text-xs font-bold bg-slate-100 text-slate-600 hover:bg-slate-200 transition-all">7 днів</button>
+                        <button onclick="setArchiveRange('clear')" class="px-3 py-2 rounded-lg text-xs font-bold bg-rose-50 text-rose-500 hover:bg-rose-100 transition-all">Скинути</button>
+                    </div>
+                </div>
+                <div class="bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/40 border border-slate-100 overflow-x-auto">
+                    <table class="w-full text-left min-w-[1100px]">
+                        <thead>
+                            <tr class="bg-slate-50/50 border-b border-slate-100">
+                                <th class="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">ID / Дата</th>
+                                <th class="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Статус</th>
+                                <th class="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Товар / Арт</th>
+                                <th class="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Хар-ки</th>
+                                <th class="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Ціна</th>
+                                <th class="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Клієнт / Тел</th>
+                                <th class="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Місто</th>
+                                <th class="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Відділення</th>
+                                <th class="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Оплата</th>
+                                <th class="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">ТТН</th>
+                                <th class="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Пост.</th>
+                                <th class="px-6 py-5"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="archiveTable" class="divide-y divide-slate-50"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div id="view-deleted" class="view-content h-full">
+                <div class="mb-6">
+                    <h2 class="text-3xl font-black text-slate-800 uppercase italic tracking-tighter">Видалені</h2>
+                    <p class="text-slate-400 font-medium text-sm">Кошик — можна відновити замовлення</p>
+                </div>
+                <div class="bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/40 border border-slate-100 overflow-x-auto">
+                    <table class="w-full text-left min-w-[1100px]">
+                        <thead>
+                            <tr class="bg-slate-50/50 border-b border-slate-100">
+                                <th class="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">ID / Дата</th>
+                                <th class="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Статус</th>
+                                <th class="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Товар / Арт</th>
+                                <th class="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Хар-ки</th>
+                                <th class="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Ціна</th>
+                                <th class="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Клієнт / Тел</th>
+                                <th class="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Місто</th>
+                                <th class="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Відділення</th>
+                                <th class="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Оплата</th>
+                                <th class="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">ТТН</th>
+                                <th class="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Пост.</th>
+                                <th class="px-6 py-5"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="deletedTable" class="divide-y divide-slate-50"></tbody>
+                    </table>
+                </div>
+            </div>
             <div id="view-stock" class="view-content h-full">
                 <div class="flex justify-between items-center mb-8">
                     <div>
@@ -470,14 +539,42 @@
             return `${p(d.getDate())}.${p(d.getMonth()+1)} ${p(d.getHours())}:${p(d.getMinutes())}`;
         }
 
+        const TBODY_BY_VIEW = { orders: 'ordersTable', archive: 'archiveTable', deleted: 'deletedTable' };
+
+        function setArchiveRange(preset) {
+            const from = document.getElementById('archiveDateFrom');
+            const to = document.getElementById('archiveDateTo');
+            const iso = d => d.toISOString().slice(0, 10);
+            const now = new Date();
+            if (preset === 'clear') { from.value = ''; to.value = ''; }
+            else if (preset === 'today') { from.value = iso(now); to.value = iso(now); }
+            else if (preset === '7d') {
+                const s = new Date(now); s.setDate(s.getDate() - 6);
+                from.value = iso(s); to.value = iso(now);
+            } else if (preset === 'month') {
+                from.value = iso(new Date(now.getFullYear(), now.getMonth(), 1));
+                to.value = iso(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+            }
+            loadOrders();
+        }
+
         async function loadOrders() {
             try {
                 fillStatusFilter();
+                const view = ['orders', 'archive', 'deleted'].includes(currentView) ? currentView : 'orders';
+                const table = document.getElementById(TBODY_BY_VIEW[view]);
+                if (!table) return;
                 const search = document.getElementById('searchInput').value;
-                const status = (document.getElementById('statusFilter') || {}).value || '';
-                const res = await fetch(`/api/orders?view=${currentView}&search=${encodeURIComponent(search)}&status=${encodeURIComponent(status)}`);
+                const status = view === 'orders' ? ((document.getElementById('statusFilter') || {}).value || '') : '';
+                const params = new URLSearchParams({ view, search, status });
+                if (view === 'archive') {
+                    const f = (document.getElementById('archiveDateFrom') || {}).value || '';
+                    const t = (document.getElementById('archiveDateTo') || {}).value || '';
+                    if (f) params.set('dateFrom', f);
+                    if (t) params.set('dateTo', t);
+                }
+                const res = await fetch('/api/orders?' + params.toString());
                 const data = await res.json();
-                const table = document.getElementById('ordersTable');
                 if (!Array.isArray(data) || !data.length) {
                     table.innerHTML = `<tr><td colspan="12" class="p-8 text-center text-slate-400 font-medium">Пусто</td></tr>`;
                     return;

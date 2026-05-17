@@ -148,7 +148,7 @@ const ARCHIVE_STATUSES = ['Продажа', 'Отказ'];
 const DELETED_STATUS = '✗✗✗';
 
 app.get('/api/orders', checkAuth, async (req, res) => {
-  const { view, search, status } = req.query;
+  const { view, search, status, dateFrom, dateTo } = req.query;
   try {
     const params = [];
     const conditions = [];
@@ -175,6 +175,15 @@ app.get('/api/orders', checkAuth, async (req, res) => {
       conditions.push(`(c.full_name ILIKE ${p} OR c.phone ILIKE ${p} OR o.ttn ILIKE ${p}
         OR EXISTS (SELECT 1 FROM order_items oi2 WHERE oi2.order_id = o.id
                    AND (oi2.article ILIKE ${p} OR oi2.name ILIKE ${p})))`);
+    }
+
+    if (dateFrom) {
+      params.push(dateFrom);
+      conditions.push(`o.created_at >= $${params.length}::date`);
+    }
+    if (dateTo) {
+      params.push(dateTo);
+      conditions.push(`o.created_at < ($${params.length}::date + interval '1 day')`);
     }
 
     const query = `
