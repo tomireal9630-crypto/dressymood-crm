@@ -132,20 +132,31 @@
                         <h2 class="text-3xl font-black text-slate-800 uppercase italic tracking-tighter">Замовлення</h2>
                         <p class="text-slate-400 font-medium text-sm">Управління поточними угодами</p>
                     </div>
-                    <button onclick="openModal('orderModal')" class="bg-violet-600 text-white px-6 py-3 rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-violet-700 transition-all shadow-lg shadow-violet-200">
-                        <i class="fa-solid fa-plus mr-2"></i> Нове замовлення
-                    </button>
+                    <div class="flex items-center gap-3">
+                        <select id="statusFilter" onchange="loadOrders()" class="px-4 py-3 bg-white border border-slate-200 rounded-2xl outline-none text-xs font-bold text-slate-600">
+                            <option value="">Всі статуси</option>
+                        </select>
+                        <button onclick="openOrderModal()" class="bg-violet-600 text-white px-6 py-3 rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-violet-700 transition-all shadow-lg shadow-violet-200">
+                            <i class="fa-solid fa-plus mr-2"></i> Нове замовлення
+                        </button>
+                    </div>
                 </div>
-                <div class="bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/40 border border-slate-100 overflow-hidden">
-                    <table class="w-full text-left">
+                <div class="bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/40 border border-slate-100 overflow-x-auto">
+                    <table class="w-full text-left min-w-[1100px]">
                         <thead>
                             <tr class="bg-slate-50/50 border-b border-slate-100">
-                                <th class="px-8 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Клієнт</th>
-                                <th class="px-6 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Товар / Фінанси</th>
-                                <th class="px-6 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">ТТН Нова Пошта</th>
-                                <th class="px-6 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Статус</th>
-                                <th class="px-6 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Коментар</th>
-                                <th class="px-8 py-6"></th>
+                                <th class="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">ID / Дата</th>
+                                <th class="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Статус</th>
+                                <th class="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Товар / Арт</th>
+                                <th class="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Хар-ки</th>
+                                <th class="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Ціна</th>
+                                <th class="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Клієнт / Тел</th>
+                                <th class="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Місто</th>
+                                <th class="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Відділення</th>
+                                <th class="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Оплата</th>
+                                <th class="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">ТТН</th>
+                                <th class="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Пост.</th>
+                                <th class="px-6 py-5"></th>
                             </tr>
                         </thead>
                         <tbody id="ordersTable" class="divide-y divide-slate-50"></tbody>
@@ -224,54 +235,83 @@
     </main>
 
     <div id="orderModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] hidden items-center justify-center p-6">
-        <div class="bg-white w-full max-w-2xl rounded-[2.5rem] shadow-2xl overflow-hidden">
-            <div class="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+        <div class="bg-white w-full max-w-3xl rounded-[2.5rem] shadow-2xl flex flex-col max-h-[90vh]">
+            <div class="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 shrink-0">
                 <h3 class="text-xl font-black text-slate-800 uppercase italic">Нове замовлення</h3>
-                <button onclick="closeModal('orderModal')" class="text-slate-400 hover:text-rose-500 transition-colors"><i class="fa-solid fa-xmark text-xl"></i></button>
+                <button type="button" onclick="closeModal('orderModal')" class="text-slate-400 hover:text-rose-500 transition-colors"><i class="fa-solid fa-xmark text-xl"></i></button>
             </div>
-            <form id="addOrderForm" class="p-10 grid grid-cols-2 gap-6">
-                <div class="col-span-2">
-                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">ПІБ Клієнта</label>
-                    <input type="text" name="fullName" required class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-bold text-sm">
-                </div>
-                <div>
-                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Телефон</label>
-                    <input type="text" name="phone" required class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-bold text-sm">
-                </div>
-                <div>
-                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Джерело</label>
-                    <select name="source" class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-bold text-sm">
-                        <option value="Instagram">Instagram</option>
-                        <option value="TikTok">TikTok</option>
-                        <option value="Сайт">Сайт</option>
-                        <option value="Вручну">Вручну</option>
-                    </select>
-                </div>
-                <div class="col-span-2 border-t border-slate-50 pt-4 mt-2"></div>
-                <div>
-                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Артикул товару</label>
-                    <input type="text" name="article" required class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-bold text-sm">
-                </div>
-                <div class="grid grid-cols-2 gap-4">
+            <form id="addOrderForm" class="p-10 overflow-y-auto custom-scrollbar space-y-6">
+                <div class="grid grid-cols-2 gap-6">
                     <div>
-                        <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Колір</label>
-                        <input type="text" name="color" class="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-bold text-sm">
+                        <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">ПІБ Клієнта</label>
+                        <input type="text" name="fullName" required placeholder="Іванов Іван" class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-bold text-sm">
                     </div>
                     <div>
-                        <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Розм.</label>
-                        <input type="text" name="size" class="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-bold text-sm">
+                        <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Телефон</label>
+                        <input type="text" name="phone" required placeholder="+38 (0__) ___-__-__" class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-bold text-sm">
                     </div>
                 </div>
                 <div>
-                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Ціна (грн)</label>
-                    <input type="number" name="price" required class="w-full px-5 py-3 bg-emerald-50/50 border border-emerald-100 text-emerald-600 font-black outline-none">
+                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Коментар</label>
+                    <textarea name="comment" rows="2" placeholder="Замітки по клієнту або замовленню..." class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-medium text-sm"></textarea>
                 </div>
-                <div>
-                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Собівартість (грн)</label>
-                    <input type="number" name="cost" required class="w-full px-5 py-3 bg-rose-50/50 border border-rose-100 text-rose-600 font-black outline-none">
+
+                <div class="bg-slate-50/60 border border-slate-100 rounded-2xl p-6">
+                    <div class="flex justify-between items-center mb-4">
+                        <h4 class="text-sm font-black text-slate-800">Товари в замовленні</h4>
+                        <button type="button" onclick="addOrderItem()" class="bg-violet-600 text-white px-4 py-2 rounded-xl font-bold text-[11px] hover:bg-violet-700 transition-all">
+                            <i class="fa-solid fa-plus mr-1"></i> Додати товар
+                        </button>
+                    </div>
+                    <div id="orderItems" class="space-y-4"></div>
                 </div>
-                <div class="col-span-2">
-                    <button type="submit" class="w-full bg-slate-900 text-white py-4 rounded-xl font-black text-sm uppercase tracking-widest hover:bg-black transition-all">Зберегти</button>
+
+                <div class="grid grid-cols-2 gap-6">
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Служба доставки</label>
+                        <select name="delivery_service" class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-bold text-sm">
+                            <option value="НП">НП</option>
+                            <option value="Укрпошта">Укрпошта</option>
+                            <option value="Кур'єр">Кур'єр</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Місто</label>
+                        <input type="text" name="city" placeholder="Київ" class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-bold text-sm">
+                    </div>
+                    <div class="col-span-2">
+                        <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Відділення / Адреса</label>
+                        <input type="text" name="branch" placeholder="Відділення №3 або адреса" class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-bold text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Тип оплати</label>
+                        <select name="payment_type" class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-bold text-sm">
+                            <option value="на счет">на счет</option>
+                            <option value="наложка">наложка</option>
+                            <option value="передоплата">передоплата</option>
+                            <option value="повна оплата">повна оплата</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Оплата доставки</label>
+                        <select name="delivery_payment" class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-bold text-sm">
+                            <option value="Отримувач">Отримувач</option>
+                            <option value="Відправник">Відправник</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">ТТН</label>
+                        <input type="text" name="ttn" placeholder="20450000000000" class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-mono font-bold text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Статус</label>
+                        <select name="status" id="orderStatusSelect" class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-bold text-sm"></select>
+                    </div>
+                </div>
+
+                <div class="flex justify-end gap-3 pt-2">
+                    <button type="button" onclick="closeModal('orderModal')" class="px-6 py-3 rounded-xl font-bold text-sm text-slate-500 bg-slate-100 hover:bg-slate-200 transition-all">Відміна</button>
+                    <button type="submit" class="bg-violet-600 text-white px-8 py-3 rounded-xl font-black text-sm uppercase tracking-widest hover:bg-violet-700 transition-all">Створити</button>
                 </div>
             </form>
         </div>
@@ -350,12 +390,17 @@
     <script>
         const statusConfig = {
             'Новий': 'bg-blue-50 text-blue-600 ring-blue-100',
-            'В роботі': 'bg-amber-50 text-amber-600 ring-amber-100',
-            'Відправлено': 'bg-violet-50 text-violet-600 ring-violet-100',
-            'Завершено': 'bg-emerald-50 text-emerald-600 ring-emerald-100',
+            'Не дозвон': 'bg-orange-50 text-orange-600 ring-orange-100',
+            'Не дозвон2': 'bg-orange-50 text-orange-700 ring-orange-200',
+            'Поставка': 'bg-amber-50 text-amber-600 ring-amber-100',
+            'На пошті': 'bg-cyan-50 text-cyan-600 ring-cyan-100',
+            'В путі': 'bg-violet-50 text-violet-600 ring-violet-100',
+            'Викуп': 'bg-emerald-50 text-emerald-600 ring-emerald-100',
             'Відмова': 'bg-rose-50 text-rose-600 ring-rose-100',
+            'Виконано': 'bg-emerald-100 text-emerald-700 ring-emerald-200',
             'Видалено': 'bg-slate-100 text-slate-400 ring-slate-200'
         };
+        const STATUSES = Object.keys(statusConfig);
 
         let currentView = 'orders';
         let suppliersList = [];
@@ -393,59 +438,170 @@
         }
 
         // --- ЛОГІКА ЗАМОВЛЕНЬ ---
+        function fillStatusFilter() {
+            const f = document.getElementById('statusFilter');
+            if (f && f.options.length <= 1) {
+                f.innerHTML = `<option value="">Всі статуси</option>` +
+                    STATUSES.map(s => `<option value="${s}">${s}</option>`).join('');
+            }
+        }
+
+        function fmtDate(iso) {
+            if (!iso) return '';
+            const d = new Date(iso);
+            const p = n => String(n).padStart(2, '0');
+            return `${p(d.getDate())}.${p(d.getMonth()+1)} ${p(d.getHours())}:${p(d.getMinutes())}`;
+        }
+
         async function loadOrders() {
             try {
+                fillStatusFilter();
                 const search = document.getElementById('searchInput').value;
-                const res = await fetch(`/api/orders?view=${currentView}&search=${encodeURIComponent(search)}`);
+                const status = (document.getElementById('statusFilter') || {}).value || '';
+                const res = await fetch(`/api/orders?view=${currentView}&search=${encodeURIComponent(search)}&status=${encodeURIComponent(status)}`);
                 const data = await res.json();
                 const table = document.getElementById('ordersTable');
-                if(!Array.isArray(data) || !data.length) {
-                    table.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-slate-400">Пусто</td></tr>`;
+                if (!Array.isArray(data) || !data.length) {
+                    table.innerHTML = `<tr><td colspan="12" class="p-8 text-center text-slate-400 font-medium">Пусто</td></tr>`;
                     return;
                 }
-                
-                table.innerHTML = data.map(o => `
-                <tr class="hover:bg-slate-50 transition-all group">
-                    <td class="px-8 py-6">
-                        <div class="font-bold text-slate-800 text-sm">${esc(o.fullName)}</div>
-                        <div class="text-[10px] text-slate-400 font-bold uppercase mt-1"><i class="fa-solid fa-phone text-[9px]"></i> ${esc(o.phone)}</div>
-                    </td>
-                    <td class="px-6 py-6">
-                        <div class="text-[11px] font-black text-slate-800 uppercase">${esc(o.article)} <span class="text-[10px] text-slate-400 font-bold">(${esc(o.color || '-')} / ${esc(o.size || '-')})</span></div>
-                        <div class="mt-1"><span class="text-[9px] font-black bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded border border-emerald-200/50">${(Number(o.price) || 0) - (Number(o.cost) || 0)} грн</span></div>
-                    </td>
-                    <td class="px-6 py-6">
-                        <input type="text" value="${esc(o.ttn || '')}" onchange="updateOrder(${o.id}, 'ttn', this.value)" placeholder="Ввести ТТН..."
-                            class="w-full max-w-[150px] text-xs font-mono font-bold bg-slate-50 border border-slate-100 rounded-lg px-3 py-2 outline-none">
-                    </td>
-                    <td class="px-6 py-6">
-                        <select onchange="updateOrder(${o.id}, 'status', this.value)"
-                            class="text-[10px] font-black px-3 py-1.5 rounded-full ring-1 ring-inset cursor-pointer ${statusConfig[o.status] || 'bg-slate-100'}">
-                            ${Object.keys(statusConfig).map(s => `<option value="${s}" ${o.status === s ? 'selected' : ''}>${s.toUpperCase()}</option>`).join('')}
-                        </select>
-                    </td>
-                    <td class="px-6 py-6">
-                        <input type="text" value="${esc(o.comment || '')}" onchange="updateOrder(${o.id}, 'comment', this.value)" placeholder="Замітка..."
-                            class="w-full bg-transparent text-[11px] text-slate-400 border-none outline-none italic">
-                    </td>
-                    <td class="px-8 py-6 text-right">
-                        ${currentView !== 'deleted' ? 
-                            `<button onclick="updateOrder(${o.id}, 'status', 'Видалено')" class="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-rose-500 transition-all p-2 bg-slate-50 rounded-lg"><i class="fa-solid fa-trash-can"></i></button>` : 
-                            `<button onclick="updateOrder(${o.id}, 'status', 'Новий')" class="text-violet-500 text-[10px] font-black uppercase hover:underline">Відновити</button>`
-                        }
-                    </td>
-                </tr>`).join('');
+
+                table.innerHTML = data.map(o => {
+                    const items = Array.isArray(o.items) ? o.items : [];
+                    const itemsHtml = items.map(it => `
+                        <div class="text-[11px] font-black text-slate-800 uppercase">${esc(it.article || '-')}
+                            <span class="text-[10px] text-slate-400 font-bold normal-case">${esc(it.name || '')}</span>
+                            ${it.quantity > 1 ? `<span class="text-[9px] text-violet-500">×${it.quantity}</span>` : ''}
+                        </div>`).join('') || '<span class="text-slate-300 text-[11px]">—</span>';
+                    const charHtml = items.map(it =>
+                        `<div class="text-[10px] text-slate-500">${esc(it.size || '-')} / ${esc(it.color || '-')}</div>`
+                    ).join('') || '<span class="text-slate-300">—</span>';
+                    const supHtml = items.map(it =>
+                        `<div class="text-[10px] font-bold text-slate-600">${esc(it.supplier_name || '—')}</div>`
+                    ).join('') || '<span class="text-slate-300">—</span>';
+
+                    return `
+                    <tr class="hover:bg-slate-50 transition-all group align-top">
+                        <td class="px-6 py-5">
+                            <div class="font-black text-slate-800 text-sm">#${o.id}</div>
+                            <div class="text-[10px] text-slate-400 font-bold mt-0.5">${esc(fmtDate(o.createdAt))}</div>
+                        </td>
+                        <td class="px-4 py-5">
+                            <select onchange="updateOrder(${o.id}, 'status', this.value)"
+                                class="text-[10px] font-black px-3 py-1.5 rounded-full ring-1 ring-inset cursor-pointer ${statusConfig[o.status] || 'bg-slate-100'}">
+                                ${STATUSES.map(s => `<option value="${s}" ${o.status === s ? 'selected' : ''}>${s.toUpperCase()}</option>`).join('')}
+                            </select>
+                        </td>
+                        <td class="px-4 py-5">${itemsHtml}</td>
+                        <td class="px-4 py-5">${charHtml}</td>
+                        <td class="px-4 py-5">
+                            <span class="text-[11px] font-black bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded">${Number(o.total) || 0} грн</span>
+                        </td>
+                        <td class="px-4 py-5">
+                            <div class="font-bold text-slate-800 text-[12px]">${esc(o.fullName)}</div>
+                            <div class="text-[10px] text-slate-400 font-bold mt-0.5">${esc(o.phone)}</div>
+                        </td>
+                        <td class="px-4 py-5 text-[11px] text-slate-600 font-medium">${esc(o.city || '—')}</td>
+                        <td class="px-4 py-5 text-[11px] text-slate-500 max-w-[160px] truncate" title="${esc(o.branch || '')}">${esc(o.branch || '—')}</td>
+                        <td class="px-4 py-5 text-[10px] font-bold text-slate-600">${esc(o.payment_type || '—')}</td>
+                        <td class="px-4 py-5">
+                            <input type="text" value="${esc(o.ttn || '')}" onchange="updateOrder(${o.id}, 'ttn', this.value)" placeholder="ТТН..."
+                                class="w-[130px] text-[11px] font-mono font-bold bg-slate-50 border border-slate-100 rounded-lg px-2 py-1.5 outline-none">
+                        </td>
+                        <td class="px-4 py-5">${supHtml}</td>
+                        <td class="px-6 py-5 text-right">
+                            ${currentView !== 'deleted'
+                                ? `<button onclick="updateOrder(${o.id}, 'status', 'Видалено')" class="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-rose-500 transition-all p-2 bg-slate-50 rounded-lg"><i class="fa-solid fa-trash-can"></i></button>`
+                                : `<button onclick="updateOrder(${o.id}, 'status', 'Новий')" class="text-violet-500 text-[10px] font-black uppercase hover:underline">Відновити</button>`
+                            }
+                        </td>
+                    </tr>`;
+                }).join('');
             } catch (e) { console.error(e); }
+        }
+
+        function orderItemRow() {
+            const opts = `<option value="">— Постачальник —</option>` +
+                suppliersList.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('');
+            const div = document.createElement('div');
+            div.className = 'order-item bg-white border border-slate-100 rounded-xl p-4 grid grid-cols-3 gap-3 relative';
+            div.innerHTML = `
+                <button type="button" onclick="this.closest('.order-item').remove()" class="absolute -top-2 -right-2 w-6 h-6 bg-rose-500 text-white rounded-full text-xs hover:bg-rose-600">×</button>
+                <div>
+                    <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">Артикул</label>
+                    <input type="text" data-f="article" placeholder="№..." class="w-full px-3 py-2 bg-slate-50 border border-slate-100 rounded-lg outline-none text-sm font-bold">
+                </div>
+                <div>
+                    <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">Назва товару</label>
+                    <input type="text" data-f="name" placeholder="Товар" class="w-full px-3 py-2 bg-slate-50 border border-slate-100 rounded-lg outline-none text-sm font-bold">
+                </div>
+                <div>
+                    <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">Постачальник</label>
+                    <select data-f="supplier_id" class="w-full px-3 py-2 bg-slate-50 border border-slate-100 rounded-lg outline-none text-sm font-bold">${opts}</select>
+                </div>
+                <div>
+                    <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">Розмір</label>
+                    <input type="text" data-f="size" placeholder="46-48" class="w-full px-3 py-2 bg-slate-50 border border-slate-100 rounded-lg outline-none text-sm font-bold">
+                </div>
+                <div>
+                    <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">Колір</label>
+                    <input type="text" data-f="color" placeholder="Чорний" class="w-full px-3 py-2 bg-slate-50 border border-slate-100 rounded-lg outline-none text-sm font-bold">
+                </div>
+                <div>
+                    <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">Ціна</label>
+                    <input type="number" data-f="price" value="0" min="0" class="w-full px-3 py-2 bg-slate-50 border border-slate-100 rounded-lg outline-none text-sm font-black">
+                </div>`;
+            return div;
+        }
+
+        function addOrderItem() {
+            document.getElementById('orderItems').appendChild(orderItemRow());
+        }
+
+        async function openOrderModal() {
+            try {
+                const r = await fetch('/api/warehouse/suppliers');
+                const d = await r.json();
+                suppliersList = Array.isArray(d) ? d : [];
+            } catch (e) { suppliersList = []; }
+            const form = document.getElementById('addOrderForm');
+            form.reset();
+            document.getElementById('orderStatusSelect').innerHTML =
+                STATUSES.map(s => `<option value="${s}" ${s === 'Новий' ? 'selected' : ''}>${s}</option>`).join('');
+            const box = document.getElementById('orderItems');
+            box.innerHTML = '';
+            box.appendChild(orderItemRow());
+            openModal('orderModal');
         }
 
         document.getElementById('addOrderForm').onsubmit = async (e) => {
             e.preventDefault();
-            const data = Object.fromEntries(new FormData(e.target));
+            const fd = new FormData(e.target);
+            const items = [...document.querySelectorAll('#orderItems .order-item')].map(row => {
+                const get = f => { const el = row.querySelector(`[data-f="${f}"]`); return el ? el.value : ''; };
+                return {
+                    article: get('article'), name: get('name'),
+                    supplier_id: get('supplier_id') || null,
+                    size: get('size'), color: get('color'),
+                    price: get('price'), quantity: 1
+                };
+            }).filter(i => i.article || i.name);
+
+            if (!items.length) { alert('Додайте хоча б один товар'); return; }
+
+            const payload = {
+                fullName: fd.get('fullName'), phone: fd.get('phone'),
+                comment: fd.get('comment'), source: 'Вручну', items,
+                delivery_service: fd.get('delivery_service'), city: fd.get('city'),
+                branch: fd.get('branch'), payment_type: fd.get('payment_type'),
+                delivery_payment: fd.get('delivery_payment'),
+                ttn: fd.get('ttn'), status: fd.get('status')
+            };
             try {
-                const res = await fetch('/api/orders/manual', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+                const res = await fetch('/api/orders/manual', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
                 const result = await res.json();
                 if (!res.ok) throw new Error(result.error || 'Помилка сервера');
-                closeModal('orderModal'); e.target.reset(); loadOrders();
+                closeModal('orderModal'); loadOrders();
             } catch (err) { alert('Помилка: ' + err.message); }
         };
 

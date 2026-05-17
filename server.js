@@ -40,7 +40,12 @@ async function updateDatabaseSchema() {
             ADD COLUMN IF NOT EXISTS price NUMERIC DEFAULT 0,
             ADD COLUMN IF NOT EXISTS cost NUMERIC DEFAULT 0,
             ADD COLUMN IF NOT EXISTS source VARCHAR(100) DEFAULT 'Вручну',
-            ADD COLUMN IF NOT EXISTS comment TEXT DEFAULT '';
+            ADD COLUMN IF NOT EXISTS comment TEXT DEFAULT '',
+            ADD COLUMN IF NOT EXISTS delivery_service VARCHAR(50) DEFAULT 'НП',
+            ADD COLUMN IF NOT EXISTS city VARCHAR(255) DEFAULT '',
+            ADD COLUMN IF NOT EXISTS branch TEXT DEFAULT '',
+            ADD COLUMN IF NOT EXISTS payment_type VARCHAR(50) DEFAULT 'на счет',
+            ADD COLUMN IF NOT EXISTS delivery_payment VARCHAR(50) DEFAULT 'Отримувач';
         `);
         
         await pool.query(`
@@ -75,6 +80,21 @@ async function updateDatabaseSchema() {
                 color VARCHAR(100) NOT NULL DEFAULT '',
                 size VARCHAR(50) NOT NULL DEFAULT '',
                 quantity INTEGER NOT NULL DEFAULT 0
+            );
+        `);
+
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS order_items (
+                id SERIAL PRIMARY KEY,
+                order_id INTEGER REFERENCES orders(id) ON DELETE CASCADE,
+                article VARCHAR(255) DEFAULT '',
+                name VARCHAR(255) DEFAULT '',
+                supplier_id INTEGER REFERENCES suppliers(id) ON DELETE SET NULL,
+                supplier_name VARCHAR(255) DEFAULT '',
+                size VARCHAR(50) DEFAULT '',
+                color VARCHAR(50) DEFAULT '',
+                price NUMERIC DEFAULT 0,
+                quantity INTEGER NOT NULL DEFAULT 1
             );
         `);
 
@@ -120,29 +140,57 @@ app.post('/api/login', (req, res) => {
 app.post('/api/logout', (req, res) => { req.session.destroy(); res.json({ success: true }); });
 
 // --- API ЗАМОВЛЕНЬ ---
+const ARCHIVE_STATUSES = ['Виконано', 'Відмова'];
+const DELETED_STATUS = 'Видалено';
+
 app.get('/api/orders', checkAuth, async (req, res) => {
-  const { view, search } = req.query;
+  const { view, search, status } = req.query;
   try {
-    let query = `
-      SELECT o.id, c.full_name as "fullName", c.phone, o.article, o.size, o.color, 
-             o.status, o.ttn, o.price, o.cost, o.comment, o.source, o.created_at as "createdAt"
-      FROM orders o
-      JOIN customers c ON o.customer_id = c.id
-    `;
     const params = [];
     const conditions = [];
 
-    if (view === 'archive') conditions.push("o.status IN ('Завершено', 'Відмова')");
-    else if (view === 'deleted') conditions.push("o.status = 'Видалено'");
-    else conditions.push("o.status NOT IN ('Завершено', 'Відмова', 'Видалено')");
+    if (view === 'archive') {
+      params.push(ARCHIVE_STATUSES);
+      conditions.push(`o.status = ANY($${params.length})`);
+    } else if (view === 'deleted') {
+      params.push(DELETED_STATUS);
+      conditions.push(`o.status = $${params.length}`);
+    } else {
+      params.push([...ARCHIVE_STATUSES, DELETED_STATUS]);
+      conditions.push(`o.status <> ALL($${params.length})`);
+    }
+
+    if (status) {
+      params.push(status);
+      conditions.push(`o.status = $${params.length}`);
+    }
 
     if (search) {
       params.push(`%${search}%`);
-      conditions.push(`(c.full_name ILIKE $1 OR c.phone ILIKE $1 OR o.article ILIKE $1)`);
+      const p = `$${params.length}`;
+      conditions.push(`(c.full_name ILIKE ${p} OR c.phone ILIKE ${p} OR o.ttn ILIKE ${p}
+        OR EXISTS (SELECT 1 FROM order_items oi2 WHERE oi2.order_id = o.id
+                   AND (oi2.article ILIKE ${p} OR oi2.name ILIKE ${p})))`);
     }
 
-    if (conditions.length > 0) query += " WHERE " + conditions.join(" AND ");
-    query += ` ORDER BY o.created_at DESC`;
+    const query = `
+      SELECT o.id, c.full_name AS "fullName", c.phone,
+             o.status, o.ttn, o.comment, o.source,
+             o.delivery_service, o.city, o.branch, o.payment_type, o.delivery_payment,
+             o.created_at AS "createdAt",
+             COALESCE(json_agg(json_build_object(
+               'id', oi.id, 'article', oi.article, 'name', oi.name,
+               'supplier_name', oi.supplier_name, 'size', oi.size,
+               'color', oi.color, 'price', oi.price, 'quantity', oi.quantity
+             ) ORDER BY oi.id) FILTER (WHERE oi.id IS NOT NULL), '[]') AS items,
+             COALESCE(SUM(oi.price * oi.quantity), 0) AS total
+      FROM orders o
+      JOIN customers c ON o.customer_id = c.id
+      LEFT JOIN order_items oi ON oi.order_id = o.id
+      ${conditions.length ? 'WHERE ' + conditions.join(' AND ') : ''}
+      GROUP BY o.id, c.full_name, c.phone
+      ORDER BY o.created_at DESC
+    `;
 
     const result = await pool.query(query, params);
     res.json(result.rows);
@@ -150,26 +198,67 @@ app.get('/api/orders', checkAuth, async (req, res) => {
 });
 
 app.post('/api/orders/manual', checkAuth, async (req, res) => {
-    const { fullName, phone, article, size, color, price, cost, source } = req.body;
-    try {
-        let custResult = await pool.query('SELECT id FROM customers WHERE phone = $1', [phone]);
-        let customerId;
-        if (custResult.rows.length > 0) {
-            customerId = custResult.rows[0].id;
-            await pool.query('UPDATE customers SET full_name = $1 WHERE id = $2', [fullName, customerId]);
-        } else {
-            const newCust = await pool.query('INSERT INTO customers (full_name, phone) VALUES ($1, $2) RETURNING id', [fullName, phone]);
-            customerId = newCust.rows[0].id;
-        }
-        const order = await pool.query(
-            'INSERT INTO orders (customer_id, article, size, color, status, price, cost, source) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id',
-            [customerId, article, size || '', color || '', 'Новий', price || 0, cost || 0, source || 'Вручну']
-        );
-        res.json({ success: true, id: order.rows[0].id });
-    } catch (err) { res.status(500).json({ error: err.message }); }
+  const {
+    fullName, phone, comment, source, items,
+    delivery_service, city, branch, payment_type, delivery_payment, ttn, status
+  } = req.body;
+
+  if (!fullName || !phone) return res.status(400).json({ error: 'Вкажіть ПІБ та телефон' });
+  const list = Array.isArray(items) ? items.filter(i => i && (i.article || i.name)) : [];
+  if (list.length === 0) return res.status(400).json({ error: 'Додайте хоча б один товар' });
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const cust = await client.query('SELECT id FROM customers WHERE phone = $1', [phone]);
+    let customerId;
+    if (cust.rows.length > 0) {
+      customerId = cust.rows[0].id;
+      await client.query('UPDATE customers SET full_name = $1 WHERE id = $2', [fullName, customerId]);
+    } else {
+      const c = await client.query(
+        'INSERT INTO customers (full_name, phone) VALUES ($1, $2) RETURNING id', [fullName, phone]);
+      customerId = c.rows[0].id;
+    }
+
+    const order = await client.query(
+      `INSERT INTO orders (customer_id, status, ttn, comment, source,
+        delivery_service, city, branch, payment_type, delivery_payment)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
+      [customerId, status || 'Новий', ttn || '', comment || '', source || 'Вручну',
+       delivery_service || 'НП', city || '', branch || '',
+       payment_type || 'на счет', delivery_payment || 'Отримувач']
+    );
+    const orderId = order.rows[0].id;
+
+    for (const it of list) {
+      let supplierName = it.supplier_name || '';
+      if (it.supplier_id) {
+        const s = await client.query('SELECT name FROM suppliers WHERE id = $1', [it.supplier_id]);
+        if (s.rows.length) supplierName = s.rows[0].name;
+      }
+      await client.query(
+        `INSERT INTO order_items (order_id, article, name, supplier_id, supplier_name,
+          size, color, price, quantity)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        [orderId, it.article || '', it.name || '', it.supplier_id || null, supplierName,
+         it.size || '', it.color || '', Number(it.price) || 0, parseInt(it.quantity) || 1]
+      );
+    }
+
+    await client.query('COMMIT');
+    res.json({ success: true, id: orderId });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
+  }
 });
 
-const ALLOWED_ORDER_FIELDS = ['article', 'size', 'color', 'status', 'ttn', 'price', 'cost', 'source', 'comment'];
+const ALLOWED_ORDER_FIELDS = ['status', 'ttn', 'comment', 'source',
+  'delivery_service', 'city', 'branch', 'payment_type', 'delivery_payment'];
 
 app.patch('/api/orders/:id', checkAuth, async (req, res) => {
   const keys = Object.keys(req.body).filter(k => ALLOWED_ORDER_FIELDS.includes(k));
