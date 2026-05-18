@@ -108,3 +108,19 @@ body.dark .custom-scrollbar::-webkit-scrollbar-thumb { background: #2f2f42; }
 body.dark .theme-card { background: #1a1a28; border-color: #262636; }
 body.dark .theme-card.selected { border-color: #a78bfa; box-shadow: 0 0 0 4px rgba(167,139,250,.18); }
 body.dark .theme-card.selected .theme-check { color: #a78bfa; }
+
+/* ============== СВОРАЧИВАЕМЫЙ САЙДБАР ============== */
+#appSidebar { transition: width .25s ease; }
+
+#appSidebar.nav-collapsed { width: 5rem; }
+#appSidebar.nav-collapsed .nav-logo { padding-left: 0; padding-right: 0; }
+#appSidebar.nav-collapsed .nav-logo > div { justify-content: center; }
+#appSidebar.nav-collapsed h1,
+#appSidebar.nav-collapsed .nav-section,
+#appSidebar.nav-collapsed .nav-user-text { display: none; }
+#appSidebar.nav-collapsed .nav-user { justify-content: center; padding-left: 0; padding-right: 0; }
+#appSidebar.nav-collapsed > div { padding-left: .5rem; padding-right: .5rem; }
+#appSidebar.nav-collapsed .sidebar-item {
+    justify-content: center; gap: 0; padding-left: 0; padding-right: 0; font-size: 0;
+}
+#appSidebar.nav-collapsed .sidebar-item i { font-size: 16px; }

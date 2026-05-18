@@ -13,8 +13,8 @@
 </head>
 <body class="bg-[#f8fafc] flex h-screen overflow-hidden text-slate-700">
 
-    <aside class="w-72 bg-[#020617] flex flex-col shrink-0 border-r border-slate-800 relative z-20">
-        <div class="px-8 py-8 shrink-0">
+    <aside id="appSidebar" class="w-72 bg-[#020617] flex flex-col shrink-0 border-r border-slate-800 relative z-20">
+        <div class="nav-logo px-8 py-8 shrink-0">
             <div class="flex items-center gap-3">
                 <div class="w-10 h-10 bg-gradient-to-br from-violet-600 to-fuchsia-600 rounded-xl flex items-center justify-center shadow-lg shadow-violet-500/30">
                     <i class="fa-solid fa-rocket text-white text-lg"></i>
@@ -26,7 +26,7 @@
         <div class="px-5 flex-1 overflow-y-auto pb-6 space-y-8 custom-scrollbar">
             <!-- Основне -->
             <div>
-                <div class="text-[10px] font-black text-slate-500 uppercase tracking-widest px-4 mb-3">Основне</div>
+                <div class="nav-section text-[10px] font-black text-slate-500 uppercase tracking-widest px-4 mb-3">Основне</div>
                 <nav class="space-y-1">
                     <button onclick="switchView('orders')" id="btn-orders" class="sidebar-item active w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
                         <i class="fa-solid fa-layer-group w-5 text-center"></i> Замовлення
@@ -45,7 +45,7 @@
 
             <!-- Склад -->
             <div>
-                <div class="text-[10px] font-black text-slate-500 uppercase tracking-widest px-4 mb-3">Склад</div>
+                <div class="nav-section text-[10px] font-black text-slate-500 uppercase tracking-widest px-4 mb-3">Склад</div>
                 <nav class="space-y-1">
                     <button onclick="switchView('warehouse')" id="btn-warehouse" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
                         <i class="fa-solid fa-warehouse w-5 text-center"></i> Склад
@@ -61,7 +61,7 @@
 
             <!-- Система -->
             <div>
-                <div class="text-[10px] font-black text-slate-500 uppercase tracking-widest px-4 mb-3">Система</div>
+                <div class="nav-section text-[10px] font-black text-slate-500 uppercase tracking-widest px-4 mb-3">Система</div>
                 <nav class="space-y-1">
                     <button onclick="switchView('statistics')" id="btn-statistics" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
                         <i class="fa-solid fa-chart-line w-5 text-center"></i> Статистика
@@ -86,11 +86,11 @@
                 </button>
             </div>
             
-            <div class="flex items-center gap-3 px-4 py-2">
-                <div class="w-8 h-8 rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 flex items-center justify-center text-white font-bold text-xs shadow-lg shadow-violet-500/20">
+            <div class="nav-user flex items-center gap-3 px-4 py-2">
+                <div class="w-8 h-8 rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 flex items-center justify-center text-white font-bold text-xs shadow-lg shadow-violet-500/20 shrink-0">
                     T
                 </div>
-                <div>
+                <div class="nav-user-text">
                     <div class="text-white text-xs font-bold tracking-wide">tomireal</div>
                     <div class="text-slate-500 text-[10px] font-medium mt-0.5">Адміністратор</div>
                 </div>
@@ -100,10 +100,16 @@
 
     <main class="flex-1 flex flex-col overflow-hidden relative z-10">
         <header class="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 px-10 flex items-center justify-between shrink-0 z-10">
-            <div class="relative w-96">
-                <i class="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-slate-300"></i>
-                <input type="text" id="searchInput" placeholder="Пошук..." oninput="debounceSearch()"
-                    class="w-full pl-11 pr-4 py-2.5 bg-slate-100 border-transparent rounded-xl focus:bg-white focus:ring-4 focus:ring-violet-500/10 focus:border-violet-500 outline-none transition-all text-sm font-medium">
+            <div class="flex items-center gap-4">
+                <button onclick="toggleSidebar()" id="sidebarToggle" title="Згорнути / розгорнути меню"
+                    class="w-10 h-10 flex items-center justify-center rounded-xl bg-slate-100 text-slate-500 hover:text-violet-600 hover:bg-violet-100 transition-all shrink-0">
+                    <i class="fa-solid fa-bars"></i>
+                </button>
+                <div class="relative w-96">
+                    <i class="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-slate-300"></i>
+                    <input type="text" id="searchInput" placeholder="Пошук..." oninput="debounceSearch()"
+                        class="w-full pl-11 pr-4 py-2.5 bg-slate-100 border-transparent rounded-xl focus:bg-white focus:ring-4 focus:ring-violet-500/10 focus:border-violet-500 outline-none transition-all text-sm font-medium">
+                </div>
             </div>
             <div class="flex items-center gap-5">
                 <button onclick="refreshData()" class="w-10 h-10 flex items-center justify-center rounded-xl bg-slate-100 text-slate-500 hover:text-violet-600 hover:bg-violet-100 transition-all">
@@ -589,6 +595,23 @@
             renderThemeCards();
         }
         applyTheme(localStorage.getItem('crm-theme') || 'light');
+
+        // --- ЗГОРТАННЯ БІЧНОЇ ПАНЕЛІ ---
+        function applySidebar(collapsed) {
+            const aside = document.getElementById('appSidebar');
+            if (!aside) return;
+            aside.classList.toggle('nav-collapsed', collapsed);
+            aside.querySelectorAll('.sidebar-item').forEach(b => {
+                if (collapsed && !b.title) b.title = b.textContent.trim();
+                if (!collapsed) b.removeAttribute('title');
+            });
+        }
+        function toggleSidebar() {
+            const collapsed = !document.getElementById('appSidebar').classList.contains('nav-collapsed');
+            localStorage.setItem('crm-nav', collapsed ? 'collapsed' : 'expanded');
+            applySidebar(collapsed);
+        }
+        applySidebar(localStorage.getItem('crm-nav') === 'collapsed');
 
         function esc(v) {
             return String(v ?? '').replace(/[&<>"']/g, c => (
