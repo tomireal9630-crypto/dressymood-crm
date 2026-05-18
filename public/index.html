@@ -1103,6 +1103,15 @@
         async function logout() { await fetch('/api/logout', { method: 'POST' }); window.location.href = '/login.html'; }
 
         refreshData();
+
+        // Автооновлення списку замовлень кожні 15 c (без перешкод під час редагування)
+        setInterval(() => {
+            if (!['orders', 'archive', 'deleted'].includes(currentView)) return;
+            if (document.querySelector('.modal-active')) return;
+            const ae = document.activeElement;
+            if (ae && ae.closest && ae.closest('#ordersTable, #archiveTable, #deletedTable, #orderModal, #confirmModal')) return;
+            loadOrders();
+        }, 15000);
     </script>
 </body>
 </html>
