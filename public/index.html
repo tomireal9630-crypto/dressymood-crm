@@ -120,19 +120,49 @@
         <div class="flex-1 overflow-y-auto p-10 custom-scrollbar bg-[#f8fafc]">
             
             <div id="view-orders" class="view-content active h-full">
-                <div class="flex justify-between items-center mb-8">
+                <div class="flex justify-between items-start mb-6 gap-4 flex-wrap">
                     <div>
                         <h2 class="text-3xl font-black text-slate-800 uppercase italic tracking-tighter">Замовлення</h2>
                         <p class="text-slate-400 font-medium text-sm">Управління поточними угодами</p>
                     </div>
-                    <div class="flex items-center gap-3">
-                        <select id="statusFilter" onchange="loadOrders()" class="px-4 py-3 bg-white border border-slate-200 rounded-2xl outline-none text-xs font-bold text-slate-600">
+                    <button onclick="openOrderModal()" class="bg-violet-600 text-white px-6 py-3 rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-violet-700 transition-all shadow-lg shadow-violet-200">
+                        <i class="fa-solid fa-plus mr-2"></i> Нове замовлення
+                    </button>
+                </div>
+                <div class="flex items-end gap-2 flex-wrap bg-white border border-slate-100 rounded-2xl p-3 shadow-sm mb-6">
+                    <div>
+                        <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">Статус</label>
+                        <select id="statusFilter" onchange="loadOrders()" class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
                             <option value="">Всі статуси</option>
                         </select>
-                        <button onclick="openOrderModal()" class="bg-violet-600 text-white px-6 py-3 rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-violet-700 transition-all shadow-lg shadow-violet-200">
-                            <i class="fa-solid fa-plus mr-2"></i> Нове замовлення
-                        </button>
                     </div>
+                    <div>
+                        <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">Постачальник</label>
+                        <select id="supplierFilter" onchange="loadOrders()" class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
+                            <option value="">Всі постачальники</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">Період</label>
+                        <select id="dateFilter" onchange="onDateFilterChange()" class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
+                            <option value="">Весь час</option>
+                            <option value="today">Сьогодні</option>
+                            <option value="yesterday">Вчора</option>
+                            <option value="month">Цей місяць</option>
+                            <option value="period">Обраний період</option>
+                        </select>
+                    </div>
+                    <div id="orderPeriodWrap" class="hidden items-end gap-2">
+                        <div>
+                            <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">З дати</label>
+                            <input type="date" id="ordersDateFrom" onchange="loadOrders()" class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
+                        </div>
+                        <div>
+                            <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">По дату</label>
+                            <input type="date" id="ordersDateTo" onchange="loadOrders()" class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
+                        </div>
+                    </div>
+                    <button onclick="resetOrderFilters()" class="px-3 py-2 rounded-lg text-xs font-bold bg-rose-50 text-rose-500 hover:bg-rose-100 transition-all">Скинути</button>
                 </div>
                 <div class="bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/40 border border-slate-100 overflow-x-auto">
                     <table class="w-full text-left min-w-[1100px]">
@@ -532,6 +562,56 @@
             }
         }
 
+        async function fillSupplierFilter() {
+            const f = document.getElementById('supplierFilter');
+            if (!f || f.options.length > 1) return;
+            try {
+                const r = await fetch('/api/warehouse/suppliers');
+                const d = await r.json();
+                const list = Array.isArray(d) ? d : [];
+                const cur = f.value;
+                f.innerHTML = `<option value="">Всі постачальники</option>` +
+                    list.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('');
+                f.value = cur;
+            } catch (e) { /* мовчки */ }
+        }
+
+        function onDateFilterChange() {
+            const v = (document.getElementById('dateFilter') || {}).value || '';
+            const wrap = document.getElementById('orderPeriodWrap');
+            if (wrap) wrap.classList.toggle('hidden', v !== 'period');
+            loadOrders();
+        }
+
+        function resetOrderFilters() {
+            ['statusFilter', 'supplierFilter', 'dateFilter', 'ordersDateFrom', 'ordersDateTo']
+                .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+            const wrap = document.getElementById('orderPeriodWrap');
+            if (wrap) wrap.classList.add('hidden');
+            loadOrders();
+        }
+
+        // Диапазон дат для вкладки «Замовлення» по выбранному пресету
+        function ordersDateRange() {
+            const v = (document.getElementById('dateFilter') || {}).value || '';
+            const iso = d => d.toISOString().slice(0, 10);
+            const now = new Date();
+            if (v === 'today') return { from: iso(now), to: iso(now) };
+            if (v === 'yesterday') {
+                const y = new Date(now); y.setDate(y.getDate() - 1);
+                return { from: iso(y), to: iso(y) };
+            }
+            if (v === 'month') return {
+                from: iso(new Date(now.getFullYear(), now.getMonth(), 1)),
+                to: iso(new Date(now.getFullYear(), now.getMonth() + 1, 0))
+            };
+            if (v === 'period') return {
+                from: (document.getElementById('ordersDateFrom') || {}).value || '',
+                to: (document.getElementById('ordersDateTo') || {}).value || ''
+            };
+            return { from: '', to: '' };
+        }
+
         function fmtDate(iso) {
             if (!iso) return '';
             const d = new Date(iso);
@@ -561,12 +641,20 @@
         async function loadOrders() {
             try {
                 fillStatusFilter();
+                fillSupplierFilter();
                 const view = ['orders', 'archive', 'deleted'].includes(currentView) ? currentView : 'orders';
                 const table = document.getElementById(TBODY_BY_VIEW[view]);
                 if (!table) return;
                 const search = document.getElementById('searchInput').value;
                 const status = view === 'orders' ? ((document.getElementById('statusFilter') || {}).value || '') : '';
                 const params = new URLSearchParams({ view, search, status });
+                if (view === 'orders') {
+                    const sup = (document.getElementById('supplierFilter') || {}).value || '';
+                    if (sup) params.set('supplierId', sup);
+                    const { from, to } = ordersDateRange();
+                    if (from) params.set('dateFrom', from);
+                    if (to) params.set('dateTo', to);
+                }
                 if (view === 'archive') {
                     const f = (document.getElementById('archiveDateFrom') || {}).value || '';
                     const t = (document.getElementById('archiveDateTo') || {}).value || '';
