@@ -386,7 +386,7 @@
     <div id="orderModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] hidden items-center justify-center p-6">
         <div class="bg-white w-full max-w-3xl rounded-[2.5rem] shadow-2xl flex flex-col max-h-[90vh]">
             <div class="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 shrink-0">
-                <h3 class="text-xl font-black text-slate-800 uppercase italic">Нове замовлення</h3>
+                <h3 id="orderModalTitle" class="text-xl font-black text-slate-800 uppercase italic">Нове замовлення</h3>
                 <button type="button" onclick="closeModal('orderModal')" class="text-slate-400 hover:text-rose-500 transition-colors"><i class="fa-solid fa-xmark text-xl"></i></button>
             </div>
             <form id="addOrderForm" class="p-10 overflow-y-auto custom-scrollbar space-y-6">
@@ -460,7 +460,7 @@
 
                 <div class="flex justify-end gap-3 pt-2">
                     <button type="button" onclick="closeModal('orderModal')" class="px-6 py-3 rounded-xl font-bold text-sm text-slate-500 bg-slate-100 hover:bg-slate-200 transition-all">Відміна</button>
-                    <button type="submit" class="bg-violet-600 text-white px-8 py-3 rounded-xl font-black text-sm uppercase tracking-widest hover:bg-violet-700 transition-all">Створити</button>
+                    <button type="submit" id="orderSubmitBtn" class="bg-violet-600 text-white px-8 py-3 rounded-xl font-black text-sm uppercase tracking-widest hover:bg-violet-700 transition-all">Створити</button>
                 </div>
             </form>
         </div>
@@ -776,7 +776,7 @@
                     ).join('') || '<span class="text-slate-300">—</span>';
 
                     return `
-                    <tr class="hover:bg-slate-50 transition-all group align-top">
+                    <tr onclick="rowClickEdit(event, ${o.id})" class="hover:bg-slate-50 transition-all group align-top cursor-pointer">
                         <td class="px-6 py-5">
                             <div class="font-black text-slate-800 text-sm">#${o.id}</div>
                             <div class="text-[10px] text-slate-400 font-bold mt-0.5">${esc(fmtDate(o.createdAt))}</div>
@@ -829,20 +829,29 @@
             alert('Скоро — інтеграція з Нова Пошта (ТТН / чек).');
         }
 
-        function orderItemRow() {
-            const opts = `<option value="">— Постачальник —</option>` +
-                suppliersList.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('');
+        let editingOrderId = null;
+
+        function orderItemRow(data) {
+            data = data || {};
+            const sup = String(data.supplier_name || '');
+            const matched = suppliersList.find(s => s.name === sup);
+            let opts = `<option value="">— Постачальник —</option>`;
+            if (sup && !matched) opts += `<option value="__keep__" selected>${esc(sup)}</option>`;
+            opts += suppliersList.map(s =>
+                `<option value="${s.id}" ${matched && matched.id === s.id ? 'selected' : ''}>${esc(s.name)}</option>`
+            ).join('');
+            const v = x => esc(data[x] != null ? data[x] : '');
             const div = document.createElement('div');
             div.className = 'order-item bg-white border border-slate-100 rounded-xl p-4 grid grid-cols-3 gap-3 relative';
             div.innerHTML = `
                 <button type="button" onclick="this.closest('.order-item').remove()" class="absolute -top-2 -right-2 w-6 h-6 bg-rose-500 text-white rounded-full text-xs hover:bg-rose-600">×</button>
                 <div>
                     <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">Артикул</label>
-                    <input type="text" data-f="article" placeholder="№..." class="w-full px-3 py-2 bg-slate-50 border border-slate-100 rounded-lg outline-none text-sm font-bold">
+                    <input type="text" data-f="article" value="${v('article')}" placeholder="№..." class="w-full px-3 py-2 bg-slate-50 border border-slate-100 rounded-lg outline-none text-sm font-bold">
                 </div>
                 <div>
                     <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">Назва товару</label>
-                    <input type="text" data-f="name" placeholder="Товар" class="w-full px-3 py-2 bg-slate-50 border border-slate-100 rounded-lg outline-none text-sm font-bold">
+                    <input type="text" data-f="name" value="${v('name')}" placeholder="Товар" class="w-full px-3 py-2 bg-slate-50 border border-slate-100 rounded-lg outline-none text-sm font-bold">
                 </div>
                 <div>
                     <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">Постачальник</label>
@@ -850,15 +859,15 @@
                 </div>
                 <div>
                     <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">Розмір</label>
-                    <input type="text" data-f="size" placeholder="46-48" class="w-full px-3 py-2 bg-slate-50 border border-slate-100 rounded-lg outline-none text-sm font-bold">
+                    <input type="text" data-f="size" value="${v('size')}" placeholder="46-48" class="w-full px-3 py-2 bg-slate-50 border border-slate-100 rounded-lg outline-none text-sm font-bold">
                 </div>
                 <div>
                     <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">Колір</label>
-                    <input type="text" data-f="color" placeholder="Чорний" class="w-full px-3 py-2 bg-slate-50 border border-slate-100 rounded-lg outline-none text-sm font-bold">
+                    <input type="text" data-f="color" value="${v('color')}" placeholder="Чорний" class="w-full px-3 py-2 bg-slate-50 border border-slate-100 rounded-lg outline-none text-sm font-bold">
                 </div>
                 <div>
                     <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">Ціна</label>
-                    <input type="number" data-f="price" value="0" min="0" class="w-full px-3 py-2 bg-slate-50 border border-slate-100 rounded-lg outline-none text-sm font-black">
+                    <input type="number" data-f="price" value="${data.price != null ? Number(data.price) : 0}" min="0" class="w-full px-3 py-2 bg-slate-50 border border-slate-100 rounded-lg outline-none text-sm font-black">
                 </div>`;
             return div;
         }
@@ -867,20 +876,67 @@
             document.getElementById('orderItems').appendChild(orderItemRow());
         }
 
-        async function openOrderModal() {
+        async function loadSuppliers() {
             try {
                 const r = await fetch('/api/warehouse/suppliers');
                 const d = await r.json();
                 suppliersList = Array.isArray(d) ? d : [];
             } catch (e) { suppliersList = []; }
+        }
+
+        function fillStatusSelect(value) {
+            document.getElementById('orderStatusSelect').innerHTML =
+                STATUSES.map(s => `<option value="${s}" ${s === (value || DEFAULT_STATUS) ? 'selected' : ''}>${esc(s)}</option>`).join('');
+        }
+
+        async function openOrderModal() {
+            await loadSuppliers();
+            editingOrderId = null;
+            document.getElementById('orderModalTitle').textContent = 'Нове замовлення';
+            document.getElementById('orderSubmitBtn').textContent = 'Створити';
             const form = document.getElementById('addOrderForm');
             form.reset();
-            document.getElementById('orderStatusSelect').innerHTML =
-                STATUSES.map(s => `<option value="${s}" ${s === DEFAULT_STATUS ? 'selected' : ''}>${s}</option>`).join('');
+            fillStatusSelect(DEFAULT_STATUS);
             const box = document.getElementById('orderItems');
             box.innerHTML = '';
             box.appendChild(orderItemRow());
             openModal('orderModal');
+        }
+
+        async function openEditOrder(id) {
+            await loadSuppliers();
+            let o;
+            try {
+                const r = await fetch(`/api/orders/${id}`);
+                if (!r.ok) throw new Error('Не вдалося завантажити замовлення');
+                o = await r.json();
+            } catch (e) { alert('Помилка: ' + e.message); return; }
+
+            editingOrderId = id;
+            document.getElementById('orderModalTitle').textContent = `Замовлення #${id}`;
+            document.getElementById('orderSubmitBtn').textContent = 'Зберегти';
+            const form = document.getElementById('addOrderForm');
+            form.reset();
+            form.fullName.value = o.fullName || '';
+            form.phone.value = formatUAPhone(o.phone || '');
+            form.comment.value = o.comment || '';
+            form.delivery_service.value = o.delivery_service || 'НП';
+            form.city.value = o.city || '';
+            form.branch.value = o.branch || '';
+            form.payment_type.value = o.payment_type || 'на счет';
+            form.delivery_payment.value = o.delivery_payment || 'Отримувач';
+            form.ttn.value = o.ttn || '';
+            fillStatusSelect(o.status);
+            const box = document.getElementById('orderItems');
+            box.innerHTML = '';
+            const items = Array.isArray(o.items) ? o.items : [];
+            (items.length ? items : [{}]).forEach(it => box.appendChild(orderItemRow(it)));
+            openModal('orderModal');
+        }
+
+        function rowClickEdit(event, id) {
+            if (event.target.closest('input, select, button, a, textarea')) return;
+            openEditOrder(id);
         }
 
         document.getElementById('addOrderForm').onsubmit = async (e) => {
@@ -888,12 +944,18 @@
             const fd = new FormData(e.target);
             const items = [...document.querySelectorAll('#orderItems .order-item')].map(row => {
                 const get = f => { const el = row.querySelector(`[data-f="${f}"]`); return el ? el.value : ''; };
-                return {
+                const supSel = row.querySelector('[data-f="supplier_id"]');
+                const it = {
                     article: get('article'), name: get('name'),
-                    supplier_id: get('supplier_id') || null,
                     size: get('size'), color: get('color'),
                     price: get('price'), quantity: 1
                 };
+                if (supSel && supSel.value === '__keep__') {
+                    it.supplier_name = supSel.options[supSel.selectedIndex].text;
+                } else if (supSel && supSel.value) {
+                    it.supplier_id = supSel.value;
+                }
+                return it;
             }).filter(i => i.article || i.name);
 
             if (!items.length) { alert('Додайте хоча б один товар'); return; }
@@ -909,11 +971,13 @@
                 delivery_payment: fd.get('delivery_payment'),
                 ttn: fd.get('ttn'), status: fd.get('status')
             };
+            const url = editingOrderId ? `/api/orders/${editingOrderId}/full` : '/api/orders/manual';
+            const method = editingOrderId ? 'PUT' : 'POST';
             try {
-                const res = await fetch('/api/orders/manual', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
                 const result = await res.json();
                 if (!res.ok) throw new Error(result.error || 'Помилка сервера');
-                closeModal('orderModal'); loadOrders();
+                closeModal('orderModal'); editingOrderId = null; loadOrders();
             } catch (err) { alert('Помилка: ' + err.message); }
         };
 

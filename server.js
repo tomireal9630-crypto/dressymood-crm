@@ -303,6 +303,87 @@ app.get('/api/orders/suppliers', checkAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Один заказ з усіма даними (для редагування)
+app.get('/api/orders/:id(\\d+)', checkAuth, async (req, res) => {
+  try {
+    const r = await pool.query(`
+      SELECT o.id, c.full_name AS "fullName", c.phone,
+             o.status, o.ttn, o.comment, o.source,
+             o.delivery_service, o.city, o.branch, o.payment_type, o.delivery_payment,
+             COALESCE(json_agg(json_build_object(
+               'article', oi.article, 'name', oi.name, 'supplier_name', oi.supplier_name,
+               'size', oi.size, 'color', oi.color, 'price', oi.price, 'quantity', oi.quantity
+             ) ORDER BY oi.id) FILTER (WHERE oi.id IS NOT NULL), '[]') AS items
+      FROM orders o
+      JOIN customers c ON o.customer_id = c.id
+      LEFT JOIN order_items oi ON oi.order_id = o.id
+      WHERE o.id = $1
+      GROUP BY o.id, c.full_name, c.phone
+    `, [req.params.id]);
+    if (!r.rows.length) return res.status(404).json({ error: 'Not found' });
+    res.json(r.rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Повне оновлення заказу (клієнт + доставка + товари)
+app.put('/api/orders/:id(\\d+)/full', checkAuth, async (req, res) => {
+  const orderId = req.params.id;
+  const b = req.body;
+  const name = String(b.fullName || '').trim();
+  const phone = String(b.phone || '').trim();
+  if (!name || !phone) return res.status(400).json({ error: 'Вкажіть ПІБ та телефон' });
+  const list = Array.isArray(b.items) ? b.items.filter(i => i && (i.article || i.name)) : [];
+  if (list.length === 0) return res.status(400).json({ error: 'Додайте хоча б один товар' });
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const ord = await client.query('SELECT customer_id FROM orders WHERE id = $1', [orderId]);
+    if (!ord.rows.length) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Замовлення не знайдено' }); }
+    const customerId = ord.rows[0].customer_id;
+
+    await client.query('UPDATE customers SET full_name = $1, phone = $2 WHERE id = $3',
+      [name, phone, customerId]);
+
+    await client.query(
+      `UPDATE orders SET status=$1, ttn=$2, comment=$3,
+        delivery_service=$4, city=$5, branch=$6, payment_type=$7, delivery_payment=$8
+       WHERE id=$9`,
+      [b.status || 'Новый', b.ttn || '', b.comment || '',
+       b.delivery_service || 'НП', b.city || '', b.branch || '',
+       b.payment_type || 'на счет', b.delivery_payment || 'Отримувач', orderId]
+    );
+
+    await client.query('DELETE FROM order_items WHERE order_id = $1', [orderId]);
+    for (const it of list) {
+      let supplierName = it.supplier_name || '';
+      if (it.supplier_id) {
+        const s = await client.query('SELECT name FROM suppliers WHERE id = $1', [it.supplier_id]);
+        if (s.rows.length) supplierName = s.rows[0].name;
+      }
+      await client.query(
+        `INSERT INTO order_items (order_id, article, name, supplier_id, supplier_name,
+          size, color, price, quantity)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        [orderId, it.article || '', it.name || '', it.supplier_id || null, supplierName,
+         it.size || '', it.color || '', Number(it.price) || 0, parseInt(it.quantity) || 1]
+      );
+    }
+
+    await client.query('COMMIT');
+    res.json({ success: true });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    const msg = /unique/i.test(err.message)
+      ? 'Клієнт з таким телефоном вже існує'
+      : err.message;
+    res.status(500).json({ error: msg });
+  } finally {
+    client.release();
+  }
+});
+
 // Нормалізація українського номера -> +380XXXXXXXXX (best-effort)
 function normalizeUaPhone(raw) {
   let d = String(raw || '').replace(/\D/g, '');
