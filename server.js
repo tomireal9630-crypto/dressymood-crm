@@ -148,7 +148,7 @@ const ARCHIVE_STATUSES = ['Продажа', 'Отказ'];
 const DELETED_STATUS = '✗✗✗';
 
 app.get('/api/orders', checkAuth, async (req, res) => {
-  const { view, search, status, dateFrom, dateTo, supplierId } = req.query;
+  const { view, search, status, dateFrom, dateTo, supplier } = req.query;
   try {
     const params = [];
     const conditions = [];
@@ -177,9 +177,9 @@ app.get('/api/orders', checkAuth, async (req, res) => {
                    AND (oi2.article ILIKE ${p} OR oi2.name ILIKE ${p})))`);
     }
 
-    if (supplierId) {
-      params.push(supplierId);
-      conditions.push(`EXISTS (SELECT 1 FROM order_items oi3 WHERE oi3.order_id = o.id AND oi3.supplier_id = $${params.length})`);
+    if (supplier) {
+      params.push(supplier);
+      conditions.push(`EXISTS (SELECT 1 FROM order_items oi3 WHERE oi3.order_id = o.id AND oi3.supplier_name = $${params.length})`);
     }
 
     if (dateFrom) {
@@ -287,6 +287,18 @@ app.patch('/api/orders/:id', checkAuth, async (req, res) => {
   try {
     await pool.query(`UPDATE orders SET ${setClause} WHERE id = $${values.length}`, values);
     res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Постачальники, що реально зустрічаються в замовленнях (для фільтра)
+app.get('/api/orders/suppliers', checkAuth, async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT DISTINCT supplier_name FROM order_items
+       WHERE supplier_name IS NOT NULL AND supplier_name <> ''
+       ORDER BY supplier_name ASC`
+    );
+    res.json(r.rows.map(x => x.supplier_name));
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

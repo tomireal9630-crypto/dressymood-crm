@@ -564,15 +564,15 @@
 
         async function fillSupplierFilter() {
             const f = document.getElementById('supplierFilter');
-            if (!f || f.options.length > 1) return;
+            if (!f) return;
             try {
-                const r = await fetch('/api/warehouse/suppliers');
+                const r = await fetch('/api/orders/suppliers');
                 const d = await r.json();
                 const list = Array.isArray(d) ? d : [];
                 const cur = f.value;
                 f.innerHTML = `<option value="">Всі постачальники</option>` +
-                    list.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('');
-                f.value = cur;
+                    list.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
+                if ([...f.options].some(o => o.value === cur)) f.value = cur;
             } catch (e) { /* мовчки */ }
         }
 
@@ -650,7 +650,7 @@
                 const params = new URLSearchParams({ view, search, status });
                 if (view === 'orders') {
                     const sup = (document.getElementById('supplierFilter') || {}).value || '';
-                    if (sup) params.set('supplierId', sup);
+                    if (sup) params.set('supplier', sup);
                     const { from, to } = ordersDateRange();
                     if (from) params.set('dateFrom', from);
                     if (to) params.set('dateTo', to);
