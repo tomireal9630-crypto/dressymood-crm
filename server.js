@@ -117,6 +117,7 @@ app.use(session({
 }));
 
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 const checkAuth = (req, res, next) => {
@@ -300,6 +301,74 @@ app.get('/api/orders/suppliers', checkAuth, async (req, res) => {
     );
     res.json(r.rows.map(x => x.supplier_name));
   } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Нормалізація українського номера -> +380XXXXXXXXX (best-effort)
+function normalizeUaPhone(raw) {
+  let d = String(raw || '').replace(/\D/g, '');
+  if (d.startsWith('380')) d = d.slice(3);
+  else if (d.startsWith('80')) d = d.slice(2);
+  else if (d.startsWith('0')) d = d.slice(1);
+  d = d.slice(0, 9);
+  return d.length === 9 ? '+380' + d : String(raw || '').trim();
+}
+
+// --- ПРИЙОМ ЗАМОВЛЕНЬ З ЛЕНДІНГІВ (публічний, захищений ключем) ---
+app.post('/api/landing/order', async (req, res) => {
+  const expected = process.env.LANDING_API_KEY;
+  if (!expected) return res.status(503).json({ error: 'LANDING_API_KEY not configured' });
+  if (!safeEqual(req.body.key || '', expected)) {
+    return res.status(401).json({ error: 'Invalid key' });
+  }
+
+  const name = String(req.body.name || '').trim();
+  const phoneRaw = String(req.body.phone || '').trim();
+  if (!name || !phoneRaw) return res.status(400).json({ error: 'name and phone required' });
+
+  const phone = normalizeUaPhone(phoneRaw);
+  const article = String(req.body.article || '').trim();
+  const product = String(req.body.product || '').trim();
+  const price = Number(String(req.body.price || '0').replace(',', '.')) || 0;
+  const supplier = String(req.body.supplier || '').trim();
+  const size = String(req.body.size || '').trim();
+  const color = String(req.body.color || '').trim();
+  const source = String(req.body.source || req.get('referer') || 'Лендінг').trim().slice(0, 255);
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const cust = await client.query('SELECT id FROM customers WHERE phone = $1', [phone]);
+    let customerId;
+    if (cust.rows.length > 0) {
+      customerId = cust.rows[0].id;
+      await client.query('UPDATE customers SET full_name = $1 WHERE id = $2', [name, customerId]);
+    } else {
+      const c = await client.query(
+        'INSERT INTO customers (full_name, phone) VALUES ($1, $2) RETURNING id', [name, phone]);
+      customerId = c.rows[0].id;
+    }
+
+    const order = await client.query(
+      `INSERT INTO orders (customer_id, status, source) VALUES ($1, $2, $3) RETURNING id`,
+      [customerId, 'Новый', source]
+    );
+    const orderId = order.rows[0].id;
+
+    await client.query(
+      `INSERT INTO order_items (order_id, article, name, supplier_name, size, color, price, quantity)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,1)`,
+      [orderId, article, product, supplier, size, color, price]
+    );
+
+    await client.query('COMMIT');
+    res.json({ success: true, id: orderId });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
+  }
 });
 
 // --- API СКЛАДУ ---
