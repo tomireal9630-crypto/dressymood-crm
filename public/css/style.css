@@ -32,59 +32,79 @@ h1, h2, h3, h4, .heading-font {
 .theme-card.selected { border-color: #7c3aed; box-shadow: 0 0 0 4px rgba(124,58,237,.12); }
 .theme-card.selected .theme-check { color: #7c3aed; }
 
-/* ============== ТЁМНАЯ ТЕМА ============== */
-body.dark { background: #0b1120 !important; color: #e2e8f0; }
-body.dark .bg-\[\#f8fafc\] { background: #0b1120 !important; }
+/* Телефон клиента и кнопки ТТН/ЧЕК (обе темы) */
+.order-phone { color: #64748b; }
+.ttn-btn { font-size: 10px; font-weight: 800; letter-spacing: .04em; color: #fff;
+    padding: 3px 10px; border-radius: 7px; transition: filter .15s ease, transform .1s ease; }
+.ttn-btn:hover { filter: brightness(1.1); }
+.ttn-btn:active { transform: scale(.96); }
+.ttn-btn-pink { background: #ec4899; }
+.ttn-btn-blue { background: #3b82f6; }
+
+/* ============== ТЁМНАЯ ТЕМА (под референс-скриншот) ============== */
+body.dark { background: #0a0a0f !important; color: #e6e6f0; }
+body.dark .bg-\[\#f8fafc\] { background: #0a0a0f !important; }
 body.dark main { background: transparent !important; }
 
-/* Сайдбар — ещё темнее */
-body.dark .bg-\[\#020617\] { background: #060912 !important; }
+/* Сайдбар — почти чёрный */
+body.dark .bg-\[\#020617\] { background: #050507 !important; }
 
-/* Шапка и панели */
+/* Панели / карточки / шапка */
 body.dark .bg-white,
-body.dark .bg-white\/80 { background: #131a2b !important; }
+body.dark .bg-white\/80 { background: #131320 !important; }
 body.dark .bg-slate-50,
 body.dark .bg-slate-100,
 body.dark .bg-slate-50\/50,
 body.dark .bg-slate-50\/60,
 body.dark .bg-indigo-50\/50,
-body.dark .bg-amber-50\/50 { background: #1b2236 !important; }
+body.dark .bg-amber-50\/50 { background: #1a1a28 !important; }
 
 /* Границы */
 body.dark .border-slate-50,
 body.dark .border-slate-100,
 body.dark .border-slate-200,
-body.dark .border-slate-800 { border-color: #273349 !important; }
+body.dark .border-slate-800 { border-color: #262636 !important; }
 body.dark .divide-slate-50 > :not([hidden]) ~ :not([hidden]),
-body.dark .divide-slate-100 > :not([hidden]) ~ :not([hidden]) { border-color: #273349 !important; }
+body.dark .divide-slate-100 > :not([hidden]) ~ :not([hidden]) { border-color: #21212f !important; }
 
 /* Текст */
 body.dark .text-slate-800,
 body.dark .text-slate-700,
-body.dark .text-slate-600 { color: #e8edf6 !important; }
+body.dark .text-slate-600 { color: #ededf5 !important; }
 body.dark .text-slate-500,
-body.dark .text-slate-400 { color: #94a3b8 !important; }
+body.dark .text-slate-400 { color: #8b8b9c !important; }
 body.dark .text-slate-300,
-body.dark .text-slate-200 { color: #64748b !important; }
+body.dark .text-slate-200 { color: #5b5b6b !important; }
 
-/* Поля ввода */
+/* Акцентные заголовки страниц — фиолетовые, как на скриншоте */
+body.dark h2 { color: #a78bfa !important; }
+
+/* Поля ввода / выпадайки */
 body.dark input,
 body.dark select,
-body.dark textarea { background: #0f1626 !important; color: #e8edf6 !important; border-color: #2a3650 !important; }
+body.dark textarea { background: #14141f !important; color: #ededf5 !important; border-color: #2a2a3c !important; }
 body.dark input::placeholder,
-body.dark textarea::placeholder { color: #5b6b86 !important; }
-body.dark select option { background: #0f1626; color: #e8edf6; }
+body.dark textarea::placeholder { color: #5a5a6e !important; }
+body.dark select option { background: #14141f; color: #ededf5; }
 
-/* Строки таблиц при наведении */
-body.dark .hover\:bg-slate-50:hover { background: #1b2236 !important; }
+/* Кнопка «Нове замовлення» — фиолетово-фуксиевый градиент */
+body.dark button.bg-violet-600,
+body.dark button.bg-indigo-600 {
+    background: linear-gradient(135deg, #7c3aed, #d946ef) !important;
+    box-shadow: 0 8px 24px -10px rgba(168, 85, 247, .6) !important;
+}
 
-/* Модалки */
-body.dark .bg-slate-900\/60 { background: rgba(0,0,0,.7) !important; }
+/* Телефон клиента — голубой акцент */
+body.dark .order-phone { color: #38bdf8 !important; }
 
-/* Скроллбар */
-body.dark .custom-scrollbar::-webkit-scrollbar-thumb { background: #334155; }
+/* Наведение на строки */
+body.dark .hover\:bg-slate-50:hover { background: #1a1a28 !important; }
+
+/* Модалки / скроллбар */
+body.dark .bg-slate-900\/60 { background: rgba(0,0,0,.72) !important; }
+body.dark .custom-scrollbar::-webkit-scrollbar-thumb { background: #2f2f42; }
 
 /* Карточки выбора темы в тёмном режиме */
-body.dark .theme-card { background: #1b2236; border-color: #273349; }
+body.dark .theme-card { background: #1a1a28; border-color: #262636; }
 body.dark .theme-card.selected { border-color: #a78bfa; box-shadow: 0 0 0 4px rgba(167,139,250,.18); }
 body.dark .theme-card.selected .theme-check { color: #a78bfa; }

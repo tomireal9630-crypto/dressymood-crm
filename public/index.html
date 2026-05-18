@@ -177,7 +177,12 @@
                                 <th class="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Місто</th>
                                 <th class="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Відділення</th>
                                 <th class="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Оплата</th>
-                                <th class="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">ТТН</th>
+                                <th class="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                    <div class="flex items-center gap-2">ТТН
+                                        <button onclick="loadOrders()" title="Оновити" class="text-slate-400 hover:text-violet-500 transition-colors"><i class="fa-solid fa-rotate"></i></button>
+                                        <span id="ttnSyncTime" class="text-[9px] font-bold text-slate-400 normal-case tracking-normal"></span>
+                                    </div>
+                                </th>
                                 <th class="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Пост.</th>
                                 <th class="px-6 py-5"></th>
                             </tr>
@@ -766,7 +771,7 @@
                         </td>
                         <td class="px-4 py-5">
                             <div class="font-bold text-slate-800 text-[12px]">${esc(o.fullName)}</div>
-                            <div class="text-[10px] text-slate-400 font-bold mt-0.5">${esc(o.phone)}</div>
+                            <div class="order-phone text-[10px] font-bold mt-0.5">${esc(o.phone)}</div>
                         </td>
                         <td class="px-4 py-5 text-[11px] text-slate-600 font-medium">${esc(o.city || '—')}</td>
                         <td class="px-4 py-5 text-[11px] text-slate-500 max-w-[160px] truncate" title="${esc(o.branch || '')}">${esc(o.branch || '—')}</td>
@@ -774,6 +779,10 @@
                         <td class="px-4 py-5">
                             <input type="text" value="${esc(o.ttn || '')}" onchange="updateOrder(${o.id}, 'ttn', this.value)" placeholder="ТТН..."
                                 class="w-[130px] text-[11px] font-mono font-bold bg-slate-50 border border-slate-100 rounded-lg px-2 py-1.5 outline-none">
+                            <div class="flex gap-1.5 mt-1.5">
+                                <button onclick="ttnSoon()" title="Скоро — інтеграція Нова Пошта" class="ttn-btn ttn-btn-pink">ТТН</button>
+                                <button onclick="ttnSoon()" title="Скоро — інтеграція Нова Пошта" class="ttn-btn ttn-btn-blue">ЧЕК</button>
+                            </div>
                         </td>
                         <td class="px-4 py-5">${supHtml}</td>
                         <td class="px-6 py-5 text-right">
@@ -784,7 +793,17 @@
                         </td>
                     </tr>`;
                 }).join('');
+                const st = document.getElementById('ttnSyncTime');
+                if (st) {
+                    const n = new Date();
+                    const p = x => String(x).padStart(2, '0');
+                    st.textContent = `${p(n.getHours())}:${p(n.getMinutes())}`;
+                }
             } catch (e) { console.error(e); }
+        }
+
+        function ttnSoon() {
+            alert('Скоро — інтеграція з Нова Пошта (ТТН / чек).');
         }
 
         function orderItemRow() {
