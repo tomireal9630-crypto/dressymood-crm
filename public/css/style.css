@@ -25,6 +25,21 @@ h1, h2, h3, h4, .heading-font {
 .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
 .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
 
+/* Автоподсказка Нова Пошта */
+.np-ac { position: relative; }
+.np-ac-box {
+    position: absolute; left: 0; right: 0; top: 2px; z-index: 50;
+    background: #fff; border: 1px solid #e2e8f0; border-radius: .6rem;
+    box-shadow: 0 12px 30px -10px rgba(0,0,0,.25); max-height: 240px; overflow-y: auto;
+}
+.np-ac-box div {
+    padding: 8px 14px; font-size: 13px; cursor: pointer; color: #334155;
+}
+.np-ac-box div:hover { background: #f1f5f9; }
+body.dark .np-ac-box { background: #14141f; border-color: #2a2a3c; }
+body.dark .np-ac-box div { color: #e6e6f0; }
+body.dark .np-ac-box div:hover { background: #1f1f2e; }
+
 /* Карточки выбора темы */
 .theme-card { border-color: #e2e8f0; background: #fff; }
 .theme-card:hover { border-color: #c4b5fd; }

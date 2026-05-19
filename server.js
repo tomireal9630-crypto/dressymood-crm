@@ -45,7 +45,23 @@ async function updateDatabaseSchema() {
             ADD COLUMN IF NOT EXISTS city VARCHAR(255) DEFAULT '',
             ADD COLUMN IF NOT EXISTS branch TEXT DEFAULT '',
             ADD COLUMN IF NOT EXISTS payment_type VARCHAR(50) DEFAULT 'на счет',
-            ADD COLUMN IF NOT EXISTS delivery_payment VARCHAR(50) DEFAULT 'Отримувач';
+            ADD COLUMN IF NOT EXISTS delivery_payment VARCHAR(50) DEFAULT 'Отримувач',
+            ADD COLUMN IF NOT EXISTS city_ref VARCHAR(64) DEFAULT '',
+            ADD COLUMN IF NOT EXISTS warehouse_ref VARCHAR(64) DEFAULT '',
+            ADD COLUMN IF NOT EXISTS np_doc_ref VARCHAR(64) DEFAULT '',
+            ADD COLUMN IF NOT EXISTS np_status_code VARCHAR(16) DEFAULT '',
+            ADD COLUMN IF NOT EXISTS np_status_text VARCHAR(255) DEFAULT '',
+            ADD COLUMN IF NOT EXISTS np_delivery_date VARCHAR(64) DEFAULT '',
+            ADD COLUMN IF NOT EXISTS np_delivery_cost NUMERIC DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS np_arrival_date VARCHAR(64) DEFAULT '',
+            ADD COLUMN IF NOT EXISTS np_updated_at TIMESTAMP WITH TIME ZONE;
+        `);
+
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS app_settings (
+                key VARCHAR(64) PRIMARY KEY,
+                value JSONB NOT NULL DEFAULT '{}'::jsonb
+            );
         `);
         
         await pool.query(`
@@ -196,6 +212,7 @@ app.get('/api/orders', checkAuth, async (req, res) => {
       SELECT o.id, c.full_name AS "fullName", c.phone,
              o.status, o.ttn, o.comment, o.source,
              o.delivery_service, o.city, o.branch, o.payment_type, o.delivery_payment,
+             o.np_status_code, o.np_status_text, o.np_doc_ref,
              o.created_at AS "createdAt",
              COALESCE(json_agg(json_build_object(
                'id', oi.id, 'article', oi.article, 'name', oi.name,
@@ -219,7 +236,8 @@ app.get('/api/orders', checkAuth, async (req, res) => {
 app.post('/api/orders/manual', checkAuth, async (req, res) => {
   const {
     fullName, phone, comment, source, items,
-    delivery_service, city, branch, payment_type, delivery_payment, ttn, status
+    delivery_service, city, branch, payment_type, delivery_payment, ttn, status,
+    city_ref, warehouse_ref
   } = req.body;
 
   if (!fullName || !phone) return res.status(400).json({ error: 'Вкажіть ПІБ та телефон' });
@@ -243,11 +261,13 @@ app.post('/api/orders/manual', checkAuth, async (req, res) => {
 
     const order = await client.query(
       `INSERT INTO orders (customer_id, status, ttn, comment, source,
-        delivery_service, city, branch, payment_type, delivery_payment)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
-      [customerId, status || 'Новий', ttn || '', comment || '', source || 'Вручну',
+        delivery_service, city, branch, payment_type, delivery_payment,
+        city_ref, warehouse_ref)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`,
+      [customerId, status || 'Новый', ttn || '', comment || '', source || 'Вручну',
        delivery_service || 'НП', city || '', branch || '',
-       payment_type || 'на счет', delivery_payment || 'Отримувач']
+       payment_type || 'на счет', delivery_payment || 'Отримувач',
+       city_ref || '', warehouse_ref || '']
     );
     const orderId = order.rows[0].id;
 
@@ -310,6 +330,7 @@ app.get('/api/orders/:id(\\d+)', checkAuth, async (req, res) => {
       SELECT o.id, c.full_name AS "fullName", c.phone,
              o.status, o.ttn, o.comment, o.source,
              o.delivery_service, o.city, o.branch, o.payment_type, o.delivery_payment,
+             o.city_ref, o.warehouse_ref,
              COALESCE(json_agg(json_build_object(
                'article', oi.article, 'name', oi.name, 'supplier_name', oi.supplier_name,
                'size', oi.size, 'color', oi.color, 'price', oi.price, 'quantity', oi.quantity
@@ -348,11 +369,13 @@ app.put('/api/orders/:id(\\d+)/full', checkAuth, async (req, res) => {
 
     await client.query(
       `UPDATE orders SET status=$1, ttn=$2, comment=$3,
-        delivery_service=$4, city=$5, branch=$6, payment_type=$7, delivery_payment=$8
-       WHERE id=$9`,
+        delivery_service=$4, city=$5, branch=$6, payment_type=$7, delivery_payment=$8,
+        city_ref=$9, warehouse_ref=$10
+       WHERE id=$11`,
       [b.status || 'Новый', b.ttn || '', b.comment || '',
        b.delivery_service || 'НП', b.city || '', b.branch || '',
-       b.payment_type || 'на счет', b.delivery_payment || 'Отримувач', orderId]
+       b.payment_type || 'на счет', b.delivery_payment || 'Отримувач',
+       b.city_ref || '', b.warehouse_ref || '', orderId]
     );
 
     await client.query('DELETE FROM order_items WHERE order_id = $1', [orderId]);
@@ -451,6 +474,253 @@ app.post('/api/landing/order', async (req, res) => {
     client.release();
   }
 });
+
+// ===================== NOVA POSHTA ИНТЕГРАЦИЯ =====================
+const NP_URL = 'https://api.novaposhta.ua/v2.0/json/';
+
+async function getNpSettings() {
+  const r = await pool.query(`SELECT value FROM app_settings WHERE key = 'np'`);
+  return r.rows.length ? r.rows[0].value : {};
+}
+async function saveNpSettings(obj) {
+  await pool.query(
+    `INSERT INTO app_settings (key, value) VALUES ('np', $1)
+     ON CONFLICT (key) DO UPDATE SET value = $1`, [obj]);
+}
+
+async function npCall(model, method, properties, apiKeyOverride) {
+  const s = await getNpSettings();
+  const apiKey = apiKeyOverride || s.apiKey;
+  if (!apiKey) throw new Error('Не вказано API-ключ Нова Пошта (вкладка Налаштування)');
+  const resp = await fetch(NP_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ apiKey, modelName: model, calledMethod: method, methodProperties: properties || {} })
+  });
+  const j = await resp.json();
+  if (!j.success) {
+    const msg = (j.errors && j.errors.length) ? j.errors.join('; ')
+      : (j.warnings && j.warnings.length ? j.warnings.join('; ') : 'Помилка API Нова Пошта');
+    throw new Error(msg);
+  }
+  return j.data || [];
+}
+
+// Код статусу НП -> статус замовлення CRM
+function npStatusToOrder(code) {
+  code = String(code || '');
+  if (['1'].includes(code)) return 'Доставка';
+  if (['2', '3'].includes(code)) return 'Ошибка в ТТН';
+  if (['4', '5', '6', '41', '111', '112'].includes(code)) return 'В пути';
+  if (['7', '8', '12'].includes(code)) return 'На почте';
+  if (['9', '10', '11', '106'].includes(code)) return 'Продажа';
+  if (['102', '103', '105', '108'].includes(code)) return 'Отказ';
+  if (['104'].includes(code)) return 'Переадресация';
+  return null; // невідомий код — статус не чіпаємо
+}
+
+// Налаштування (читання/збереження) ---------------------------------
+app.get('/api/settings/np', checkAuth, async (req, res) => {
+  try { res.json(await getNpSettings()); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/settings/np', checkAuth, async (req, res) => {
+  try {
+    const cur = await getNpSettings();
+    const b = req.body || {};
+    const next = {
+      ...cur,
+      apiKey: (b.apiKey ?? cur.apiKey ?? '').trim(),
+      senderPhone: (b.senderPhone ?? cur.senderPhone ?? '').trim(),
+      citySenderRef: b.citySenderRef ?? cur.citySenderRef ?? '',
+      citySenderName: b.citySenderName ?? cur.citySenderName ?? '',
+      senderAddressRef: b.senderAddressRef ?? cur.senderAddressRef ?? '',
+      senderAddressName: b.senderAddressName ?? cur.senderAddressName ?? '',
+      weight: String(b.weight ?? cur.weight ?? '0.5'),
+      description: (b.description ?? cur.description ?? 'Одяг').trim(),
+      seats: String(b.seats ?? cur.seats ?? '1'),
+      cargoType: b.cargoType ?? cur.cargoType ?? 'Parcel'
+    };
+    await saveNpSettings(next);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/np/test', checkAuth, async (req, res) => {
+  try {
+    const key = (req.body && req.body.apiKey) || undefined;
+    const data = await npCall('Common', 'getCargoTypes', {}, key);
+    res.json({ success: true, count: Array.isArray(data) ? data.length : 0 });
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+// Автопідказки міст/відділень ---------------------------------------
+app.get('/api/np/cities', checkAuth, async (req, res) => {
+  try {
+    const q = String(req.query.q || '').trim();
+    if (q.length < 2) return res.json([]);
+    const data = await npCall('Address', 'getCities', { FindByString: q, Limit: '20' });
+    res.json(data.map(c => ({ ref: c.Ref, name: c.Description, area: c.AreaDescription || '' })));
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+app.get('/api/np/warehouses', checkAuth, async (req, res) => {
+  try {
+    const cityRef = String(req.query.cityRef || '').trim();
+    if (!cityRef) return res.json([]);
+    const q = String(req.query.q || '').trim();
+    const props = { CityRef: cityRef, Limit: '500' };
+    if (q) props.FindByString = q;
+    const data = await npCall('Address', 'getWarehouses', props);
+    res.json(data.map(w => ({ ref: w.Ref, name: w.Description, type: w.CategoryOfWarehouse || '' })));
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+// Резолв відправника (контрагент + контакт) за API-ключем
+async function resolveSender(s) {
+  let { senderRef, contactSenderRef } = s;
+  if (senderRef && contactSenderRef) return { senderRef, contactSenderRef };
+  const cps = await npCall('Counterparty', 'getCounterparties', { CounterpartyProperty: 'Sender', Page: '1' });
+  if (!cps.length) throw new Error('У кабінеті НП не знайдено відправника');
+  senderRef = cps[0].Ref;
+  const contacts = await npCall('Counterparty', 'getCounterpartyContactPersons', { Ref: senderRef, Page: '1' });
+  if (!contacts.length) throw new Error('У відправника НП немає контактної особи');
+  contactSenderRef = contacts[0].Ref;
+  await saveNpSettings({ ...s, senderRef, contactSenderRef });
+  return { senderRef, contactSenderRef };
+}
+
+const COD_PAYMENTS = ['наложка', 'післяплата', 'наложений платіж', 'налож'];
+
+// Генерація ТТН -----------------------------------------------------
+app.post('/api/orders/:id(\\d+)/ttn', checkAuth, async (req, res) => {
+  const orderId = req.params.id;
+  try {
+    const s = await getNpSettings();
+    if (!s.apiKey) throw new Error('Спершу заповніть Налаштування Нова Пошта');
+    if (!s.citySenderRef || !s.senderAddressRef || !s.senderPhone)
+      throw new Error('У Налаштуваннях не вказані дані відправника');
+
+    const oq = await pool.query(`
+      SELECT o.*, c.full_name AS "fullName", c.phone,
+             COALESCE(SUM(oi.price * oi.quantity),0) AS total
+      FROM orders o JOIN customers c ON o.customer_id=c.id
+      LEFT JOIN order_items oi ON oi.order_id=o.id
+      WHERE o.id=$1 GROUP BY o.id, c.full_name, c.phone`, [orderId]);
+    if (!oq.rows.length) return res.status(404).json({ error: 'Замовлення не знайдено' });
+    const o = oq.rows[0];
+
+    if (!o.city_ref || !o.warehouse_ref) {
+      await pool.query(`UPDATE orders SET status='Ошибка в ТТН' WHERE id=$1`, [orderId]);
+      throw new Error('У замовленні не обрані місто/відділення зі списку Нова Пошта');
+    }
+
+    const { senderRef, contactSenderRef } = await resolveSender(s);
+    const phone = String(o.phone || '').replace(/\D/g, '');
+    const nameParts = String(o.fullName || '').trim().split(/\s+/);
+    const cost = Math.round(Number(o.total) || 0) || 1;
+    const payer = (o.delivery_payment === 'Відправник') ? 'Sender' : 'Recipient';
+    const isCod = COD_PAYMENTS.some(p => String(o.payment_type || '').toLowerCase().includes(p));
+    const d = new Date();
+    const dateStr = `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}.${d.getFullYear()}`;
+
+    const props = {
+      PayerType: payer,
+      PaymentMethod: 'Cash',
+      DateTime: dateStr,
+      CargoType: s.cargoType || 'Parcel',
+      Weight: String(s.weight || '0.5'),
+      ServiceType: 'WarehouseWarehouse',
+      SeatsAmount: String(s.seats || '1'),
+      Description: s.description || 'Одяг',
+      Cost: String(cost),
+      CitySender: s.citySenderRef,
+      Sender: senderRef,
+      SenderAddress: s.senderAddressRef,
+      ContactSender: contactSenderRef,
+      SendersPhone: String(s.senderPhone || '').replace(/\D/g, ''),
+      RecipientCityName: o.city || '',
+      RecipientArea: '',
+      CityRecipient: o.city_ref,
+      RecipientAddress: o.warehouse_ref,
+      RecipientName: o.fullName || '',
+      RecipientType: 'PrivatePerson',
+      RecipientsPhone: phone,
+      NewAddress: '1',
+      FirstName: nameParts[0] || o.fullName || '',
+      MiddleName: nameParts.length > 2 ? nameParts[1] : '',
+      LastName: nameParts.length > 1 ? nameParts[nameParts.length - 1] : ''
+    };
+    if (isCod) {
+      props.BackwardDeliveryData = [{
+        PayerType: 'Recipient', CargoType: 'Money', RedeliveryString: String(cost)
+      }];
+    }
+
+    const data = await npCall('InternetDocument', 'save', props);
+    const doc = data[0] || {};
+    const ttn = doc.IntDocNumber || doc.Number || '';
+    if (!ttn) throw new Error('НП не повернула номер ТТН');
+
+    await pool.query(
+      `UPDATE orders SET ttn=$1, np_doc_ref=$2, status='Доставка',
+        np_status_code='1', np_status_text='Накладну створено', np_updated_at=now()
+       WHERE id=$3`,
+      [ttn, doc.Ref || '', orderId]
+    );
+    res.json({ success: true, ttn });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Оновлення статусів посилок ----------------------------------------
+async function refreshNpStatuses() {
+  const s = await getNpSettings();
+  if (!s.apiKey) return { updated: 0, skipped: 'no api key' };
+  const FINAL = ['Продажа', 'Отказ', '✗✗✗'];
+  const q = await pool.query(
+    `SELECT id, ttn FROM orders
+     WHERE ttn <> '' AND ttn IS NOT NULL AND status <> ALL($1)`, [FINAL]);
+  if (!q.rows.length) return { updated: 0 };
+  const docs = q.rows.map(r => ({ DocumentNumber: r.ttn, Phone: '' }));
+  let updated = 0;
+  for (let i = 0; i < docs.length; i += 100) {
+    const chunk = docs.slice(i, i + 100);
+    let data;
+    try { data = await npCall('TrackingDocument', 'getStatusDocuments', { Documents: chunk }); }
+    catch (e) { continue; }
+    for (const st of data) {
+      const row = q.rows.find(r => r.ttn === st.Number);
+      if (!row) continue;
+      const newStatus = npStatusToOrder(st.StatusCode);
+      const fields = {
+        np_status_code: String(st.StatusCode || ''),
+        np_status_text: st.Status || '',
+        np_delivery_date: st.ScheduledDeliveryDate || st.DateScheduledDelivery || '',
+        np_delivery_cost: Number(st.DocumentCost) || 0,
+        np_arrival_date: st.RecipientDateTime || st.ActualDeliveryDate || ''
+      };
+      const sets = Object.keys(fields).map((k, idx) => `${k}=$${idx + 1}`);
+      const vals = Object.values(fields);
+      if (newStatus) { sets.push(`status=$${vals.length + 1}`); vals.push(newStatus); }
+      sets.push(`np_updated_at=now()`);
+      vals.push(row.id);
+      await pool.query(`UPDATE orders SET ${sets.join(', ')} WHERE id=$${vals.length}`, vals);
+      updated++;
+    }
+  }
+  return { updated };
+}
+
+app.post('/api/np/refresh', checkAuth, async (req, res) => {
+  try { res.json({ success: true, ...(await refreshNpStatuses()) }); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+// Авто-опитування кожні 30 хв
+setInterval(() => { refreshNpStatuses().catch(() => {}); }, 30 * 60 * 1000);
 
 // --- API СКЛАДУ ---
 app.get('/api/warehouse/suppliers', checkAuth, async (req, res) => {

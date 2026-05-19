@@ -185,7 +185,7 @@
                                 <th class="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Оплата</th>
                                 <th class="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">
                                     <div class="flex items-center gap-2">ТТН
-                                        <button onclick="loadOrders()" title="Оновити" class="text-slate-400 hover:text-violet-500 transition-colors"><i class="fa-solid fa-rotate"></i></button>
+                                        <button onclick="npRefreshNow()" title="Оновити статуси Нова Пошта" class="text-slate-400 hover:text-violet-500 transition-colors"><i class="fa-solid fa-rotate"></i></button>
                                         <span id="ttnSyncTime" class="text-[9px] font-bold text-slate-400 normal-case tracking-normal"></span>
                                     </div>
                                 </th>
@@ -335,6 +335,56 @@
             </div>
             <div id="view-export" class="view-content h-full flex flex-col items-center justify-center text-center"><i class="fa-solid fa-file-export text-6xl text-slate-200 mb-6"></i><h3 class="text-xl font-bold text-slate-400">Розділ "Вигрузка"</h3></div>
 
+            <div id="view-settings" class="view-content h-full">
+                <div class="mb-8">
+                    <h2 class="text-3xl font-black text-slate-800 uppercase italic tracking-tighter">Налаштування</h2>
+                    <p class="text-slate-400 font-medium text-sm">Інтеграція з Нова Пошта</p>
+                </div>
+                <div class="bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/40 border border-slate-100 p-10 max-w-3xl">
+                    <form id="npSettingsForm" class="space-y-6">
+                        <div>
+                            <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">API-ключ Нова Пошта</label>
+                            <input type="text" name="apiKey" placeholder="ключ з кабінету НП → Налаштування → Безпека → API"
+                                class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-mono text-sm">
+                        </div>
+                        <div class="grid grid-cols-2 gap-6">
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Телефон відправника</label>
+                                <input type="text" name="senderPhone" placeholder="380xxxxxxxxx"
+                                    class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-bold text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Місто відправника</label>
+                                <input type="text" id="npSenderCity" autocomplete="off" placeholder="почніть вводити місто..."
+                                    class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-bold text-sm">
+                                <input type="hidden" name="citySenderRef"><input type="hidden" name="citySenderName">
+                                <div id="npSenderCityList" class="np-ac"></div>
+                            </div>
+                            <div class="col-span-2">
+                                <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Відділення відправника</label>
+                                <select id="npSenderWh" class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-bold text-sm">
+                                    <option value="">— спершу оберіть місто —</option>
+                                </select>
+                                <input type="hidden" name="senderAddressRef"><input type="hidden" name="senderAddressName">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Вага за замовч. (кг)</label>
+                                <input type="text" name="weight" value="0.5" class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-bold text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Опис вантажу</label>
+                                <input type="text" name="description" value="Одяг" class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-bold text-sm">
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-3 pt-2">
+                            <button type="submit" class="bg-violet-600 text-white px-8 py-3 rounded-xl font-black text-sm uppercase tracking-widest hover:bg-violet-700 transition-all">Зберегти</button>
+                            <button type="button" onclick="testNp()" class="px-6 py-3 rounded-xl font-bold text-sm text-slate-600 bg-slate-100 hover:bg-slate-200 transition-all">Перевірити підключення</button>
+                            <span id="npTestResult" class="text-sm font-bold"></span>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
             <div id="view-theme" class="view-content h-full">
                 <div class="mb-8">
                     <h2 class="text-3xl font-black text-slate-800 uppercase italic tracking-tighter">Тема</h2>
@@ -425,12 +475,17 @@
                         </select>
                     </div>
                     <div>
-                        <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Місто</label>
-                        <input type="text" name="city" placeholder="Київ" class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-bold text-sm">
+                        <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Місто (Нова Пошта)</label>
+                        <input type="text" id="orderCityInput" autocomplete="off" placeholder="почніть вводити місто..." class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-bold text-sm">
+                        <input type="hidden" name="city"><input type="hidden" name="city_ref">
+                        <div id="orderCityList" class="np-ac"></div>
                     </div>
                     <div class="col-span-2">
-                        <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Відділення / Адреса</label>
-                        <input type="text" name="branch" placeholder="Відділення №3 або адреса" class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-bold text-sm">
+                        <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Відділення / Поштомат</label>
+                        <select id="orderWhSelect" class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-bold text-sm">
+                            <option value="">— спершу оберіть місто —</option>
+                        </select>
+                        <input type="hidden" name="branch"><input type="hidden" name="warehouse_ref">
                     </div>
                     <div>
                         <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Тип оплати</label>
@@ -637,6 +692,7 @@
             if (targetContent) targetContent.classList.add('active');
 
             if (view === 'theme') renderThemeCards();
+            if (view === 'settings') loadNpSettings();
             refreshData();
         }
 
@@ -644,6 +700,198 @@
             if (['orders', 'archive', 'deleted'].includes(currentView)) loadOrders();
             if (currentView === 'warehouse') loadWarehouseData();
             if (currentView === 'stock') loadStockData();
+        }
+
+        // --- НОВА ПОШТА ---
+        function npDebounce(fn, ms) {
+            let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
+        }
+
+        // Универсальная автоподсказка городов НП.
+        // onPick(city) вызывается при выборе; city = {ref,name}
+        function attachCityAutocomplete(input, wrap, onPick) {
+            const run = npDebounce(async () => {
+                const q = input.value.trim();
+                wrap.innerHTML = '';
+                if (q.length < 2) return;
+                try {
+                    const r = await fetch('/api/np/cities?q=' + encodeURIComponent(q));
+                    const list = await r.json();
+                    if (!Array.isArray(list) || !list.length) return;
+                    const box = document.createElement('div');
+                    box.className = 'np-ac-box';
+                    box.innerHTML = list.map(c =>
+                        `<div data-ref="${esc(c.ref)}" data-name="${esc(c.name)}">${esc(c.name)}<span style="color:#94a3b8"> ${esc(c.area)}</span></div>`
+                    ).join('');
+                    box.querySelectorAll('div').forEach(d => {
+                        d.onclick = () => {
+                            input.value = d.dataset.name;
+                            wrap.innerHTML = '';
+                            onPick({ ref: d.dataset.ref, name: d.dataset.name });
+                        };
+                    });
+                    wrap.appendChild(box);
+                } catch (e) { /* тихо */ }
+            }, 350);
+            input.addEventListener('input', run);
+            document.addEventListener('click', e => {
+                if (!wrap.contains(e.target) && e.target !== input) wrap.innerHTML = '';
+            });
+        }
+
+        async function loadWarehouses(selectEl, cityRef, selectedRef) {
+            selectEl.innerHTML = `<option value="">— завантаження… —</option>`;
+            try {
+                const r = await fetch('/api/np/warehouses?cityRef=' + encodeURIComponent(cityRef));
+                const list = await r.json();
+                if (!Array.isArray(list) || !list.length) {
+                    selectEl.innerHTML = `<option value="">— відділень не знайдено —</option>`;
+                    return;
+                }
+                selectEl.innerHTML = `<option value="">— оберіть відділення/поштомат —</option>` +
+                    list.map(w => `<option value="${esc(w.ref)}" data-name="${esc(w.name)}" ${w.ref === selectedRef ? 'selected' : ''}>${esc(w.name)}</option>`).join('');
+            } catch (e) {
+                selectEl.innerHTML = `<option value="">— помилка завантаження —</option>`;
+            }
+        }
+
+        // Привязка пикеров в форме заказа (один раз)
+        let orderNpReady = false;
+        function setupOrderNpPickers() {
+            if (orderNpReady) return;
+            orderNpReady = true;
+            const form = document.getElementById('addOrderForm');
+            const cityInput = document.getElementById('orderCityInput');
+            const cityList = document.getElementById('orderCityList');
+            const whSel = document.getElementById('orderWhSelect');
+            attachCityAutocomplete(cityInput, cityList, (city) => {
+                form.city.value = city.name;
+                form.city_ref.value = city.ref;
+                form.branch.value = '';
+                form.warehouse_ref.value = '';
+                loadWarehouses(whSel, city.ref, '');
+            });
+            whSel.addEventListener('change', () => {
+                const opt = whSel.options[whSel.selectedIndex];
+                form.warehouse_ref.value = whSel.value;
+                form.branch.value = whSel.value ? opt.dataset.name : '';
+            });
+        }
+
+        function resetOrderNpPickers() {
+            const form = document.getElementById('addOrderForm');
+            document.getElementById('orderCityInput').value = '';
+            document.getElementById('orderWhSelect').innerHTML = '<option value="">— спершу оберіть місто —</option>';
+            if (form.city) form.city.value = '';
+            if (form.city_ref) form.city_ref.value = '';
+            if (form.branch) form.branch.value = '';
+            if (form.warehouse_ref) form.warehouse_ref.value = '';
+        }
+
+        async function fillOrderNpFromOrder(o) {
+            const form = document.getElementById('addOrderForm');
+            document.getElementById('orderCityInput').value = o.city || '';
+            form.city.value = o.city || '';
+            form.city_ref.value = o.city_ref || '';
+            form.branch.value = o.branch || '';
+            form.warehouse_ref.value = o.warehouse_ref || '';
+            const whSel = document.getElementById('orderWhSelect');
+            if (o.city_ref) await loadWarehouses(whSel, o.city_ref, o.warehouse_ref || '');
+            else whSel.innerHTML = '<option value="">— оберіть місто зі списку НП —</option>';
+        }
+
+        // Налаштування НП
+        async function loadNpSettings() {
+            try {
+                const r = await fetch('/api/settings/np');
+                const s = await r.json();
+                const f = document.getElementById('npSettingsForm');
+                f.apiKey.value = s.apiKey || '';
+                f.senderPhone.value = s.senderPhone || '';
+                f.weight.value = s.weight || '0.5';
+                f.description.value = s.description || 'Одяг';
+                f.citySenderRef.value = s.citySenderRef || '';
+                f.citySenderName.value = s.citySenderName || '';
+                f.senderAddressRef.value = s.senderAddressRef || '';
+                f.senderAddressName.value = s.senderAddressName || '';
+                document.getElementById('npSenderCity').value = s.citySenderName || '';
+                const whSel = document.getElementById('npSenderWh');
+                if (s.citySenderRef) {
+                    await loadWarehouses(whSel, s.citySenderRef, s.senderAddressRef || '');
+                } else {
+                    whSel.innerHTML = '<option value="">— спершу оберіть місто —</option>';
+                }
+            } catch (e) { /* тихо */ }
+        }
+
+        let npSettingsReady = false;
+        function setupNpSettings() {
+            if (npSettingsReady) return;
+            npSettingsReady = true;
+            const f = document.getElementById('npSettingsForm');
+            const cityInput = document.getElementById('npSenderCity');
+            const cityList = document.getElementById('npSenderCityList');
+            const whSel = document.getElementById('npSenderWh');
+            attachCityAutocomplete(cityInput, cityList, (city) => {
+                f.citySenderRef.value = city.ref;
+                f.citySenderName.value = city.name;
+                f.senderAddressRef.value = '';
+                f.senderAddressName.value = '';
+                loadWarehouses(whSel, city.ref, '');
+            });
+            whSel.addEventListener('change', () => {
+                const opt = whSel.options[whSel.selectedIndex];
+                f.senderAddressRef.value = whSel.value;
+                f.senderAddressName.value = whSel.value ? opt.dataset.name : '';
+            });
+            f.onsubmit = async (e) => {
+                e.preventDefault();
+                const fd = Object.fromEntries(new FormData(f));
+                try {
+                    const r = await fetch('/api/settings/np', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(fd)
+                    });
+                    const j = await r.json();
+                    if (!r.ok) throw new Error(j.error || 'Помилка');
+                    alert('Налаштування збережено');
+                } catch (err) { alert('Помилка: ' + err.message); }
+            };
+        }
+
+        async function testNp() {
+            const el = document.getElementById('npTestResult');
+            el.textContent = 'Перевірка…'; el.style.color = '#64748b';
+            try {
+                const apiKey = document.getElementById('npSettingsForm').apiKey.value.trim();
+                const r = await fetch('/api/np/test', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ apiKey })
+                });
+                const j = await r.json();
+                if (!r.ok) throw new Error(j.error || 'Помилка');
+                el.textContent = '✓ Підключення працює'; el.style.color = '#16a34a';
+            } catch (err) { el.textContent = '✕ ' + err.message; el.style.color = '#dc2626'; }
+        }
+
+        async function generateTtn(id) {
+            if (!confirm('Згенерувати ТТН Нова Пошта для замовлення #' + id + '?')) return;
+            try {
+                const r = await fetch(`/api/orders/${id}/ttn`, { method: 'POST' });
+                const j = await r.json();
+                if (!r.ok) throw new Error(j.error || 'Помилка');
+                alert('ТТН створено: ' + j.ttn);
+                loadOrders();
+            } catch (err) { alert('Помилка ТТН: ' + err.message); loadOrders(); }
+        }
+
+        async function npRefreshNow() {
+            try {
+                const r = await fetch('/api/np/refresh', { method: 'POST' });
+                const j = await r.json();
+                if (!r.ok) throw new Error(j.error || 'Помилка');
+            } catch (e) { /* тихо */ }
+            loadOrders();
         }
 
         // --- ЛОГІКА ЗАМОВЛЕНЬ ---
@@ -802,9 +1050,10 @@
                         <td class="px-4 py-5">
                             <input type="text" value="${esc(o.ttn || '')}" onchange="updateOrder(${o.id}, 'ttn', this.value)" placeholder="ТТН..."
                                 class="w-[130px] text-[11px] font-mono font-bold bg-slate-50 border border-slate-100 rounded-lg px-2 py-1.5 outline-none">
+                            ${o.np_status_text ? `<div class="text-[9px] text-slate-400 font-bold mt-1 max-w-[150px] truncate" title="${esc(o.np_status_text)}">${esc(o.np_status_text)}</div>` : ''}
                             <div class="flex gap-1.5 mt-1.5">
-                                <button onclick="ttnSoon()" title="Скоро — інтеграція Нова Пошта" class="ttn-btn ttn-btn-pink">ТТН</button>
-                                <button onclick="ttnSoon()" title="Скоро — інтеграція Нова Пошта" class="ttn-btn ttn-btn-blue">ЧЕК</button>
+                                <button onclick="event.stopPropagation(); generateTtn(${o.id})" title="Згенерувати ТТН Нова Пошта" class="ttn-btn ttn-btn-pink">ТТН</button>
+                                <button onclick="event.stopPropagation(); ttnSoon()" title="Скоро" class="ttn-btn ttn-btn-blue">ЧЕК</button>
                             </div>
                         </td>
                         <td class="px-4 py-5">${supHtml}</td>
@@ -897,6 +1146,8 @@
             const form = document.getElementById('addOrderForm');
             form.reset();
             fillStatusSelect(DEFAULT_STATUS);
+            setupOrderNpPickers();
+            resetOrderNpPickers();
             const box = document.getElementById('orderItems');
             box.innerHTML = '';
             box.appendChild(orderItemRow());
@@ -921,12 +1172,12 @@
             form.phone.value = formatUAPhone(o.phone || '');
             form.comment.value = o.comment || '';
             form.delivery_service.value = o.delivery_service || 'НП';
-            form.city.value = o.city || '';
-            form.branch.value = o.branch || '';
             form.payment_type.value = o.payment_type || 'на счет';
             form.delivery_payment.value = o.delivery_payment || 'Отримувач';
             form.ttn.value = o.ttn || '';
             fillStatusSelect(o.status);
+            setupOrderNpPickers();
+            await fillOrderNpFromOrder(o);
             const box = document.getElementById('orderItems');
             box.innerHTML = '';
             const items = Array.isArray(o.items) ? o.items : [];
@@ -969,6 +1220,7 @@
                 delivery_service: fd.get('delivery_service'), city: fd.get('city'),
                 branch: fd.get('branch'), payment_type: fd.get('payment_type'),
                 delivery_payment: fd.get('delivery_payment'),
+                city_ref: fd.get('city_ref') || '', warehouse_ref: fd.get('warehouse_ref') || '',
                 ttn: fd.get('ttn'), status: fd.get('status')
             };
             const url = editingOrderId ? `/api/orders/${editingOrderId}/full` : '/api/orders/manual';
@@ -1166,6 +1418,7 @@
         function debounceSearch() { clearTimeout(window.searchTimer); window.searchTimer = setTimeout(loadOrders, 400); }
         async function logout() { await fetch('/api/logout', { method: 'POST' }); window.location.href = '/login.html'; }
 
+        setupNpSettings();
         refreshData();
 
         // Автооновлення списку замовлень кожні 15 c (без перешкод під час редагування)
