@@ -435,6 +435,45 @@
                         </div>
                     </form>
                 </div>
+
+                <div class="bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/40 border border-slate-100 p-10 max-w-3xl mt-8">
+                    <div class="mb-6">
+                        <h3 class="text-xl font-black text-slate-800 uppercase italic">Checkbox (е-чек)</h3>
+                        <p class="text-[11px] text-slate-400 font-medium">Генерація фіскальних чеків кнопкою «ЧЕК» у замовленні</p>
+                    </div>
+                    <form id="cbSettingsForm" class="space-y-6">
+                        <div>
+                            <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">License Key каси</label>
+                            <input type="text" name="licenseKey" placeholder="ключ ліцензії з кабінету Checkbox"
+                                class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-mono text-sm">
+                        </div>
+                        <div class="grid grid-cols-3 gap-6">
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Логін касира</label>
+                                <input type="text" name="login" placeholder="login"
+                                    class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-bold text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Пароль</label>
+                                <input type="password" name="password"
+                                    class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-bold text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">PIN-код (опц.)</label>
+                                <input type="text" name="pinCode" placeholder="1234"
+                                    class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-bold text-sm">
+                            </div>
+                        </div>
+                        <div class="bg-slate-50 border border-slate-100 rounded-xl p-4 text-[11px] text-slate-500 font-medium">
+                            Спосіб оплати — <b>Безготівковий</b>, зміна каси відкривається автоматично при першому чеку.
+                        </div>
+                        <div class="flex items-center gap-3 pt-2 flex-wrap">
+                            <button type="submit" class="bg-violet-600 text-white px-8 py-3 rounded-xl font-black text-sm uppercase tracking-widest hover:bg-violet-700 transition-all">Зберегти</button>
+                            <button type="button" onclick="testCheckbox()" class="px-6 py-3 rounded-xl font-bold text-sm text-slate-600 bg-slate-100 hover:bg-slate-200 transition-all">Перевірити підключення</button>
+                            <span id="cbTestResult" class="text-sm font-bold"></span>
+                        </div>
+                    </form>
+                </div>
             </div>
 
             <div id="view-theme" class="view-content h-full">
@@ -742,7 +781,7 @@
             if (targetContent) targetContent.classList.add('active');
 
             if (view === 'theme') renderThemeCards();
-            if (view === 'settings') { loadNpSettings(); loadSmsSettings(); }
+            if (view === 'settings') { loadNpSettings(); loadSmsSettings(); loadCheckboxSettings(); }
             refreshData();
         }
 
@@ -1030,6 +1069,69 @@
             loadOrders();
         }
 
+        // --- CHECKBOX (е-чек) ---
+        async function loadCheckboxSettings() {
+            try {
+                const r = await fetch('/api/settings/checkbox');
+                const s = await r.json();
+                const f = document.getElementById('cbSettingsForm');
+                if (!f) return;
+                f.login.value = s.login || '';
+                f.password.value = s.password || '';
+                f.licenseKey.value = s.licenseKey || '';
+                f.pinCode.value = s.pinCode || '';
+            } catch (e) { /* тихо */ }
+        }
+
+        let cbSettingsReady = false;
+        function setupCheckboxSettings() {
+            if (cbSettingsReady) return;
+            cbSettingsReady = true;
+            const f = document.getElementById('cbSettingsForm');
+            if (!f) return;
+            f.onsubmit = async (e) => {
+                e.preventDefault();
+                const fd = {
+                    login: f.login.value.trim(),
+                    password: f.password.value,
+                    licenseKey: f.licenseKey.value.trim(),
+                    pinCode: f.pinCode.value.trim()
+                };
+                try {
+                    const r = await fetch('/api/settings/checkbox', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(fd)
+                    });
+                    const j = await r.json();
+                    if (!r.ok) throw new Error(j.error || 'Помилка');
+                    alert('Налаштування Checkbox збережено');
+                } catch (err) { alert('Помилка: ' + err.message); }
+            };
+        }
+
+        async function testCheckbox() {
+            const el = document.getElementById('cbTestResult');
+            el.textContent = 'Перевірка…'; el.style.color = '#64748b';
+            try {
+                const r = await fetch('/api/checkbox/test', { method: 'POST' });
+                const j = await r.json();
+                if (!r.ok) throw new Error(j.error || 'Помилка');
+                el.textContent = '✓ Підключення працює'; el.style.color = '#16a34a';
+            } catch (err) { el.textContent = '✕ ' + err.message; el.style.color = '#dc2626'; }
+        }
+
+        async function generateReceipt(id) {
+            if (!confirm('Згенерувати фіскальний чек Checkbox для замовлення #' + id + '?')) return;
+            try {
+                const r = await fetch(`/api/orders/${id}/receipt`, { method: 'POST' });
+                const j = await r.json();
+                if (!r.ok) throw new Error(j.error || 'Помилка');
+                if (j.existed) alert('Чек вже існує: ' + (j.url || j.id));
+                else alert('Чек створено: ' + (j.url || j.id));
+                loadOrders();
+            } catch (err) { alert('Помилка чека: ' + err.message); loadOrders(); }
+        }
+
         // --- ЛОГІКА ЗАМОВЛЕНЬ ---
         function fillStatusFilter() {
             const f = document.getElementById('statusFilter');
@@ -1199,7 +1301,13 @@
                             ${smsHtml}
                             <div class="flex gap-1.5 mt-1.5">
                                 <button onclick="event.stopPropagation(); generateTtn(${o.id})" title="Згенерувати ТТН Нова Пошта" class="ttn-btn ttn-btn-pink">ТТН</button>
-                                <button onclick="event.stopPropagation(); ttnSoon()" title="Скоро" class="ttn-btn ttn-btn-blue">ЧЕК</button>
+                                <button onclick="event.stopPropagation(); generateReceipt(${o.id})" title="${o.checkbox_receipt_id ? 'Чек вже створено' : 'Згенерувати фіскальний чек'}" class="ttn-btn ttn-btn-blue">ЧЕК</button>
+                                ${o.checkbox_receipt_url
+                                    ? `<a href="${esc(o.checkbox_receipt_url)}" target="_blank" onclick="event.stopPropagation()" title="Чек ${esc(o.checkbox_receipt_id)} — відкрити" class="receipt-ok">₴</a>`
+                                    : (o.checkbox_receipt_error
+                                        ? `<button onclick="event.stopPropagation(); generateReceipt(${o.id})" title="${esc(o.checkbox_receipt_error)}" class="receipt-err">!</button>`
+                                        : '')
+                                }
                             </div>
                         </td>
                         <td class="px-4 py-5">${supHtml}</td>
@@ -1567,6 +1675,7 @@
 
         setupNpSettings();
         setupSmsSettings();
+        setupCheckboxSettings();
         refreshData();
 
         // Автооновлення списку замовлень кожні 15 c (без перешкод під час редагування)

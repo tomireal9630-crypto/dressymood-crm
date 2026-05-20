@@ -61,7 +61,22 @@ async function updateDatabaseSchema() {
             ADD COLUMN IF NOT EXISTS sms3_sent_at TIMESTAMP WITH TIME ZONE,
             ADD COLUMN IF NOT EXISTS sms1_error TEXT DEFAULT '',
             ADD COLUMN IF NOT EXISTS sms2_error TEXT DEFAULT '',
-            ADD COLUMN IF NOT EXISTS sms3_error TEXT DEFAULT '';
+            ADD COLUMN IF NOT EXISTS sms3_error TEXT DEFAULT '',
+            ADD COLUMN IF NOT EXISTS checkbox_receipt_id VARCHAR(64) DEFAULT '',
+            ADD COLUMN IF NOT EXISTS checkbox_receipt_url VARCHAR(255) DEFAULT '',
+            ADD COLUMN IF NOT EXISTS checkbox_receipt_at TIMESTAMP WITH TIME ZONE,
+            ADD COLUMN IF NOT EXISTS checkbox_receipt_error TEXT DEFAULT '';
+        `);
+
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS checkbox_log (
+                id SERIAL PRIMARY KEY,
+                order_id INTEGER REFERENCES orders(id) ON DELETE CASCADE,
+                receipt_id VARCHAR(64) DEFAULT '',
+                status VARCHAR(16) DEFAULT 'ok',
+                error TEXT DEFAULT '',
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+            );
         `);
 
         await pool.query(`
@@ -233,6 +248,7 @@ app.get('/api/orders', checkAuth, async (req, res) => {
              o.status, o.ttn, o.comment, o.source,
              o.delivery_service, o.city, o.branch, o.payment_type, o.delivery_payment,
              o.np_status_code, o.np_status_text, o.np_doc_ref,
+             o.checkbox_receipt_id, o.checkbox_receipt_url, o.checkbox_receipt_error,
              o.sms1_sent_at, o.sms2_sent_at, o.sms3_sent_at,
              o.sms1_error, o.sms2_error, o.sms3_error,
              o.created_at AS "createdAt",
@@ -970,6 +986,194 @@ setInterval(async () => {
   try { await refreshNpStatuses(); } catch (e) {}
   try { await autoSendSms(); } catch (e) {}
 }, 30 * 60 * 1000);
+
+// ===================== CHECKBOX (е-чек) =====================
+const CHECKBOX_URL = 'https://api.checkbox.ua/api/v1';
+const checkboxState = { token: null, tokenExpiresAt: 0, shiftId: null };
+
+async function getCheckboxSettings() {
+  const r = await pool.query(`SELECT value FROM app_settings WHERE key = 'checkbox'`);
+  return r.rows.length ? r.rows[0].value : {};
+}
+async function saveCheckboxSettings(obj) {
+  await pool.query(
+    `INSERT INTO app_settings (key, value) VALUES ('checkbox', $1)
+     ON CONFLICT (key) DO UPDATE SET value = $1`, [obj]);
+}
+
+async function checkboxFetch(path, method, body, token, licenseKey) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = 'Bearer ' + token;
+  if (licenseKey) headers['X-License-Key'] = licenseKey;
+  headers['X-Client-Name'] = 'crm-dressymood';
+  headers['X-Client-Version'] = '1.0';
+  const r = await fetch(CHECKBOX_URL + path, {
+    method: method || 'GET',
+    headers,
+    body: body ? JSON.stringify(body) : undefined
+  });
+  const txt = await r.text();
+  let j = null;
+  try { j = txt ? JSON.parse(txt) : null; } catch (e) { j = { detail: txt }; }
+  if (!r.ok) {
+    const msg = (j && (j.message || j.detail)) || ('HTTP ' + r.status);
+    throw new Error('Checkbox: ' + msg);
+  }
+  return j;
+}
+
+async function checkboxSignin(settings) {
+  if (!settings.login || !settings.password) throw new Error('Не вказані логін/пароль кассира Checkbox');
+  if (!settings.licenseKey) throw new Error('Не вказано License Key Checkbox');
+  const body = { login: settings.login, password: settings.password };
+  if (settings.pinCode) body.pin_code = settings.pinCode;
+  const j = await checkboxFetch('/cashier/signin', 'POST', body, null, settings.licenseKey);
+  checkboxState.token = j.access_token;
+  checkboxState.tokenExpiresAt = Date.now() + 25 * 60 * 1000; // 25 min cache
+  return j.access_token;
+}
+
+async function checkboxGetToken(settings) {
+  if (checkboxState.token && Date.now() < checkboxState.tokenExpiresAt) return checkboxState.token;
+  return await checkboxSignin(settings);
+}
+
+async function checkboxEnsureShift(settings) {
+  const token = await checkboxGetToken(settings);
+  // Спроба отримати поточну зміну кассира
+  try {
+    const cur = await checkboxFetch('/cashier/shift', 'GET', null, token, settings.licenseKey);
+    if (cur && cur.id && cur.status === 'OPENED') {
+      checkboxState.shiftId = cur.id;
+      return cur.id;
+    }
+  } catch (e) { /* немає відкритої — створимо нижче */ }
+  // Створюємо нову зміну
+  const created = await checkboxFetch('/shifts', 'POST', {}, token, settings.licenseKey);
+  let shiftId = created.id;
+  // Чекаємо OPENED
+  for (let i = 0; i < 15; i++) {
+    const st = await checkboxFetch('/shifts/' + shiftId, 'GET', null, token, settings.licenseKey);
+    if (st && st.status === 'OPENED') {
+      checkboxState.shiftId = shiftId;
+      return shiftId;
+    }
+    if (st && st.status === 'CLOSED') throw new Error('Не вдалось відкрити зміну Checkbox');
+    await new Promise(res => setTimeout(res, 1000));
+  }
+  throw new Error('Зміна Checkbox не відкрилась (timeout)');
+}
+
+function buildReceiptGoods(order, items) {
+  return items.map(it => {
+    const name = [it.article, it.name].filter(Boolean).join(' ').trim() || 'Товар';
+    const extras = [it.size, it.color].filter(Boolean).join(', ');
+    const fullName = extras ? `${name} (${extras})` : name;
+    const code = String(it.article || ('SKU-' + (it.id || Math.random().toString(36).slice(2, 8))));
+    const priceKop = Math.round(Number(it.price || 0) * 100);
+    const qty = Math.max(1, parseInt(it.quantity) || 1);
+    return {
+      good: { code: code.slice(0, 64), name: fullName.slice(0, 128) },
+      quantity: qty * 1000,
+      price: priceKop,
+      is_return: false
+    };
+  });
+}
+
+// Налаштування Checkbox -------------------------------------------------
+app.get('/api/settings/checkbox', checkAuth, async (req, res) => {
+  try { res.json(await getCheckboxSettings()); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/settings/checkbox', checkAuth, async (req, res) => {
+  try {
+    const cur = await getCheckboxSettings();
+    const b = req.body || {};
+    const next = {
+      ...cur,
+      login: (b.login ?? cur.login ?? '').trim(),
+      password: (b.password ?? cur.password ?? ''),
+      licenseKey: (b.licenseKey ?? cur.licenseKey ?? '').trim(),
+      pinCode: (b.pinCode ?? cur.pinCode ?? '').trim()
+    };
+    await saveCheckboxSettings(next);
+    // Скинути кеш токена після зміни налаштувань
+    checkboxState.token = null; checkboxState.tokenExpiresAt = 0; checkboxState.shiftId = null;
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/checkbox/test', checkAuth, async (req, res) => {
+  try {
+    const s = await getCheckboxSettings();
+    await checkboxSignin(s);
+    res.json({ success: true });
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+// Генерація е-чека ------------------------------------------------------
+app.post('/api/orders/:id(\\d+)/receipt', checkAuth, async (req, res) => {
+  const orderId = req.params.id;
+  try {
+    const s = await getCheckboxSettings();
+    if (!s.login || !s.password || !s.licenseKey)
+      throw new Error('Спершу заповніть Налаштування Checkbox');
+
+    const oq = await pool.query(
+      `SELECT o.id, o.checkbox_receipt_id
+       FROM orders o WHERE o.id = $1`, [orderId]);
+    if (!oq.rows.length) return res.status(404).json({ error: 'Замовлення не знайдено' });
+    if (oq.rows[0].checkbox_receipt_id) {
+      // Уже є чек — повертаємо існуючий
+      const cur = await pool.query(
+        `SELECT checkbox_receipt_id AS id, checkbox_receipt_url AS url FROM orders WHERE id = $1`, [orderId]);
+      return res.json({ success: true, existed: true, ...cur.rows[0] });
+    }
+
+    const itemsQ = await pool.query(
+      `SELECT id, article, name, size, color, price, quantity
+       FROM order_items WHERE order_id = $1 ORDER BY id`, [orderId]);
+    if (!itemsQ.rows.length) throw new Error('У замовленні немає товарів');
+
+    await checkboxEnsureShift(s);
+    const token = await checkboxGetToken(s);
+
+    const goods = buildReceiptGoods({ id: orderId }, itemsQ.rows);
+    const total = goods.reduce((sum, g) => sum + g.price * (g.quantity / 1000), 0);
+    const receiptBody = {
+      goods,
+      payments: [{ type: 'CASHLESS', value: total, label: 'Безготівковий' }],
+      rounding: false
+    };
+
+    let receipt;
+    try {
+      receipt = await checkboxFetch('/receipts/sell', 'POST', receiptBody, token, s.licenseKey);
+    } catch (err) {
+      await pool.query(
+        `UPDATE orders SET checkbox_receipt_error=$1 WHERE id=$2`,
+        [String(err.message).slice(0, 500), orderId]);
+      await pool.query(
+        `INSERT INTO checkbox_log (order_id, status, error) VALUES ($1, 'error', $2)`,
+        [orderId, String(err.message).slice(0, 500)]);
+      throw err;
+    }
+
+    const receiptId = receipt.id;
+    const url = `https://check.checkbox.ua/${receiptId}`;
+    await pool.query(
+      `UPDATE orders SET checkbox_receipt_id=$1, checkbox_receipt_url=$2,
+                         checkbox_receipt_at=now(), checkbox_receipt_error=''
+       WHERE id=$3`, [receiptId, url, orderId]);
+    await pool.query(
+      `INSERT INTO checkbox_log (order_id, receipt_id, status) VALUES ($1, $2, 'ok')`,
+      [orderId, receiptId]);
+
+    res.json({ success: true, id: receiptId, url });
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
 
 // --- API СКЛАДУ ---
 app.get('/api/warehouse/suppliers', checkAuth, async (req, res) => {
