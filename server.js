@@ -591,7 +591,11 @@ async function resolveSender(s) {
   return { senderRef, contactSenderRef };
 }
 
-const COD_PAYMENTS = ['наложка', 'післяплата', 'наложений платіж', 'налож'];
+// Тип оплати "на счет" = постоплата з зарахуванням на рахунок NovaPay
+// (поле AfterpaymentOnGoodsCost). "повна оплата" = без постоплати.
+function isAfterpayment(paymentType) {
+  return String(paymentType || '').toLowerCase().trim() === 'на счет';
+}
 
 // Генерація ТТН -----------------------------------------------------
 app.post('/api/orders/:id(\\d+)/ttn', checkAuth, async (req, res) => {
@@ -621,7 +625,7 @@ app.post('/api/orders/:id(\\d+)/ttn', checkAuth, async (req, res) => {
     const nameParts = String(o.fullName || '').trim().split(/\s+/);
     const cost = Math.round(Number(o.total) || 0) || 1;
     const payer = (o.delivery_payment === 'Відправник') ? 'Sender' : 'Recipient';
-    const isCod = COD_PAYMENTS.some(p => String(o.payment_type || '').toLowerCase().includes(p));
+    const afterpay = isAfterpayment(o.payment_type);
     const d = new Date();
     const dateStr = `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}.${d.getFullYear()}`;
 
@@ -652,10 +656,9 @@ app.post('/api/orders/:id(\\d+)/ttn', checkAuth, async (req, res) => {
       MiddleName: nameParts.length > 2 ? nameParts[1] : '',
       LastName: nameParts.length > 1 ? nameParts[nameParts.length - 1] : ''
     };
-    if (isCod) {
-      props.BackwardDeliveryData = [{
-        PayerType: 'Recipient', CargoType: 'Money', RedeliveryString: String(cost)
-      }];
+    if (afterpay) {
+      // Контроль оплати товару: постоплата з зарахуванням на рахунок NovaPay
+      props.AfterpaymentOnGoodsCost = String(cost);
     }
 
     const data = await npCall('InternetDocument', 'save', props);
