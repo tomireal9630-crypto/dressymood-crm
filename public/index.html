@@ -485,7 +485,7 @@
                         <select id="orderWhSelect" class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-bold text-sm">
                             <option value="">— спершу оберіть місто —</option>
                         </select>
-                        <input type="hidden" name="branch"><input type="hidden" name="warehouse_ref">
+                        <input type="hidden" name="branch"><input type="hidden" name="warehouse_ref"><input type="hidden" name="warehouse_type">
                     </div>
                     <div>
                         <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Тип оплати</label>
@@ -747,7 +747,7 @@
                     return;
                 }
                 selectEl.innerHTML = `<option value="">— оберіть відділення/поштомат —</option>` +
-                    list.map(w => `<option value="${esc(w.ref)}" data-name="${esc(w.name)}" ${w.ref === selectedRef ? 'selected' : ''}>${esc(w.name)}</option>`).join('');
+                    list.map(w => `<option value="${esc(w.ref)}" data-name="${esc(w.name)}" data-type="${esc(w.type || '')}" ${w.ref === selectedRef ? 'selected' : ''}>${/postomat|поштомат/i.test(w.type || '') ? '📦 ' : ''}${esc(w.name)}</option>`).join('');
             } catch (e) {
                 selectEl.innerHTML = `<option value="">— помилка завантаження —</option>`;
             }
@@ -773,6 +773,7 @@
                 const opt = whSel.options[whSel.selectedIndex];
                 form.warehouse_ref.value = whSel.value;
                 form.branch.value = whSel.value ? opt.dataset.name : '';
+                form.warehouse_type.value = whSel.value ? (opt.dataset.type || '') : '';
             });
         }
 
@@ -784,6 +785,7 @@
             if (form.city_ref) form.city_ref.value = '';
             if (form.branch) form.branch.value = '';
             if (form.warehouse_ref) form.warehouse_ref.value = '';
+            if (form.warehouse_type) form.warehouse_type.value = '';
         }
 
         async function fillOrderNpFromOrder(o) {
@@ -793,6 +795,7 @@
             form.city_ref.value = o.city_ref || '';
             form.branch.value = o.branch || '';
             form.warehouse_ref.value = o.warehouse_ref || '';
+            form.warehouse_type.value = o.warehouse_type || '';
             const whSel = document.getElementById('orderWhSelect');
             if (o.city_ref) await loadWarehouses(whSel, o.city_ref, o.warehouse_ref || '');
             else whSel.innerHTML = '<option value="">— оберіть місто зі списку НП —</option>';
@@ -1114,7 +1117,7 @@
                 </div>
                 <div>
                     <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">Ціна</label>
-                    <input type="number" data-f="price" value="${data.price != null ? Number(data.price) : 0}" min="0" class="w-full px-3 py-2 bg-slate-50 border border-slate-100 rounded-lg outline-none text-sm font-black">
+                    <input type="number" data-f="price" value="${data.price != null ? Number(data.price) : 0}" min="0" onfocus="this.select()" class="w-full px-3 py-2 bg-slate-50 border border-slate-100 rounded-lg outline-none text-sm font-black">
                 </div>`;
             return div;
         }
@@ -1219,6 +1222,7 @@
                 branch: fd.get('branch'), payment_type: fd.get('payment_type'),
                 delivery_payment: fd.get('delivery_payment'),
                 city_ref: fd.get('city_ref') || '', warehouse_ref: fd.get('warehouse_ref') || '',
+                warehouse_type: fd.get('warehouse_type') || '',
                 ttn: fd.get('ttn'), status: fd.get('status')
             };
             const url = editingOrderId ? `/api/orders/${editingOrderId}/full` : '/api/orders/manual';

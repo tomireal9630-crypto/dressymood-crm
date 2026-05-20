@@ -48,6 +48,7 @@ async function updateDatabaseSchema() {
             ADD COLUMN IF NOT EXISTS delivery_payment VARCHAR(50) DEFAULT 'Отримувач',
             ADD COLUMN IF NOT EXISTS city_ref VARCHAR(64) DEFAULT '',
             ADD COLUMN IF NOT EXISTS warehouse_ref VARCHAR(64) DEFAULT '',
+            ADD COLUMN IF NOT EXISTS warehouse_type VARCHAR(64) DEFAULT '',
             ADD COLUMN IF NOT EXISTS np_doc_ref VARCHAR(64) DEFAULT '',
             ADD COLUMN IF NOT EXISTS np_status_code VARCHAR(16) DEFAULT '',
             ADD COLUMN IF NOT EXISTS np_status_text VARCHAR(255) DEFAULT '',
@@ -237,7 +238,7 @@ app.post('/api/orders/manual', checkAuth, async (req, res) => {
   const {
     fullName, phone, comment, source, items,
     delivery_service, city, branch, payment_type, delivery_payment, ttn, status,
-    city_ref, warehouse_ref
+    city_ref, warehouse_ref, warehouse_type
   } = req.body;
 
   if (!fullName || !phone) return res.status(400).json({ error: 'Вкажіть ПІБ та телефон' });
@@ -262,12 +263,12 @@ app.post('/api/orders/manual', checkAuth, async (req, res) => {
     const order = await client.query(
       `INSERT INTO orders (customer_id, status, ttn, comment, source,
         delivery_service, city, branch, payment_type, delivery_payment,
-        city_ref, warehouse_ref)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`,
+        city_ref, warehouse_ref, warehouse_type)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id`,
       [customerId, status || 'Новый', ttn || '', comment || '', source || 'Вручну',
        delivery_service || 'НП', city || '', branch || '',
        payment_type || 'на счет', delivery_payment || 'Отримувач',
-       city_ref || '', warehouse_ref || '']
+       city_ref || '', warehouse_ref || '', warehouse_type || '']
     );
     const orderId = order.rows[0].id;
 
@@ -330,7 +331,7 @@ app.get('/api/orders/:id(\\d+)', checkAuth, async (req, res) => {
       SELECT o.id, c.full_name AS "fullName", c.phone,
              o.status, o.ttn, o.comment, o.source,
              o.delivery_service, o.city, o.branch, o.payment_type, o.delivery_payment,
-             o.city_ref, o.warehouse_ref,
+             o.city_ref, o.warehouse_ref, o.warehouse_type,
              COALESCE(json_agg(json_build_object(
                'article', oi.article, 'name', oi.name, 'supplier_name', oi.supplier_name,
                'size', oi.size, 'color', oi.color, 'price', oi.price, 'quantity', oi.quantity
@@ -370,12 +371,12 @@ app.put('/api/orders/:id(\\d+)/full', checkAuth, async (req, res) => {
     await client.query(
       `UPDATE orders SET status=$1, ttn=$2, comment=$3,
         delivery_service=$4, city=$5, branch=$6, payment_type=$7, delivery_payment=$8,
-        city_ref=$9, warehouse_ref=$10
-       WHERE id=$11`,
+        city_ref=$9, warehouse_ref=$10, warehouse_type=$11
+       WHERE id=$12`,
       [b.status || 'Новый', b.ttn || '', b.comment || '',
        b.delivery_service || 'НП', b.city || '', b.branch || '',
        b.payment_type || 'на счет', b.delivery_payment || 'Отримувач',
-       b.city_ref || '', b.warehouse_ref || '', orderId]
+       b.city_ref || '', b.warehouse_ref || '', b.warehouse_type || '', orderId]
     );
 
     await client.query('DELETE FROM order_items WHERE order_id = $1', [orderId]);
@@ -635,7 +636,7 @@ app.post('/api/orders/:id(\\d+)/ttn', checkAuth, async (req, res) => {
       DateTime: dateStr,
       CargoType: s.cargoType || 'Parcel',
       Weight: String(s.weight || '0.5'),
-      ServiceType: 'WarehouseWarehouse',
+      ServiceType: /postomat|поштомат/i.test(o.warehouse_type || '') ? 'WarehousePostomat' : 'WarehouseWarehouse',
       SeatsAmount: String(s.seats || '1'),
       Description: s.description || 'Одяг',
       Cost: String(cost),
