@@ -630,16 +630,25 @@ app.post('/api/orders/:id(\\d+)/ttn', checkAuth, async (req, res) => {
     const d = new Date();
     const dateStr = `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}.${d.getFullYear()}`;
 
+    const weight = String(s.weight || '0.5');
+    const isPostomat = /postomat|поштомат/i.test(o.warehouse_type || '');
     const props = {
       PayerType: payer,
       PaymentMethod: 'Cash',
       DateTime: dateStr,
       CargoType: s.cargoType || 'Parcel',
-      Weight: String(s.weight || '0.5'),
-      ServiceType: /postomat|поштомат/i.test(o.warehouse_type || '') ? 'WarehousePostomat' : 'WarehouseWarehouse',
+      Weight: weight,
+      ServiceType: isPostomat ? 'WarehousePostomat' : 'WarehouseWarehouse',
       SeatsAmount: String(s.seats || '1'),
       Description: s.description || 'Одяг',
       Cost: String(cost),
+      OptionsSeat: [{
+        volumetricVolume: '1',
+        volumetricWidth: '20',
+        volumetricLength: '20',
+        volumetricHeight: '10',
+        weight: weight
+      }],
       CitySender: s.citySenderRef,
       Sender: senderRef,
       SenderAddress: s.senderAddressRef,
@@ -649,6 +658,7 @@ app.post('/api/orders/:id(\\d+)/ttn', checkAuth, async (req, res) => {
       RecipientArea: '',
       CityRecipient: o.city_ref,
       RecipientAddress: o.warehouse_ref,
+      RecipientAddressName: o.branch || '',
       RecipientName: o.fullName || '',
       RecipientType: 'PrivatePerson',
       RecipientsPhone: phone,
