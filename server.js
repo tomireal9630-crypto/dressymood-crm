@@ -55,7 +55,26 @@ async function updateDatabaseSchema() {
             ADD COLUMN IF NOT EXISTS np_delivery_date VARCHAR(64) DEFAULT '',
             ADD COLUMN IF NOT EXISTS np_delivery_cost NUMERIC DEFAULT 0,
             ADD COLUMN IF NOT EXISTS np_arrival_date VARCHAR(64) DEFAULT '',
-            ADD COLUMN IF NOT EXISTS np_updated_at TIMESTAMP WITH TIME ZONE;
+            ADD COLUMN IF NOT EXISTS np_updated_at TIMESTAMP WITH TIME ZONE,
+            ADD COLUMN IF NOT EXISTS sms1_sent_at TIMESTAMP WITH TIME ZONE,
+            ADD COLUMN IF NOT EXISTS sms2_sent_at TIMESTAMP WITH TIME ZONE,
+            ADD COLUMN IF NOT EXISTS sms3_sent_at TIMESTAMP WITH TIME ZONE,
+            ADD COLUMN IF NOT EXISTS sms1_error TEXT DEFAULT '',
+            ADD COLUMN IF NOT EXISTS sms2_error TEXT DEFAULT '',
+            ADD COLUMN IF NOT EXISTS sms3_error TEXT DEFAULT '';
+        `);
+
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS sms_log (
+                id SERIAL PRIMARY KEY,
+                order_id INTEGER REFERENCES orders(id) ON DELETE CASCADE,
+                kind SMALLINT NOT NULL,
+                phone VARCHAR(32) DEFAULT '',
+                text TEXT DEFAULT '',
+                status VARCHAR(16) DEFAULT 'ok',
+                error TEXT DEFAULT '',
+                sent_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+            );
         `);
 
         await pool.query(`
@@ -214,6 +233,8 @@ app.get('/api/orders', checkAuth, async (req, res) => {
              o.status, o.ttn, o.comment, o.source,
              o.delivery_service, o.city, o.branch, o.payment_type, o.delivery_payment,
              o.np_status_code, o.np_status_text, o.np_doc_ref,
+             o.sms1_sent_at, o.sms2_sent_at, o.sms3_sent_at,
+             o.sms1_error, o.sms2_error, o.sms3_error,
              o.created_at AS "createdAt",
              COALESCE(json_agg(json_build_object(
                'id', oi.id, 'article', oi.article, 'name', oi.name,
@@ -733,8 +754,222 @@ app.post('/api/np/refresh', checkAuth, async (req, res) => {
   catch (err) { res.status(400).json({ error: err.message }); }
 });
 
-// Авто-опитування кожні 30 хв
-setInterval(() => { refreshNpStatuses().catch(() => {}); }, 30 * 60 * 1000);
+// ===================== TURBOSMS ИНТЕГРАЦИЯ =====================
+const TURBOSMS_URL = 'https://api.turbosms.ua/message/send.json';
+
+const DEFAULT_SMS = {
+  token: '',
+  sender: 'MAGAZIN',
+  autoSend: true,
+  sms1: 'Ваше замовлення комплектується: {TTN} ({TOV}).',
+  sms2: 'Посилка: {TTN} ({TOV}) прибула. Ви можете її отримати!',
+  sms3: 'Ваша посилка очікує на новій пошті: {TTN} ({TOV})'
+};
+
+async function getSmsSettings() {
+  const r = await pool.query(`SELECT value FROM app_settings WHERE key = 'sms'`);
+  return { ...DEFAULT_SMS, ...(r.rows.length ? r.rows[0].value : {}) };
+}
+async function saveSmsSettings(obj) {
+  await pool.query(
+    `INSERT INTO app_settings (key, value) VALUES ('sms', $1)
+     ON CONFLICT (key) DO UPDATE SET value = $1`, [obj]);
+}
+
+// Підстановка змінних у шаблон
+function renderTemplate(tpl, order, items) {
+  const it = (items && items[0]) || {};
+  const total = items ? items.reduce((s, x) => s + (Number(x.price) || 0) * (parseInt(x.quantity) || 1), 0) : 0;
+  const map = {
+    NUM: order.id ?? '',
+    TTN: order.ttn || '',
+    TOV: it.name || '',
+    ART: it.article || '',
+    SIZE: it.size || '',
+    COLOR: it.color || '',
+    NOTE: order.comment || '',
+    PRICE: total || 0,
+    SUM: total || 0,
+    NAL: String(order.payment_type || '').toLowerCase() === 'на счет' ? total : '',
+    FIO: order.fullName || '',
+    TEL: order.phone || '',
+    CITY: order.city || '',
+    OP: order.branch || '',
+    DATE: new Date().toISOString().slice(0, 10)
+  };
+  return String(tpl || '').replace(/\{(\w+)\}/g, (_, k) => (map[k] != null ? String(map[k]) : ''));
+}
+
+function normPhoneTurbo(raw) {
+  let d = String(raw || '').replace(/\D/g, '');
+  if (d.startsWith('380')) return d;
+  if (d.startsWith('80')) return '3' + d;
+  if (d.startsWith('0')) return '38' + d;
+  return d;
+}
+
+async function turboSmsSend(token, sender, phone, text) {
+  const resp = await fetch(TURBOSMS_URL, {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer ' + token,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
+    },
+    body: JSON.stringify({
+      recipients: [phone],
+      sms: { sender, text }
+    })
+  });
+  const j = await resp.json().catch(() => ({}));
+  const code = j.response_code != null ? Number(j.response_code) : -1;
+  const okGlobal = code === 0 || code === 800; // 800 = "OK"
+  const rr = (j.response_result && j.response_result[0]) || {};
+  const okItem = !rr.response_status || rr.response_status === 'OK';
+  if (!okGlobal || !okItem) {
+    const msg = (rr.response_status && rr.response_status !== 'OK') ? rr.response_status
+      : (j.response_status || ('TurboSMS code ' + code));
+    throw new Error(msg);
+  }
+  return rr.message_id || true;
+}
+
+// Завантажити заказ з позиціями (для рендера шаблона)
+async function loadOrderForSms(orderId) {
+  const r = await pool.query(`
+    SELECT o.*, c.full_name AS "fullName", c.phone,
+      COALESCE(json_agg(json_build_object(
+        'article', oi.article, 'name', oi.name,
+        'size', oi.size, 'color', oi.color,
+        'price', oi.price, 'quantity', oi.quantity
+      ) ORDER BY oi.id) FILTER (WHERE oi.id IS NOT NULL), '[]') AS items
+    FROM orders o JOIN customers c ON o.customer_id = c.id
+    LEFT JOIN order_items oi ON oi.order_id = o.id
+    WHERE o.id = $1 GROUP BY o.id, c.full_name, c.phone`, [orderId]);
+  return r.rows[0] || null;
+}
+
+// Надсилання SMS для замовлення (kind = 1/2/3). force=true ігнорує "вже відправлено"
+async function sendOrderSms(orderId, kind, force) {
+  if (![1, 2, 3].includes(kind)) throw new Error('Невідомий тип SMS');
+  const s = await getSmsSettings();
+  if (!s.token) throw new Error('Не вказано токен TurboSMS у Налаштуваннях');
+  const tpl = s['sms' + kind];
+  if (!tpl) throw new Error('Шаблон SMS' + kind + ' порожній');
+
+  const o = await loadOrderForSms(orderId);
+  if (!o) throw new Error('Замовлення не знайдено');
+  const phone = normPhoneTurbo(o.phone);
+  if (!phone) throw new Error('У замовленні немає телефону');
+
+  if (!force && o['sms' + kind + '_sent_at']) {
+    return { skipped: true, reason: 'already sent' };
+  }
+
+  const text = renderTemplate(tpl, o, o.items);
+  try {
+    await turboSmsSend(s.token, s.sender || 'MAGAZIN', phone, text);
+    await pool.query(
+      `UPDATE orders SET sms${kind}_sent_at = now(), sms${kind}_error = '' WHERE id = $1`,
+      [orderId]
+    );
+    await pool.query(
+      `INSERT INTO sms_log (order_id, kind, phone, text, status) VALUES ($1,$2,$3,$4,'ok')`,
+      [orderId, kind, phone, text]
+    );
+    return { success: true };
+  } catch (err) {
+    const msg = String(err.message || err).slice(0, 500);
+    await pool.query(
+      `UPDATE orders SET sms${kind}_error = $1 WHERE id = $2`, [msg, orderId]);
+    await pool.query(
+      `INSERT INTO sms_log (order_id, kind, phone, text, status, error) VALUES ($1,$2,$3,$4,'error',$5)`,
+      [orderId, kind, phone, text, msg]
+    );
+    throw err;
+  }
+}
+
+// Автовідправка SMS 1/2/3 за умовами
+async function autoSendSms() {
+  const s = await getSmsSettings();
+  if (!s.token || s.autoSend === false) return;
+
+  // SMS1: в пути
+  const q1 = await pool.query(
+    `SELECT id FROM orders WHERE status='В пути' AND sms1_sent_at IS NULL AND ttn <> ''`);
+  for (const r of q1.rows) { try { await sendOrderSms(r.id, 1, false); } catch (e) { /* помилка вже залогована */ } }
+
+  // SMS2: на почте
+  const q2 = await pool.query(
+    `SELECT id FROM orders WHERE status='На почте' AND sms2_sent_at IS NULL AND ttn <> ''`);
+  for (const r of q2.rows) { try { await sendOrderSms(r.id, 2, false); } catch (e) {} }
+
+  // SMS3: на почте 5+ днів від np_arrival_date (fallback: sms2_sent_at + 5d)
+  const q3 = await pool.query(`
+    SELECT id FROM orders
+    WHERE status='На почте' AND sms3_sent_at IS NULL AND sms2_sent_at IS NOT NULL
+      AND (
+        (np_arrival_date <> '' AND
+          CASE WHEN np_arrival_date ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}'
+               THEN to_timestamp(substring(np_arrival_date from 1 for 19),'YYYY-MM-DD HH24:MI:SS') < now() - interval '5 days'
+               WHEN np_arrival_date ~ '^[0-9]{2}\\.[0-9]{2}\\.[0-9]{4}'
+               THEN to_timestamp(substring(np_arrival_date from 1 for 10),'DD.MM.YYYY') < now() - interval '5 days'
+               ELSE false END)
+        OR (np_arrival_date = '' AND sms2_sent_at < now() - interval '5 days')
+      )`);
+  for (const r of q3.rows) { try { await sendOrderSms(r.id, 3, false); } catch (e) {} }
+}
+
+// Налаштування SMS ---------------------------------------------------
+app.get('/api/settings/sms', checkAuth, async (req, res) => {
+  try { res.json(await getSmsSettings()); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/settings/sms', checkAuth, async (req, res) => {
+  try {
+    const cur = await getSmsSettings();
+    const b = req.body || {};
+    const next = {
+      ...cur,
+      token: (b.token ?? cur.token ?? '').trim(),
+      sender: (b.sender ?? cur.sender ?? 'MAGAZIN').trim() || 'MAGAZIN',
+      autoSend: b.autoSend !== undefined ? !!b.autoSend : cur.autoSend !== false,
+      sms1: b.sms1 ?? cur.sms1 ?? '',
+      sms2: b.sms2 ?? cur.sms2 ?? '',
+      sms3: b.sms3 ?? cur.sms3 ?? ''
+    };
+    await saveSmsSettings(next);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Тестова відправка SMS з налаштувань
+app.post('/api/sms/test', checkAuth, async (req, res) => {
+  try {
+    const { phone, text } = req.body || {};
+    if (!phone || !text) return res.status(400).json({ error: 'Вкажіть phone та text' });
+    const s = await getSmsSettings();
+    if (!s.token) return res.status(400).json({ error: 'Не вказано токен TurboSMS' });
+    await turboSmsSend(s.token, s.sender || 'MAGAZIN', normPhoneTurbo(phone), text);
+    res.json({ success: true });
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+// Ручна відправка SMS для замовлення (переотправка)
+app.post('/api/orders/:id(\\d+)/sms/:kind(\\d+)', checkAuth, async (req, res) => {
+  try {
+    const r = await sendOrderSms(Number(req.params.id), Number(req.params.kind), true);
+    res.json(r);
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+// Авто-опитування кожні 30 хв (НП + SMS)
+setInterval(async () => {
+  try { await refreshNpStatuses(); } catch (e) {}
+  try { await autoSendSms(); } catch (e) {}
+}, 30 * 60 * 1000);
 
 // --- API СКЛАДУ ---
 app.get('/api/warehouse/suppliers', checkAuth, async (req, res) => {

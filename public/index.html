@@ -383,6 +383,58 @@
                         </div>
                     </form>
                 </div>
+
+                <div class="bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/40 border border-slate-100 p-10 max-w-3xl mt-8">
+                    <div class="mb-6">
+                        <h3 class="text-xl font-black text-slate-800 uppercase italic">TurboSMS</h3>
+                        <p class="text-[11px] text-slate-400 font-medium">Автовідправка SMS клієнтам за статусами посилки</p>
+                    </div>
+                    <form id="smsSettingsForm" class="space-y-6">
+                        <div class="grid grid-cols-3 gap-6">
+                            <div class="col-span-2">
+                                <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Токен HTTP API TurboSMS</label>
+                                <input type="text" name="token" placeholder="токен з кабінету TurboSMS"
+                                    class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-mono text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Ім'я відправника</label>
+                                <input type="text" name="sender" placeholder="MAGAZIN"
+                                    class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-bold text-sm">
+                            </div>
+                        </div>
+                        <label class="flex items-center gap-2 text-sm font-bold text-slate-600 select-none">
+                            <input type="checkbox" name="autoSend" class="w-4 h-4 accent-violet-600">
+                            Автоматично відправляти SMS за статусами (рекомендую)
+                        </label>
+
+                        <div class="bg-slate-50 border border-slate-100 rounded-xl p-4 text-[11px] text-slate-500 font-medium">
+                            Доступні змінні: <code>{TTN} {TOV} {ART} {SIZE} {COLOR} {FIO} {TEL} {CITY} {OP} {PRICE} {NAL} {NUM} {NOTE} {DATE}</code>
+                        </div>
+
+                        <div>
+                            <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">SMS 1 — коли посилка виїхала (статус «В пути»)</label>
+                            <textarea name="sms1" rows="2" oninput="smsCount(this,'sms1Count')" class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none text-sm"></textarea>
+                            <div class="text-[10px] text-slate-400 font-bold mt-1" id="sms1Count"></div>
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">SMS 2 — коли посилка прибула («На почте»)</label>
+                            <textarea name="sms2" rows="2" oninput="smsCount(this,'sms2Count')" class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none text-sm"></textarea>
+                            <div class="text-[10px] text-slate-400 font-bold mt-1" id="sms2Count"></div>
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">SMS 3 — нагадування (5 днів на відділенні)</label>
+                            <textarea name="sms3" rows="2" oninput="smsCount(this,'sms3Count')" class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none text-sm"></textarea>
+                            <div class="text-[10px] text-slate-400 font-bold mt-1" id="sms3Count"></div>
+                        </div>
+
+                        <div class="flex items-center gap-3 pt-2 flex-wrap">
+                            <button type="submit" class="bg-violet-600 text-white px-8 py-3 rounded-xl font-black text-sm uppercase tracking-widest hover:bg-violet-700 transition-all">Зберегти</button>
+                            <input type="text" id="smsTestPhone" placeholder="+380XXXXXXXXX" class="px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none text-sm font-bold w-44">
+                            <button type="button" onclick="testSms()" class="px-6 py-3 rounded-xl font-bold text-sm text-slate-600 bg-slate-100 hover:bg-slate-200 transition-all">Тестова відправка SMS1</button>
+                            <span id="smsTestResult" class="text-sm font-bold"></span>
+                        </div>
+                    </form>
+                </div>
             </div>
 
             <div id="view-theme" class="view-content h-full">
@@ -690,7 +742,7 @@
             if (targetContent) targetContent.classList.add('active');
 
             if (view === 'theme') renderThemeCards();
-            if (view === 'settings') loadNpSettings();
+            if (view === 'settings') { loadNpSettings(); loadSmsSettings(); }
             refreshData();
         }
 
@@ -895,6 +947,89 @@
             loadOrders();
         }
 
+        // --- TURBOSMS ---
+        function smsCount(el, counterId) {
+            const t = el.value || '';
+            const ascii = /^[\x00-\x7F]*$/.test(t);
+            const max = ascii ? 160 : 70; // латиниця 160, кирилиця 70
+            const parts = Math.max(1, Math.ceil(t.length / max));
+            const c = document.getElementById(counterId);
+            if (c) c.textContent = `${t.length} символів · ~${parts} SMS`;
+        }
+
+        async function loadSmsSettings() {
+            try {
+                const r = await fetch('/api/settings/sms');
+                const s = await r.json();
+                const f = document.getElementById('smsSettingsForm');
+                f.token.value = s.token || '';
+                f.sender.value = s.sender || 'MAGAZIN';
+                f.autoSend.checked = s.autoSend !== false;
+                f.sms1.value = s.sms1 || '';
+                f.sms2.value = s.sms2 || '';
+                f.sms3.value = s.sms3 || '';
+                smsCount(f.sms1, 'sms1Count');
+                smsCount(f.sms2, 'sms2Count');
+                smsCount(f.sms3, 'sms3Count');
+            } catch (e) { /* тихо */ }
+        }
+
+        let smsSettingsReady = false;
+        function setupSmsSettings() {
+            if (smsSettingsReady) return;
+            smsSettingsReady = true;
+            const f = document.getElementById('smsSettingsForm');
+            if (!f) return;
+            f.onsubmit = async (e) => {
+                e.preventDefault();
+                const fd = {
+                    token: f.token.value.trim(),
+                    sender: f.sender.value.trim() || 'MAGAZIN',
+                    autoSend: f.autoSend.checked,
+                    sms1: f.sms1.value, sms2: f.sms2.value, sms3: f.sms3.value
+                };
+                try {
+                    const r = await fetch('/api/settings/sms', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(fd)
+                    });
+                    const j = await r.json();
+                    if (!r.ok) throw new Error(j.error || 'Помилка');
+                    alert('Налаштування SMS збережено');
+                } catch (err) { alert('Помилка: ' + err.message); }
+            };
+        }
+
+        async function testSms() {
+            const el = document.getElementById('smsTestResult');
+            el.textContent = 'Відправка…'; el.style.color = '#64748b';
+            const f = document.getElementById('smsSettingsForm');
+            const phone = document.getElementById('smsTestPhone').value.trim();
+            if (!phone) { el.textContent = '✕ Вкажіть тестовий номер'; el.style.color = '#dc2626'; return; }
+            // Спершу збережемо налаштування (щоб токен/відправник застосувались)
+            try { await f.requestSubmit ? f.requestSubmit() : f.dispatchEvent(new Event('submit', { cancelable: true })); } catch (e) {}
+            try {
+                const r = await fetch('/api/sms/test', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ phone, text: f.sms1.value || 'Тестове повідомлення з CRM' })
+                });
+                const j = await r.json();
+                if (!r.ok) throw new Error(j.error || 'Помилка');
+                el.textContent = '✓ Відправлено'; el.style.color = '#16a34a';
+            } catch (err) { el.textContent = '✕ ' + err.message; el.style.color = '#dc2626'; }
+        }
+
+        async function resendSms(id, kind) {
+            if (!confirm('Дослати SMS' + kind + ' для замовлення #' + id + '?')) return;
+            try {
+                const r = await fetch(`/api/orders/${id}/sms/${kind}`, { method: 'POST' });
+                const j = await r.json();
+                if (!r.ok) throw new Error(j.error || 'Помилка');
+                alert('SMS відправлено');
+            } catch (err) { alert('Помилка SMS: ' + err.message); }
+            loadOrders();
+        }
+
         // --- ЛОГІКА ЗАМОВЛЕНЬ ---
         function fillStatusFilter() {
             const f = document.getElementById('statusFilter');
@@ -1024,6 +1159,15 @@
                         `<div class="text-[10px] font-bold text-slate-600">${esc(it.supplier_name || '—')}</div>`
                     ).join('') || '<span class="text-slate-300">—</span>';
 
+                    const smsBadge = (k) => {
+                        const sent = o['sms' + k + '_sent_at'];
+                        const err = o['sms' + k + '_error'];
+                        const cls = sent && !err ? 'bg-emerald-500 text-white' : (err ? 'bg-rose-500 text-white' : 'bg-slate-200 text-slate-500');
+                        const tip = sent ? `SMS${k} відправлено: ${new Date(sent).toLocaleString()}` : (err ? `SMS${k} помилка: ${err}` : `SMS${k} ще не відправлено (клік — дослати)`);
+                        return `<button onclick="event.stopPropagation(); resendSms(${o.id},${k})" title="${esc(tip)}" class="w-5 h-5 rounded-full ${cls} text-[10px] font-black flex items-center justify-center hover:opacity-80 transition">${k}</button>`;
+                    };
+                    const smsHtml = `<div class="flex gap-1 mt-1.5">${smsBadge(1)}${smsBadge(2)}${smsBadge(3)}</div>`;
+
                     return `
                     <tr onclick="rowClickEdit(event, ${o.id})" class="hover:bg-slate-50 transition-all group align-top cursor-pointer">
                         <td class="px-6 py-5">
@@ -1052,6 +1196,7 @@
                             <input type="text" value="${esc(o.ttn || '')}" onchange="updateOrder(${o.id}, 'ttn', this.value)" placeholder="ТТН..."
                                 class="w-[130px] text-[11px] font-mono font-bold bg-slate-50 border border-slate-100 rounded-lg px-2 py-1.5 outline-none">
                             ${o.np_status_text ? `<div class="text-[9px] text-slate-400 font-bold mt-1 max-w-[150px] truncate" title="${esc(o.np_status_text)}">${esc(o.np_status_text)}</div>` : ''}
+                            ${smsHtml}
                             <div class="flex gap-1.5 mt-1.5">
                                 <button onclick="event.stopPropagation(); generateTtn(${o.id})" title="Згенерувати ТТН Нова Пошта" class="ttn-btn ttn-btn-pink">ТТН</button>
                                 <button onclick="event.stopPropagation(); ttnSoon()" title="Скоро" class="ttn-btn ttn-btn-blue">ЧЕК</button>
@@ -1421,6 +1566,7 @@
         async function logout() { await fetch('/api/logout', { method: 'POST' }); window.location.href = '/login.html'; }
 
         setupNpSettings();
+        setupSmsSettings();
         refreshData();
 
         // Автооновлення списку замовлень кожні 15 c (без перешкод під час редагування)
