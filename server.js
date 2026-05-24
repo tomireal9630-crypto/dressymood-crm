@@ -447,10 +447,24 @@ app.put('/api/orders/:id(\\d+)/full', checkAuth, async (req, res) => {
 
     const ord = await client.query('SELECT customer_id FROM orders WHERE id = $1', [orderId]);
     if (!ord.rows.length) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Замовлення не знайдено' }); }
-    const customerId = ord.rows[0].customer_id;
+    const origCustomerId = ord.rows[0].customer_id;
 
-    await client.query('UPDATE customers SET full_name = $1, phone = $2 WHERE id = $3',
-      [name, phone, customerId]);
+    // Прив'язка до клієнта за телефоном (один телефон = один клієнт, у нього багато замовлень)
+    let customerId;
+    const existing = await client.query('SELECT id FROM customers WHERE phone = $1', [phone]);
+    if (existing.rows.length) {
+      // Телефон належить існуючому клієнту — прив'язуємо замовлення до нього
+      customerId = existing.rows[0].id;
+      await client.query('UPDATE customers SET full_name = $1 WHERE id = $2', [name, customerId]);
+    } else {
+      // Телефон новий — оновлюємо поточного клієнта замовлення
+      customerId = origCustomerId;
+      await client.query('UPDATE customers SET full_name = $1, phone = $2 WHERE id = $3',
+        [name, phone, customerId]);
+    }
+    if (customerId !== origCustomerId) {
+      await client.query('UPDATE orders SET customer_id = $1 WHERE id = $2', [customerId, orderId]);
+    }
 
     await client.query(
       `UPDATE orders SET status=$1, ttn=$2, comment=$3,
