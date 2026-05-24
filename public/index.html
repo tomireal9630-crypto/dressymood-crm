@@ -1400,13 +1400,10 @@
                     const cDecided = cBought + cRefused;
                     const cPct = cDecided ? Math.round(cRefused / cDecided * 100) : 0;
                     const repeatTip = `Постійний клієнт · Замовлень: ${custCnt} · Викуп: ${cBought} · Відмов: ${cRefused} (${cPct}%)`;
-                    const idCell = isRepeat
-                        ? `<span class="repeat-id" title="${esc(repeatTip)}">#${o.id}</span>`
-                        : `#${o.id}`;
                     return `
                     <tr onclick="rowClickEdit(event, ${o.id})" class="hover:bg-slate-50 transition-all group align-middle cursor-pointer">
                         <td class="px-4 py-5 w-10"><input type="checkbox" class="order-check w-4 h-4 accent-violet-600 cursor-pointer" data-id="${o.id}" onclick="event.stopPropagation()" onchange="onRowCheck()"></td>
-                        <td class="px-3 py-5 text-sm font-black text-slate-800 whitespace-nowrap">${idCell}</td>
+                        <td class="px-3 py-5 text-sm font-black text-slate-800 whitespace-nowrap">#${o.id}</td>
                         <td class="px-3 py-5 leading-tight">
                             <div class="text-xs font-bold text-slate-700 whitespace-nowrap">${esc(dPart || '')}</div>
                             <div class="text-[10px] text-slate-400 font-medium whitespace-nowrap">${esc(tPart || '')}</div>
@@ -1425,7 +1422,10 @@
                         </td>
                         <td class="px-4 py-5">
                             <div class="font-bold text-slate-800 text-sm leading-tight">${esc(o.fullName)}</div>
-                            <div class="order-phone text-xs font-bold mt-0.5">${esc(o.phone)}</div>
+                            ${isRepeat
+                                ? `<div class="mt-0.5"><span class="repeat-id order-phone text-xs font-bold" title="${esc(repeatTip)}">${esc(o.phone)}</span></div>`
+                                : `<div class="order-phone text-xs font-bold mt-0.5">${esc(o.phone)}</div>`
+                            }
                         </td>
                         <td class="px-4 py-5 text-sm text-slate-700 font-medium">${esc(o.city || '—')}</td>
                         <td class="px-4 py-5 text-xs text-slate-500 max-w-[180px] leading-tight" title="${esc(o.branch || '')}">${esc(o.branch || '—')}</td>

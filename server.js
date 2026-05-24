@@ -46,6 +46,7 @@ async function updateDatabaseSchema() {
             ADD COLUMN IF NOT EXISTS branch TEXT DEFAULT '',
             ADD COLUMN IF NOT EXISTS payment_type VARCHAR(50) DEFAULT 'на счет',
             ADD COLUMN IF NOT EXISTS delivery_payment VARCHAR(50) DEFAULT 'Отримувач',
+            ADD COLUMN IF NOT EXISTS full_name VARCHAR(255) DEFAULT '',
             ADD COLUMN IF NOT EXISTS city_ref VARCHAR(64) DEFAULT '',
             ADD COLUMN IF NOT EXISTS warehouse_ref VARCHAR(64) DEFAULT '',
             ADD COLUMN IF NOT EXISTS warehouse_type VARCHAR(64) DEFAULT '',
@@ -244,7 +245,7 @@ app.get('/api/orders', checkAuth, async (req, res) => {
     }
 
     const query = `
-      SELECT o.id, c.full_name AS "fullName", c.phone,
+      SELECT o.id, COALESCE(NULLIF(o.full_name, ''), c.full_name) AS "fullName", c.phone,
              o.status, o.ttn, o.comment, o.source,
              o.delivery_service, o.city, o.branch, o.payment_type, o.delivery_payment,
              o.np_status_code, o.np_status_text, o.np_doc_ref,
@@ -327,11 +328,11 @@ app.post('/api/orders/manual', checkAuth, async (req, res) => {
   try {
     await client.query('BEGIN');
 
+    // Прив'язка лише за телефоном; ім'я існуючого клієнта НЕ перетираємо
     const cust = await client.query('SELECT id FROM customers WHERE phone = $1', [phone]);
     let customerId;
     if (cust.rows.length > 0) {
       customerId = cust.rows[0].id;
-      await client.query('UPDATE customers SET full_name = $1 WHERE id = $2', [fullName, customerId]);
     } else {
       const c = await client.query(
         'INSERT INTO customers (full_name, phone) VALUES ($1, $2) RETURNING id', [fullName, phone]);
@@ -339,11 +340,11 @@ app.post('/api/orders/manual', checkAuth, async (req, res) => {
     }
 
     const order = await client.query(
-      `INSERT INTO orders (customer_id, status, ttn, comment, source,
+      `INSERT INTO orders (customer_id, full_name, status, ttn, comment, source,
         delivery_service, city, branch, payment_type, delivery_payment,
         city_ref, warehouse_ref, warehouse_type)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id`,
-      [customerId, status || 'Новый', ttn || '', comment || '', source || 'Вручну',
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id`,
+      [customerId, fullName, status || 'Новый', ttn || '', comment || '', source || 'Вручну',
        delivery_service || 'НП', city || '', branch || '',
        payment_type || 'на счет', delivery_payment || 'Отримувач',
        city_ref || '', warehouse_ref || '', warehouse_type || '']
@@ -412,7 +413,7 @@ app.get('/api/orders/suppliers', checkAuth, async (req, res) => {
 app.get('/api/orders/:id(\\d+)', checkAuth, async (req, res) => {
   try {
     const r = await pool.query(`
-      SELECT o.id, c.full_name AS "fullName", c.phone,
+      SELECT o.id, COALESCE(NULLIF(o.full_name, ''), c.full_name) AS "fullName", c.phone,
              o.status, o.ttn, o.comment, o.source,
              o.delivery_service, o.city, o.branch, o.payment_type, o.delivery_payment,
              o.city_ref, o.warehouse_ref, o.warehouse_type,
@@ -449,29 +450,26 @@ app.put('/api/orders/:id(\\d+)/full', checkAuth, async (req, res) => {
     if (!ord.rows.length) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Замовлення не знайдено' }); }
     const origCustomerId = ord.rows[0].customer_id;
 
-    // Прив'язка до клієнта за телефоном (один телефон = один клієнт, у нього багато замовлень)
+    // Прив'язка лише за телефоном; ім'я зберігається в самому замовленні, а не в клієнті
     let customerId;
     const existing = await client.query('SELECT id FROM customers WHERE phone = $1', [phone]);
     if (existing.rows.length) {
-      // Телефон належить існуючому клієнту — прив'язуємо замовлення до нього
-      customerId = existing.rows[0].id;
-      await client.query('UPDATE customers SET full_name = $1 WHERE id = $2', [name, customerId]);
+      customerId = existing.rows[0].id; // ім'я клієнта НЕ перетираємо
     } else {
-      // Телефон новий — оновлюємо поточного клієнта замовлення
-      customerId = origCustomerId;
-      await client.query('UPDATE customers SET full_name = $1, phone = $2 WHERE id = $3',
-        [name, phone, customerId]);
+      const c = await client.query(
+        'INSERT INTO customers (full_name, phone) VALUES ($1, $2) RETURNING id', [name, phone]);
+      customerId = c.rows[0].id;
     }
     if (customerId !== origCustomerId) {
       await client.query('UPDATE orders SET customer_id = $1 WHERE id = $2', [customerId, orderId]);
     }
 
     await client.query(
-      `UPDATE orders SET status=$1, ttn=$2, comment=$3,
-        delivery_service=$4, city=$5, branch=$6, payment_type=$7, delivery_payment=$8,
-        city_ref=$9, warehouse_ref=$10, warehouse_type=$11
-       WHERE id=$12`,
-      [b.status || 'Новый', b.ttn || '', b.comment || '',
+      `UPDATE orders SET full_name=$1, status=$2, ttn=$3, comment=$4,
+        delivery_service=$5, city=$6, branch=$7, payment_type=$8, delivery_payment=$9,
+        city_ref=$10, warehouse_ref=$11, warehouse_type=$12
+       WHERE id=$13`,
+      [name, b.status || 'Новый', b.ttn || '', b.comment || '',
        b.delivery_service || 'НП', b.city || '', b.branch || '',
        b.payment_type || 'на счет', b.delivery_payment || 'Отримувач',
        b.city_ref || '', b.warehouse_ref || '', b.warehouse_type || '', orderId]
@@ -547,11 +545,11 @@ app.post('/api/landing/order', async (req, res) => {
   try {
     await client.query('BEGIN');
 
+    // Прив'язка лише за телефоном; ім'я існуючого клієнта НЕ перетираємо
     const cust = await client.query('SELECT id FROM customers WHERE phone = $1', [phone]);
     let customerId;
     if (cust.rows.length > 0) {
       customerId = cust.rows[0].id;
-      await client.query('UPDATE customers SET full_name = $1 WHERE id = $2', [name, customerId]);
     } else {
       const c = await client.query(
         'INSERT INTO customers (full_name, phone) VALUES ($1, $2) RETURNING id', [name, phone]);
@@ -559,8 +557,8 @@ app.post('/api/landing/order', async (req, res) => {
     }
 
     const order = await client.query(
-      `INSERT INTO orders (customer_id, status, source) VALUES ($1, $2, $3) RETURNING id`,
-      [customerId, 'Новый', source]
+      `INSERT INTO orders (customer_id, full_name, status, source) VALUES ($1, $2, $3, $4) RETURNING id`,
+      [customerId, name, 'Новый', source]
     );
     const orderId = order.rows[0].id;
 
