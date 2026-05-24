@@ -264,7 +264,7 @@ app.get('/api/orders', checkAuth, async (req, res) => {
       LEFT JOIN order_items oi ON oi.order_id = o.id
       LEFT JOIN (
         SELECT customer_id,
-               COUNT(*) AS cust_count,
+               COUNT(*) FILTER (WHERE status IN ('Продажа','Отказ')) AS cust_count,
                COUNT(*) FILTER (WHERE status = 'Продажа') AS cust_bought,
                COUNT(*) FILTER (WHERE status = 'Отказ') AS cust_refused
         FROM orders GROUP BY customer_id
@@ -282,20 +282,21 @@ app.get('/api/orders', checkAuth, async (req, res) => {
 // Постійні клієнти (2+ замовлення) зі статистикою
 app.get('/api/customers/repeat', checkAuth, async (req, res) => {
   try {
+    // Повторні рахуються лише за завершеними угодами (архів): Продажа + Отказ
     const r = await pool.query(`
       SELECT c.id, c.full_name AS "fullName", c.phone,
-             COUNT(o.id) AS total,
+             COUNT(*) FILTER (WHERE o.status IN ('Продажа','Отказ')) AS total,
              COUNT(*) FILTER (WHERE o.status = 'Продажа') AS bought,
              COUNT(*) FILTER (WHERE o.status = 'Отказ') AS refused,
              COALESCE(SUM(CASE WHEN o.status = 'Продажа'
                THEN (SELECT COALESCE(SUM(oi.price*oi.quantity),0) FROM order_items oi WHERE oi.order_id = o.id)
                ELSE 0 END), 0) AS spent,
-             MAX(o.created_at) AS "lastOrderAt"
+             MAX(o.created_at) FILTER (WHERE o.status IN ('Продажа','Отказ')) AS "lastOrderAt"
       FROM customers c
       JOIN orders o ON o.customer_id = c.id
       GROUP BY c.id, c.full_name, c.phone
-      HAVING COUNT(o.id) >= 2
-      ORDER BY COUNT(o.id) DESC, MAX(o.created_at) DESC
+      HAVING COUNT(*) FILTER (WHERE o.status IN ('Продажа','Отказ')) >= 2
+      ORDER BY COUNT(*) FILTER (WHERE o.status IN ('Продажа','Отказ')) DESC, MAX(o.created_at) DESC
     `);
     res.json(r.rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
