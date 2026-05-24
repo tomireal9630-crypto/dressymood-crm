@@ -271,6 +271,9 @@ app.get('/api/orders', checkAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Статуси, які авто-переводяться в «В работе» при повних даних для ТТН
+const PROMOTABLE_TO_WORK = ['Новый', 'Не дозвон', 'Не дозвон2'];
+
 // Чи заповнені всі дані для генерації ТТН (ПІБ, тел, місто, відділення, товари)
 function readyForWork({ fullName, phone, city_ref, warehouse_ref, itemsCount }) {
   return !!(String(fullName || '').trim() && String(phone || '').trim() &&
@@ -331,8 +334,8 @@ app.post('/api/orders/manual', checkAuth, async (req, res) => {
       );
     }
 
-    // Авто: Новый -> В работе, якщо заповнені всі дані для ТТН
-    if ((status || 'Новый') === 'Новый' &&
+    // Авто: Новый/Не дозвон -> В работе, якщо заповнені всі дані для ТТН
+    if (PROMOTABLE_TO_WORK.includes(status || 'Новый') &&
         readyForWork({ fullName, phone, city_ref, warehouse_ref, itemsCount: list.length })) {
       await client.query(`UPDATE orders SET status = 'В работе' WHERE id = $1`, [orderId]);
     }
@@ -445,8 +448,8 @@ app.put('/api/orders/:id(\\d+)/full', checkAuth, async (req, res) => {
       );
     }
 
-    // Авто: Новый -> В работе, якщо заповнені всі дані для ТТН
-    if ((b.status || 'Новый') === 'Новый' &&
+    // Авто: Новый/Не дозвон -> В работе, якщо заповнені всі дані для ТТН
+    if (PROMOTABLE_TO_WORK.includes(b.status || 'Новый') &&
         readyForWork({ fullName: name, phone, city_ref: b.city_ref, warehouse_ref: b.warehouse_ref, itemsCount: list.length })) {
       await client.query(`UPDATE orders SET status = 'В работе' WHERE id = $1`, [orderId]);
     }
