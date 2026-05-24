@@ -271,6 +271,13 @@ app.get('/api/orders', checkAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Чи заповнені всі дані для генерації ТТН (ПІБ, тел, місто, відділення, товари)
+function readyForWork({ fullName, phone, city_ref, warehouse_ref, itemsCount }) {
+  return !!(String(fullName || '').trim() && String(phone || '').trim() &&
+            String(city_ref || '').trim() && String(warehouse_ref || '').trim() &&
+            (itemsCount || 0) > 0);
+}
+
 app.post('/api/orders/manual', checkAuth, async (req, res) => {
   const {
     fullName, phone, comment, source, items,
@@ -322,6 +329,12 @@ app.post('/api/orders/manual', checkAuth, async (req, res) => {
         [orderId, it.article || '', it.name || '', it.supplier_id || null, supplierName,
          it.size || '', it.color || '', Number(it.price) || 0, parseInt(it.quantity) || 1]
       );
+    }
+
+    // Авто: Новый -> В работе, якщо заповнені всі дані для ТТН
+    if ((status || 'Новый') === 'Новый' &&
+        readyForWork({ fullName, phone, city_ref, warehouse_ref, itemsCount: list.length })) {
+      await client.query(`UPDATE orders SET status = 'В работе' WHERE id = $1`, [orderId]);
     }
 
     await client.query('COMMIT');
@@ -430,6 +443,12 @@ app.put('/api/orders/:id(\\d+)/full', checkAuth, async (req, res) => {
         [orderId, it.article || '', it.name || '', it.supplier_id || null, supplierName,
          it.size || '', it.color || '', Number(it.price) || 0, parseInt(it.quantity) || 1]
       );
+    }
+
+    // Авто: Новый -> В работе, якщо заповнені всі дані для ТТН
+    if ((b.status || 'Новый') === 'Новый' &&
+        readyForWork({ fullName: name, phone, city_ref: b.city_ref, warehouse_ref: b.warehouse_ref, itemsCount: list.length })) {
+      await client.query(`UPDATE orders SET status = 'В работе' WHERE id = $1`, [orderId]);
     }
 
     await client.query('COMMIT');
