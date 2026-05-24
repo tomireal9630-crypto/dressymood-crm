@@ -112,6 +112,11 @@
                 </div>
             </div>
             <div class="flex items-center gap-5">
+                <button onclick="bulkTtn()" id="bulkTtnBtn" title="Створити ТТН для всіх замовлень у статусі «В работе»"
+                    class="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white text-xs font-black uppercase tracking-wider transition-all"
+                    style="background:linear-gradient(135deg,#ec4899,#d946ef)">
+                    <i class="fa-solid fa-bolt"></i> Масово ТТН
+                </button>
                 <button onclick="refreshData()" class="w-10 h-10 flex items-center justify-center rounded-xl bg-slate-100 text-slate-500 hover:text-violet-600 hover:bg-violet-100 transition-all">
                     <i class="fa-solid fa-rotate-right"></i>
                 </button>
@@ -981,6 +986,31 @@
                 alert('ТТН створено: ' + j.ttn);
                 loadOrders();
             } catch (err) { alert('Помилка ТТН: ' + err.message); loadOrders(); }
+        }
+
+        async function bulkTtn() {
+            if (!confirm('Створити ТТН для всіх замовлень у статусі «В работе» з повними даними?')) return;
+            const btn = document.getElementById('bulkTtnBtn');
+            const orig = btn ? btn.innerHTML : '';
+            if (btn) { btn.disabled = true; btn.style.opacity = '.6'; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Створення…'; }
+            try {
+                const r = await fetch('/api/orders/ttn/bulk', { method: 'POST' });
+                const j = await r.json();
+                if (!r.ok) throw new Error(j.error || 'Помилка');
+                let msg = `Готово. Створено ТТН: ${j.created} з ${j.total}.`;
+                if (j.failed) {
+                    msg += `\nПомилок: ${j.failed}.`;
+                    if (j.errors && j.errors.length) {
+                        msg += '\n\n' + j.errors.map(e => `#${e.id}: ${e.error}`).join('\n');
+                    }
+                }
+                alert(msg);
+                loadOrders();
+            } catch (err) {
+                alert('Помилка масового ТТН: ' + err.message);
+            } finally {
+                if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = orig; }
+            }
         }
 
         async function npRefreshNow() {

@@ -657,92 +657,123 @@ function isAfterpayment(paymentType) {
   return String(paymentType || '').toLowerCase().trim() === 'на счет';
 }
 
-// Генерація ТТН -----------------------------------------------------
+// Генерація ТТН для одного замовлення (повертає номер ТТН або кидає помилку).
+// s — налаштування НП, sender — { senderRef, contactSenderRef }.
+async function generateTtnForOrder(orderId, s, sender) {
+  const oq = await pool.query(`
+    SELECT o.*, c.full_name AS "fullName", c.phone,
+           COALESCE(SUM(oi.price * oi.quantity),0) AS total
+    FROM orders o JOIN customers c ON o.customer_id=c.id
+    LEFT JOIN order_items oi ON oi.order_id=o.id
+    WHERE o.id=$1 GROUP BY o.id, c.full_name, c.phone`, [orderId]);
+  if (!oq.rows.length) throw new Error('Замовлення не знайдено');
+  const o = oq.rows[0];
+
+  if (!o.city_ref || !o.warehouse_ref) {
+    await pool.query(`UPDATE orders SET status='Ошибка в ТТН' WHERE id=$1`, [orderId]);
+    throw new Error('У замовленні не обрані місто/відділення зі списку Нова Пошта');
+  }
+
+  const phone = String(o.phone || '').replace(/\D/g, '');
+  const nameParts = String(o.fullName || '').trim().split(/\s+/);
+  const cost = Math.round(Number(o.total) || 0) || 1;
+  const payer = (o.delivery_payment === 'Відправник') ? 'Sender' : 'Recipient';
+  const afterpay = isAfterpayment(o.payment_type);
+  const d = new Date();
+  const dateStr = `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}.${d.getFullYear()}`;
+
+  const weight = String(s.weight || '0.5');
+  const isPostomat = /postomat|поштомат/i.test(o.warehouse_type || '');
+  const props = {
+    PayerType: payer,
+    PaymentMethod: 'Cash',
+    DateTime: dateStr,
+    CargoType: s.cargoType || 'Parcel',
+    Weight: weight,
+    ServiceType: isPostomat ? 'WarehousePostomat' : 'WarehouseWarehouse',
+    SeatsAmount: String(s.seats || '1'),
+    Description: s.description || 'Одяг',
+    Cost: String(cost),
+    OptionsSeat: [{
+      volumetricVolume: '1',
+      volumetricWidth: '20',
+      volumetricLength: '20',
+      volumetricHeight: '10',
+      weight: weight
+    }],
+    CitySender: s.citySenderRef,
+    Sender: sender.senderRef,
+    SenderAddress: s.senderAddressRef,
+    ContactSender: sender.contactSenderRef,
+    SendersPhone: String(s.senderPhone || '').replace(/\D/g, ''),
+    RecipientCityName: o.city || '',
+    RecipientArea: '',
+    CityRecipient: o.city_ref,
+    RecipientAddress: o.warehouse_ref,
+    RecipientAddressName: o.branch || '',
+    RecipientName: o.fullName || '',
+    RecipientType: 'PrivatePerson',
+    RecipientsPhone: phone,
+    NewAddress: '1',
+    FirstName: nameParts[0] || o.fullName || '',
+    MiddleName: nameParts.length > 2 ? nameParts[1] : '',
+    LastName: nameParts.length > 1 ? nameParts[nameParts.length - 1] : ''
+  };
+  if (afterpay) {
+    props.AfterpaymentOnGoodsCost = String(cost);
+  }
+
+  const data = await npCall('InternetDocument', 'save', props);
+  const doc = data[0] || {};
+  const ttn = doc.IntDocNumber || doc.Number || '';
+  if (!ttn) throw new Error('НП не повернула номер ТТН');
+
+  await pool.query(
+    `UPDATE orders SET ttn=$1, np_doc_ref=$2, status='Доставка',
+      np_status_code='1', np_status_text='Накладну створено', np_updated_at=now()
+     WHERE id=$3`,
+    [ttn, doc.Ref || '', orderId]
+  );
+  return ttn;
+}
+
+async function requireNpReady() {
+  const s = await getNpSettings();
+  if (!s.apiKey) throw new Error('Спершу заповніть Налаштування Нова Пошта');
+  if (!s.citySenderRef || !s.senderAddressRef || !s.senderPhone)
+    throw new Error('У Налаштуваннях не вказані дані відправника');
+  const sender = await resolveSender(s);
+  return { s, sender };
+}
+
+// Генерація ТТН — одне замовлення
 app.post('/api/orders/:id(\\d+)/ttn', checkAuth, async (req, res) => {
-  const orderId = req.params.id;
   try {
-    const s = await getNpSettings();
-    if (!s.apiKey) throw new Error('Спершу заповніть Налаштування Нова Пошта');
-    if (!s.citySenderRef || !s.senderAddressRef || !s.senderPhone)
-      throw new Error('У Налаштуваннях не вказані дані відправника');
-
-    const oq = await pool.query(`
-      SELECT o.*, c.full_name AS "fullName", c.phone,
-             COALESCE(SUM(oi.price * oi.quantity),0) AS total
-      FROM orders o JOIN customers c ON o.customer_id=c.id
-      LEFT JOIN order_items oi ON oi.order_id=o.id
-      WHERE o.id=$1 GROUP BY o.id, c.full_name, c.phone`, [orderId]);
-    if (!oq.rows.length) return res.status(404).json({ error: 'Замовлення не знайдено' });
-    const o = oq.rows[0];
-
-    if (!o.city_ref || !o.warehouse_ref) {
-      await pool.query(`UPDATE orders SET status='Ошибка в ТТН' WHERE id=$1`, [orderId]);
-      throw new Error('У замовленні не обрані місто/відділення зі списку Нова Пошта');
-    }
-
-    const { senderRef, contactSenderRef } = await resolveSender(s);
-    const phone = String(o.phone || '').replace(/\D/g, '');
-    const nameParts = String(o.fullName || '').trim().split(/\s+/);
-    const cost = Math.round(Number(o.total) || 0) || 1;
-    const payer = (o.delivery_payment === 'Відправник') ? 'Sender' : 'Recipient';
-    const afterpay = isAfterpayment(o.payment_type);
-    const d = new Date();
-    const dateStr = `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}.${d.getFullYear()}`;
-
-    const weight = String(s.weight || '0.5');
-    const isPostomat = /postomat|поштомат/i.test(o.warehouse_type || '');
-    const props = {
-      PayerType: payer,
-      PaymentMethod: 'Cash',
-      DateTime: dateStr,
-      CargoType: s.cargoType || 'Parcel',
-      Weight: weight,
-      ServiceType: isPostomat ? 'WarehousePostomat' : 'WarehouseWarehouse',
-      SeatsAmount: String(s.seats || '1'),
-      Description: s.description || 'Одяг',
-      Cost: String(cost),
-      OptionsSeat: [{
-        volumetricVolume: '1',
-        volumetricWidth: '20',
-        volumetricLength: '20',
-        volumetricHeight: '10',
-        weight: weight
-      }],
-      CitySender: s.citySenderRef,
-      Sender: senderRef,
-      SenderAddress: s.senderAddressRef,
-      ContactSender: contactSenderRef,
-      SendersPhone: String(s.senderPhone || '').replace(/\D/g, ''),
-      RecipientCityName: o.city || '',
-      RecipientArea: '',
-      CityRecipient: o.city_ref,
-      RecipientAddress: o.warehouse_ref,
-      RecipientAddressName: o.branch || '',
-      RecipientName: o.fullName || '',
-      RecipientType: 'PrivatePerson',
-      RecipientsPhone: phone,
-      NewAddress: '1',
-      FirstName: nameParts[0] || o.fullName || '',
-      MiddleName: nameParts.length > 2 ? nameParts[1] : '',
-      LastName: nameParts.length > 1 ? nameParts[nameParts.length - 1] : ''
-    };
-    if (afterpay) {
-      // Контроль оплати товару: постоплата з зарахуванням на рахунок NovaPay
-      props.AfterpaymentOnGoodsCost = String(cost);
-    }
-
-    const data = await npCall('InternetDocument', 'save', props);
-    const doc = data[0] || {};
-    const ttn = doc.IntDocNumber || doc.Number || '';
-    if (!ttn) throw new Error('НП не повернула номер ТТН');
-
-    await pool.query(
-      `UPDATE orders SET ttn=$1, np_doc_ref=$2, status='Доставка',
-        np_status_code='1', np_status_text='Накладну створено', np_updated_at=now()
-       WHERE id=$3`,
-      [ttn, doc.Ref || '', orderId]
-    );
+    const { s, sender } = await requireNpReady();
+    const ttn = await generateTtnForOrder(req.params.id, s, sender);
     res.json({ success: true, ttn });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Масова генерація ТТН — всі замовлення «В работе» з повними даними і без ТТН
+app.post('/api/orders/ttn/bulk', checkAuth, async (req, res) => {
+  try {
+    const { s, sender } = await requireNpReady();
+    const q = await pool.query(`
+      SELECT id FROM orders
+      WHERE status = 'В работе'
+        AND city_ref <> '' AND warehouse_ref <> ''
+        AND (ttn = '' OR ttn IS NULL)
+      ORDER BY id ASC`);
+    let created = 0, failed = 0;
+    const errors = [];
+    for (const row of q.rows) {
+      try { await generateTtnForOrder(row.id, s, sender); created++; }
+      catch (e) { failed++; errors.push({ id: row.id, error: e.message }); }
+    }
+    res.json({ success: true, total: q.rows.length, created, failed, errors: errors.slice(0, 30) });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
