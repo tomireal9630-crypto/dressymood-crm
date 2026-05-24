@@ -40,6 +40,9 @@
                     <button onclick="switchView('deleted')" id="btn-deleted" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
                         <i class="fa-solid fa-trash-can w-5 text-center"></i> Видалені
                     </button>
+                    <button onclick="switchView('regulars')" id="btn-regulars" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
+                        <i class="fa-solid fa-user-group w-5 text-center"></i> Постійні
+                    </button>
                 </nav>
             </div>
 
@@ -319,6 +322,31 @@
                     </table>
                 </div>
             </div>
+
+            <div id="view-regulars" class="view-content h-full">
+                <div class="mb-6">
+                    <h2 class="text-3xl font-black text-slate-800 uppercase italic tracking-tighter">Постійні клієнти</h2>
+                    <p class="text-slate-400 font-medium text-sm">Клієнти з 2+ замовленнями та статистикою</p>
+                </div>
+                <div class="bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/40 border border-slate-100 overflow-x-auto">
+                    <table class="w-full text-left min-w-[800px]">
+                        <thead>
+                            <tr class="bg-slate-50/50 border-b border-slate-100">
+                                <th class="px-6 py-5 text-[11px] font-black text-slate-500 uppercase tracking-widest">Клієнт</th>
+                                <th class="px-4 py-5 text-[11px] font-black text-slate-500 uppercase tracking-widest">Телефон</th>
+                                <th class="px-4 py-5 text-[11px] font-black text-slate-500 uppercase tracking-widest text-center">Замовлень</th>
+                                <th class="px-4 py-5 text-[11px] font-black text-slate-500 uppercase tracking-widest text-center">Викуп</th>
+                                <th class="px-4 py-5 text-[11px] font-black text-slate-500 uppercase tracking-widest text-center">Відмов</th>
+                                <th class="px-4 py-5 text-[11px] font-black text-slate-500 uppercase tracking-widest text-center">% відмов</th>
+                                <th class="px-4 py-5 text-[11px] font-black text-slate-500 uppercase tracking-widest">Сума викупу</th>
+                                <th class="px-4 py-5 text-[11px] font-black text-slate-500 uppercase tracking-widest">Останнє</th>
+                            </tr>
+                        </thead>
+                        <tbody id="regularsTable" class="divide-y divide-slate-50"></tbody>
+                    </table>
+                </div>
+            </div>
+
             <div id="view-stock" class="view-content h-full">
                 <div class="flex justify-between items-center mb-8">
                     <div>
@@ -793,6 +821,7 @@
 
             if (view === 'theme') renderThemeCards();
             if (view === 'settings') { loadNpSettings(); loadSmsSettings(); loadCheckboxSettings(); }
+            if (view === 'regulars') loadRegulars();
             refreshData();
         }
 
@@ -1019,6 +1048,46 @@
                 const j = await r.json();
                 if (!r.ok) throw new Error(j.error || 'Помилка');
             } catch (e) { /* тихо */ }
+            loadOrders();
+        }
+
+        // --- ПОСТІЙНІ КЛІЄНТИ ---
+        async function loadRegulars() {
+            const table = document.getElementById('regularsTable');
+            if (!table) return;
+            try {
+                const r = await fetch('/api/customers/repeat');
+                const data = await r.json();
+                if (!Array.isArray(data) || !data.length) {
+                    table.innerHTML = `<tr><td colspan="8" class="p-8 text-center text-slate-400 font-medium">Поки немає клієнтів із 2+ замовленнями</td></tr>`;
+                    return;
+                }
+                table.innerHTML = data.map(c => {
+                    const total = Number(c.total) || 0;
+                    const bought = Number(c.bought) || 0;
+                    const refused = Number(c.refused) || 0;
+                    const decided = bought + refused;
+                    const pct = decided ? Math.round(refused / decided * 100) : 0;
+                    const pctCls = pct >= 50 ? 'text-rose-600' : (pct >= 25 ? 'text-amber-600' : 'text-emerald-600');
+                    return `
+                    <tr onclick="openCustomerOrders('${esc(c.phone)}')" class="hover:bg-slate-50 transition-all cursor-pointer align-middle">
+                        <td class="px-6 py-5 font-bold text-slate-800 text-sm">${esc(c.fullName || '—')}</td>
+                        <td class="px-4 py-5 order-phone text-sm font-bold">${esc(c.phone)}</td>
+                        <td class="px-4 py-5 text-center text-sm font-black text-slate-700">${total}</td>
+                        <td class="px-4 py-5 text-center text-sm font-bold text-emerald-600">${bought}</td>
+                        <td class="px-4 py-5 text-center text-sm font-bold text-rose-500">${refused}</td>
+                        <td class="px-4 py-5 text-center text-sm font-black ${pctCls}">${pct}%</td>
+                        <td class="px-4 py-5 text-sm font-bold text-slate-700">${Number(c.spent) || 0} грн</td>
+                        <td class="px-4 py-5 text-xs text-slate-500 whitespace-nowrap">${esc(fmtDate(c.lastOrderAt))}</td>
+                    </tr>`;
+                }).join('');
+            } catch (e) { console.error(e); }
+        }
+
+        function openCustomerOrders(phone) {
+            switchView('orders');
+            const inp = document.getElementById('searchInput');
+            if (inp) inp.value = phone;
             loadOrders();
         }
 
@@ -1324,10 +1393,20 @@
 
                     const dt = fmtDate(o.createdAt);
                     const [dPart, tPart] = (dt || '').split(' ');
+                    const custCnt = Number(o.cust_count) || 0;
+                    const isRepeat = custCnt > 1;
+                    const cBought = Number(o.cust_bought) || 0;
+                    const cRefused = Number(o.cust_refused) || 0;
+                    const cDecided = cBought + cRefused;
+                    const cPct = cDecided ? Math.round(cRefused / cDecided * 100) : 0;
+                    const repeatTip = `Постійний клієнт · Замовлень: ${custCnt} · Викуп: ${cBought} · Відмов: ${cRefused} (${cPct}%)`;
+                    const idCell = isRepeat
+                        ? `<span class="repeat-id" title="${esc(repeatTip)}">#${o.id}</span>`
+                        : `#${o.id}`;
                     return `
                     <tr onclick="rowClickEdit(event, ${o.id})" class="hover:bg-slate-50 transition-all group align-middle cursor-pointer">
                         <td class="px-4 py-5 w-10"><input type="checkbox" class="order-check w-4 h-4 accent-violet-600 cursor-pointer" data-id="${o.id}" onclick="event.stopPropagation()" onchange="onRowCheck()"></td>
-                        <td class="px-3 py-5 text-sm font-black text-slate-800 whitespace-nowrap">#${o.id}</td>
+                        <td class="px-3 py-5 text-sm font-black text-slate-800 whitespace-nowrap">${idCell}</td>
                         <td class="px-3 py-5 leading-tight">
                             <div class="text-xs font-bold text-slate-700 whitespace-nowrap">${esc(dPart || '')}</div>
                             <div class="text-[10px] text-slate-400 font-medium whitespace-nowrap">${esc(tPart || '')}</div>

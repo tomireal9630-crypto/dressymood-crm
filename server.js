@@ -252,6 +252,7 @@ app.get('/api/orders', checkAuth, async (req, res) => {
              o.sms1_sent_at, o.sms2_sent_at, o.sms3_sent_at,
              o.sms1_error, o.sms2_error, o.sms3_error,
              o.created_at AS "createdAt",
+             cs.cust_count, cs.cust_bought, cs.cust_refused,
              COALESCE(json_agg(json_build_object(
                'id', oi.id, 'article', oi.article, 'name', oi.name,
                'supplier_name', oi.supplier_name, 'size', oi.size,
@@ -261,13 +262,42 @@ app.get('/api/orders', checkAuth, async (req, res) => {
       FROM orders o
       JOIN customers c ON o.customer_id = c.id
       LEFT JOIN order_items oi ON oi.order_id = o.id
+      LEFT JOIN (
+        SELECT customer_id,
+               COUNT(*) AS cust_count,
+               COUNT(*) FILTER (WHERE status = 'Продажа') AS cust_bought,
+               COUNT(*) FILTER (WHERE status = 'Отказ') AS cust_refused
+        FROM orders GROUP BY customer_id
+      ) cs ON cs.customer_id = o.customer_id
       ${conditions.length ? 'WHERE ' + conditions.join(' AND ') : ''}
-      GROUP BY o.id, c.full_name, c.phone
+      GROUP BY o.id, c.full_name, c.phone, cs.cust_count, cs.cust_bought, cs.cust_refused
       ORDER BY o.created_at DESC
     `;
 
     const result = await pool.query(query, params);
     res.json(result.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Постійні клієнти (2+ замовлення) зі статистикою
+app.get('/api/customers/repeat', checkAuth, async (req, res) => {
+  try {
+    const r = await pool.query(`
+      SELECT c.id, c.full_name AS "fullName", c.phone,
+             COUNT(o.id) AS total,
+             COUNT(*) FILTER (WHERE o.status = 'Продажа') AS bought,
+             COUNT(*) FILTER (WHERE o.status = 'Отказ') AS refused,
+             COALESCE(SUM(CASE WHEN o.status = 'Продажа'
+               THEN (SELECT COALESCE(SUM(oi.price*oi.quantity),0) FROM order_items oi WHERE oi.order_id = o.id)
+               ELSE 0 END), 0) AS spent,
+             MAX(o.created_at) AS "lastOrderAt"
+      FROM customers c
+      JOIN orders o ON o.customer_id = c.id
+      GROUP BY c.id, c.full_name, c.phone
+      HAVING COUNT(o.id) >= 2
+      ORDER BY COUNT(o.id) DESC, MAX(o.created_at) DESC
+    `);
+    res.json(r.rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
