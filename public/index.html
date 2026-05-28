@@ -34,7 +34,7 @@
                     <button onclick="switchView('dashboard')" id="btn-dashboard" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
                         <i class="fa-solid fa-chart-pie w-5 text-center"></i> Дашборд
                     </button>
-                    <button onclick="switchView('archive')" id="btn-archive" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
+                    <button onclick="openArchive()" id="btn-archive" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
                         <i class="fa-solid fa-box-archive w-5 text-center"></i> Архів
                     </button>
                     <button onclick="switchView('deleted')" id="btn-deleted" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
@@ -254,6 +254,11 @@
                         <p class="text-slate-400 font-medium text-sm">Завершені угоди (продаж та відмова)</p>
                     </div>
                     <div class="flex items-end gap-2 flex-wrap bg-white border border-slate-100 rounded-2xl p-3 shadow-sm">
+                        <div id="archiveClientChip" class="hidden items-center gap-2 px-3 py-2 rounded-lg bg-violet-50 text-violet-700 text-xs font-bold">
+                            <i class="fa-solid fa-user text-[11px]"></i>
+                            <span id="archiveClientChipPhone"></span>
+                            <button type="button" onclick="clearArchiveClientFilter()" title="Скинути фільтр клієнта" class="text-violet-400 hover:text-rose-500 ml-1">✕</button>
+                        </div>
                         <div>
                             <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">З дати</label>
                             <input type="date" id="archiveDateFrom" onchange="loadOrders()" class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
@@ -1084,11 +1089,36 @@
             } catch (e) { console.error(e); }
         }
 
-        function openCustomerOrders(phone) {
-            switchView('orders');
-            const inp = document.getElementById('searchInput');
-            if (inp) inp.value = phone;
+        // Фільтр архіву по клієнту (без використання шапкового поля пошуку)
+        let archiveClientPhone = '';
+        function applyArchiveChip() {
+            const chip = document.getElementById('archiveClientChip');
+            const ph = document.getElementById('archiveClientChipPhone');
+            if (!chip || !ph) return;
+            if (archiveClientPhone) {
+                chip.classList.remove('hidden');
+                chip.classList.add('flex');
+                ph.textContent = archiveClientPhone;
+            } else {
+                chip.classList.add('hidden');
+                chip.classList.remove('flex');
+                ph.textContent = '';
+            }
+        }
+        function clearArchiveClientFilter() {
+            archiveClientPhone = '';
+            applyArchiveChip();
             loadOrders();
+        }
+        function openArchive() {
+            archiveClientPhone = '';
+            applyArchiveChip();
+            switchView('archive');
+        }
+        function openCustomerOrders(phone) {
+            archiveClientPhone = phone || '';
+            applyArchiveChip();
+            switchView('archive');
         }
 
         // --- TURBOSMS ---
@@ -1360,6 +1390,8 @@
                     const t = (document.getElementById('archiveDateTo') || {}).value || '';
                     if (f) params.set('dateFrom', f);
                     if (t) params.set('dateTo', t);
+                    if (archiveClientPhone) params.set('search', archiveClientPhone);
+                    applyArchiveChip();
                 }
                 const res = await fetch('/api/orders?' + params.toString());
                 const data = await res.json();
