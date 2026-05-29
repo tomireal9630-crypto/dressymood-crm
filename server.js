@@ -66,7 +66,8 @@ async function updateDatabaseSchema() {
             ADD COLUMN IF NOT EXISTS checkbox_receipt_id VARCHAR(64) DEFAULT '',
             ADD COLUMN IF NOT EXISTS checkbox_receipt_url VARCHAR(255) DEFAULT '',
             ADD COLUMN IF NOT EXISTS checkbox_receipt_at TIMESTAMP WITH TIME ZONE,
-            ADD COLUMN IF NOT EXISTS checkbox_receipt_error TEXT DEFAULT '';
+            ADD COLUMN IF NOT EXISTS checkbox_receipt_error TEXT DEFAULT '',
+            ADD COLUMN IF NOT EXISTS original_created_at TIMESTAMP WITH TIME ZONE;
         `);
 
         await pool.query(`
@@ -215,6 +216,8 @@ app.get('/api/orders', checkAuth, async (req, res) => {
     } else if (view === 'export') {
       params.push(DELETED_STATUS);
       conditions.push(`o.status <> $${params.length}`);
+    } else if (view === 'callbacks') {
+      conditions.push(`o.status IN ('Не дозвон','Не дозвон2')`);
     } else {
       params.push([...ARCHIVE_STATUSES, DELETED_STATUS]);
       conditions.push(`o.status <> ALL($${params.length})`);
@@ -260,7 +263,7 @@ app.get('/api/orders', checkAuth, async (req, res) => {
              o.checkbox_receipt_id, o.checkbox_receipt_url, o.checkbox_receipt_error,
              o.sms1_sent_at, o.sms2_sent_at, o.sms3_sent_at,
              o.sms1_error, o.sms2_error, o.sms3_error,
-             o.created_at AS "createdAt",
+             o.created_at AS "createdAt", o.original_created_at AS "originalCreatedAt",
              cs.cust_count, cs.cust_bought, cs.cust_refused,
              COALESCE(json_agg(json_build_object(
                'id', oi.id, 'article', oi.article, 'name', oi.name,
@@ -396,11 +399,22 @@ const ALLOWED_ORDER_FIELDS = ['status', 'ttn', 'comment', 'source',
 app.patch('/api/orders/:id', checkAuth, async (req, res) => {
   const keys = Object.keys(req.body).filter(k => ALLOWED_ORDER_FIELDS.includes(k));
   if (keys.length === 0) return res.status(400).json({ error: 'No valid fields to update' });
-  const setClause = keys.map((key, i) => `${key} = $${i + 1}`).join(', ');
-  const values = keys.map(k => req.body[k]);
-  values.push(req.params.id);
   try {
-    await pool.query(`UPDATE orders SET ${setClause} WHERE id = $${values.length}`, values);
+    let extraSet = '';
+    if (req.body.status === 'В работе') {
+      const cur = await pool.query(
+        `SELECT status, original_created_at FROM orders WHERE id = $1`,
+        [req.params.id]
+      );
+      if (cur.rows.length && ['Не дозвон', 'Не дозвон2'].includes(cur.rows[0].status)) {
+        const hasOrig = cur.rows[0].original_created_at != null;
+        extraSet = `, created_at = NOW()` + (hasOrig ? '' : `, original_created_at = created_at`);
+      }
+    }
+    const setClause = keys.map((key, i) => `${key} = $${i + 1}`).join(', ');
+    const values = keys.map(k => req.body[k]);
+    values.push(req.params.id);
+    await pool.query(`UPDATE orders SET ${setClause}${extraSet} WHERE id = $${values.length}`, values);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

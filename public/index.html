@@ -41,6 +41,10 @@
                     <button onclick="switchView('deleted')" id="btn-deleted" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
                         <i class="fa-solid fa-trash-can w-5 text-center"></i> Видалені
                     </button>
+                    <button onclick="switchView('callbacks')" id="btn-callbacks" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
+                        <i class="fa-solid fa-phone-slash w-5 text-center"></i> Не дозвони
+                        <span id="callbacksBadge" class="ml-auto bg-amber-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full hidden">0</span>
+                    </button>
                     <button onclick="switchView('regulars')" id="btn-regulars" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
                         <i class="fa-solid fa-user-group w-5 text-center"></i> Постійні
                     </button>
@@ -325,6 +329,67 @@
                             </tr>
                         </thead>
                         <tbody id="deletedTable" class="divide-y divide-slate-50"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div id="view-callbacks" class="view-content h-full">
+                <div class="flex justify-between items-start mb-6 gap-4 flex-wrap">
+                    <div>
+                        <h2 class="text-3xl font-black text-slate-800 uppercase italic tracking-tighter">Не дозвони</h2>
+                        <p class="text-slate-400 font-medium text-sm">Заявки до повторного прозвону. Після підтвердження переведіть в «В работе» — дата оновиться автоматично</p>
+                    </div>
+                </div>
+                <div class="flex items-end gap-2 flex-wrap bg-white border border-slate-100 rounded-2xl p-3 shadow-sm mb-6">
+                    <div>
+                        <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">Постачальник</label>
+                        <select id="callbacksSupplierFilter" onchange="loadOrders()" class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
+                            <option value="">Всі постачальники</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">Період</label>
+                        <select id="callbacksDateFilter" onchange="onCallbacksDateChange()" class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
+                            <option value="">Весь час</option>
+                            <option value="today">Сьогодні</option>
+                            <option value="yesterday">Вчора</option>
+                            <option value="month">Цей місяць</option>
+                            <option value="period">Обраний період</option>
+                        </select>
+                    </div>
+                    <div id="callbacksPeriodWrap" class="hidden items-end gap-2">
+                        <div>
+                            <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">З дати</label>
+                            <input type="date" id="callbacksDateFrom" onchange="loadOrders()" class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
+                        </div>
+                        <div>
+                            <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">По дату</label>
+                            <input type="date" id="callbacksDateTo" onchange="loadOrders()" class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
+                        </div>
+                    </div>
+                    <button onclick="resetCallbacksFilters()" class="px-3 py-2 rounded-lg text-xs font-bold bg-rose-50 text-rose-500 hover:bg-rose-100 transition-all">Скинути</button>
+                </div>
+                <div class="bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/40 border border-slate-100 overflow-x-auto">
+                    <table class="w-full text-left min-w-[1100px]">
+                        <thead>
+                            <tr class="bg-slate-50/50 border-b border-slate-100">
+                                <th class="px-4 py-5 w-10"><input type="checkbox" class="master-check w-4 h-4 accent-violet-600 cursor-pointer" onchange="onMasterCheck(this)"></th>
+                                <th class="px-3 py-5 text-[11px] font-black text-slate-500 uppercase tracking-widest">№</th>
+                                <th class="px-3 py-5 text-[11px] font-black text-slate-500 uppercase tracking-widest">Дата</th>
+                                <th class="px-4 py-5 text-[11px] font-black text-slate-500 uppercase tracking-widest">Статус</th>
+                                <th class="px-4 py-5 text-[11px] font-black text-slate-500 uppercase tracking-widest">Товар / Арт</th>
+                                <th class="px-4 py-5 text-[11px] font-black text-slate-500 uppercase tracking-widest">Хар-ки</th>
+                                <th class="px-4 py-5 text-[11px] font-black text-slate-500 uppercase tracking-widest">Ціна</th>
+                                <th class="px-4 py-5 text-[11px] font-black text-slate-500 uppercase tracking-widest">Клієнт / Тел</th>
+                                <th class="px-4 py-5 text-[11px] font-black text-slate-500 uppercase tracking-widest">Місто</th>
+                                <th class="px-4 py-5 text-[11px] font-black text-slate-500 uppercase tracking-widest">Відділення</th>
+                                <th class="px-4 py-5 text-[11px] font-black text-slate-500 uppercase tracking-widest">Оплата</th>
+                                <th class="px-4 py-5 text-[11px] font-black text-slate-500 uppercase tracking-widest">ТТН</th>
+                                <th class="px-4 py-5 text-[11px] font-black text-slate-500 uppercase tracking-widest">Пост.</th>
+                                <th class="px-6 py-5"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="callbacksTable" class="divide-y divide-slate-50"></tbody>
                     </table>
                 </div>
             </div>
@@ -919,7 +984,7 @@
             const btn = document.getElementById(`btn-${view}`);
             if (btn) btn.classList.add('active');
 
-            const titles = { 'orders': 'ЗАМОВЛЕННЯ', 'warehouse': 'СКЛАД' };
+            const titles = { 'orders': 'ЗАМОВЛЕННЯ', 'warehouse': 'СКЛАД', 'callbacks': 'НЕ ДОЗВОНИ' };
             document.getElementById('current-view-title').innerText = titles[view] || view.toUpperCase();
 
             document.querySelectorAll('.view-content').forEach(el => el.classList.remove('active'));
@@ -934,10 +999,11 @@
         }
 
         function refreshData() {
-            if (['orders', 'archive', 'deleted'].includes(currentView)) loadOrders();
+            if (['orders', 'archive', 'deleted', 'callbacks'].includes(currentView)) loadOrders();
             if (currentView === 'warehouse') loadWarehouseData();
             if (currentView === 'stock') loadStockData();
             if (currentView === 'export') loadExport();
+            updateCallbacksBadge();
         }
 
         // --- НОВА ПОШТА ---
@@ -1453,7 +1519,66 @@
             return `<div class="text-[10px] text-slate-400 font-medium mt-0.5">${esc(s)}</div>`;
         }
 
-        const TBODY_BY_VIEW = { orders: 'ordersTable', archive: 'archiveTable', deleted: 'deletedTable' };
+        const TBODY_BY_VIEW = { orders: 'ordersTable', archive: 'archiveTable', deleted: 'deletedTable', callbacks: 'callbacksTable' };
+
+        function callbacksDateRange() {
+            const v = (document.getElementById('callbacksDateFilter') || {}).value || '';
+            const iso = d => d.toISOString().slice(0, 10);
+            const now = new Date();
+            if (v === 'today') return { from: iso(now), to: iso(now) };
+            if (v === 'yesterday') {
+                const y = new Date(now); y.setDate(y.getDate() - 1);
+                return { from: iso(y), to: iso(y) };
+            }
+            if (v === 'month') return {
+                from: iso(new Date(now.getFullYear(), now.getMonth(), 1)),
+                to: iso(new Date(now.getFullYear(), now.getMonth() + 1, 0))
+            };
+            if (v === 'period') return {
+                from: (document.getElementById('callbacksDateFrom') || {}).value || '',
+                to: (document.getElementById('callbacksDateTo') || {}).value || ''
+            };
+            return { from: '', to: '' };
+        }
+
+        function onCallbacksDateChange() {
+            const v = (document.getElementById('callbacksDateFilter') || {}).value || '';
+            const wrap = document.getElementById('callbacksPeriodWrap');
+            if (wrap) wrap.classList.toggle('hidden', v !== 'period');
+            loadOrders();
+        }
+
+        function resetCallbacksFilters() {
+            ['callbacksSupplierFilter', 'callbacksDateFilter', 'callbacksDateFrom', 'callbacksDateTo']
+                .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+            const wrap = document.getElementById('callbacksPeriodWrap');
+            if (wrap) wrap.classList.add('hidden');
+            loadOrders();
+        }
+
+        async function fillCallbacksSupplierFilter() {
+            const f = document.getElementById('callbacksSupplierFilter');
+            if (!f || f.options.length > 1) return;
+            try {
+                const r = await fetch('/api/orders/suppliers');
+                const d = await r.json();
+                const list = Array.isArray(d) ? d : [];
+                f.innerHTML = `<option value="">Всі постачальники</option>` +
+                    list.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
+            } catch (e) { /* мовчки */ }
+        }
+
+        async function updateCallbacksBadge() {
+            try {
+                const r = await fetch('/api/orders?view=callbacks');
+                const d = await r.json();
+                const cnt = Array.isArray(d) ? d.length : 0;
+                const b = document.getElementById('callbacksBadge');
+                if (!b) return;
+                b.textContent = String(cnt);
+                b.classList.toggle('hidden', cnt === 0);
+            } catch (e) { /* мовчки */ }
+        }
 
         function setArchiveRange(preset) {
             const from = document.getElementById('archiveDateFrom');
@@ -1476,7 +1601,8 @@
             try {
                 fillStatusFilter();
                 fillSupplierFilter();
-                const view = ['orders', 'archive', 'deleted'].includes(currentView) ? currentView : 'orders';
+                fillCallbacksSupplierFilter();
+                const view = ['orders', 'archive', 'deleted', 'callbacks'].includes(currentView) ? currentView : 'orders';
                 const table = document.getElementById(TBODY_BY_VIEW[view]);
                 if (!table) return;
                 const search = document.getElementById('searchInput').value;
@@ -1486,6 +1612,13 @@
                     const sup = (document.getElementById('supplierFilter') || {}).value || '';
                     if (sup) params.set('supplier', sup);
                     const { from, to } = ordersDateRange();
+                    if (from) params.set('dateFrom', from);
+                    if (to) params.set('dateTo', to);
+                }
+                if (view === 'callbacks') {
+                    const sup = (document.getElementById('callbacksSupplierFilter') || {}).value || '';
+                    if (sup) params.set('supplier', sup);
+                    const { from, to } = callbacksDateRange();
                     if (from) params.set('dateFrom', from);
                     if (to) params.set('dateTo', to);
                 }
@@ -1529,6 +1662,7 @@
 
                     const dt = fmtDate(o.createdAt);
                     const [dPart, tPart] = (dt || '').split(' ');
+                    const origTip = o.originalCreatedAt ? `Оригінально: ${fmtDate(o.originalCreatedAt)}` : '';
                     const custCnt = Number(o.cust_count) || 0;
                     const isRepeat = custCnt > 1;
                     const cBought = Number(o.cust_bought) || 0;
@@ -1540,8 +1674,8 @@
                     <tr onclick="rowClickEdit(event, ${o.id})" class="hover:bg-slate-50 transition-all group align-middle cursor-pointer">
                         <td class="px-4 py-5 w-10"><input type="checkbox" class="order-check w-4 h-4 accent-violet-600 cursor-pointer" data-id="${o.id}" onclick="event.stopPropagation()" onchange="onRowCheck()"></td>
                         <td class="px-3 py-5 text-sm font-black text-slate-800 whitespace-nowrap">#${o.id}</td>
-                        <td class="px-3 py-5 leading-tight">
-                            <div class="text-xs font-bold text-slate-700 whitespace-nowrap">${esc(dPart || '')}</div>
+                        <td class="px-3 py-5 leading-tight" ${origTip ? `title="${esc(origTip)}"` : ''}>
+                            <div class="text-xs font-bold text-slate-700 whitespace-nowrap">${esc(dPart || '')}${origTip ? ` <i class="fa-solid fa-clock-rotate-left text-[9px] text-amber-500 ml-1"></i>` : ''}</div>
                             <div class="text-[10px] text-slate-400 font-medium whitespace-nowrap">${esc(tPart || '')}</div>
                             ${sourceBadge(o.source)}
                         </td>
@@ -2079,6 +2213,7 @@
         async function updateOrder(id, field, value) {
             await fetch(`/api/orders/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ [field]: value }) });
             loadOrders();
+            if (field === 'status') updateCallbacksBadge();
         }
 
         function askDeleteOrder(id) {
@@ -2268,10 +2403,10 @@
 
         // Автооновлення списку замовлень кожні 15 c (без перешкод під час редагування)
         setInterval(() => {
-            if (!['orders', 'archive', 'deleted'].includes(currentView)) return;
+            if (!['orders', 'archive', 'deleted', 'callbacks'].includes(currentView)) return;
             if (document.querySelector('.modal-active')) return;
             const ae = document.activeElement;
-            if (ae && ae.closest && ae.closest('#ordersTable, #archiveTable, #deletedTable, #orderModal, #confirmModal')) return;
+            if (ae && ae.closest && ae.closest('#ordersTable, #archiveTable, #deletedTable, #callbacksTable, #orderModal, #confirmModal')) return;
             loadOrders();
         }, 15000);
     </script>
