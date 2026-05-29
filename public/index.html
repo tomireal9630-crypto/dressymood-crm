@@ -556,6 +556,14 @@
                         </select>
                     </div>
                     <div>
+                        <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">Джерело</label>
+                        <select id="exportSourceFilter" onchange="loadExport()" class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
+                            <option value="">Всі</option>
+                            <option value="supplier">Від постачальника</option>
+                            <option value="stock">Зі складу</option>
+                        </select>
+                    </div>
+                    <div>
                         <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">Період</label>
                         <select id="exportDateFilter" onchange="onExportDateChange()" class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
                             <option value="">Весь час</option>
@@ -2025,7 +2033,7 @@
         }
 
         function resetExportFilters() {
-            ['exportStatusFilter', 'exportSupplierFilter', 'exportArticleFilter', 'exportDateFilter', 'exportDateFrom', 'exportDateTo']
+            ['exportStatusFilter', 'exportSupplierFilter', 'exportArticleFilter', 'exportSourceFilter', 'exportDateFilter', 'exportDateFrom', 'exportDateTo']
                 .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
             const wrap = document.getElementById('exportPeriodWrap');
             if (wrap) wrap.classList.add('hidden');
@@ -2078,6 +2086,7 @@
                 const status = (document.getElementById('exportStatusFilter') || {}).value || '';
                 const supplier = (document.getElementById('exportSupplierFilter') || {}).value || '';
                 const article = (document.getElementById('exportArticleFilter') || {}).value || '';
+                const sourceFilter = (document.getElementById('exportSourceFilter') || {}).value || '';
                 const params = new URLSearchParams({ view: 'export' });
                 if (status) params.set('status', status);
                 if (supplier) params.set('supplier', supplier);
@@ -2097,6 +2106,8 @@
                     items.forEach(it => {
                         if (supplier && (it.supplier_name || '') !== supplier) return;
                         if (article && (it.article || '') !== article) return;
+                        if (sourceFilter === 'stock' && !it.from_stock) return;
+                        if (sourceFilter === 'supplier' && it.from_stock) return;
                         exportRows.push({
                             orderId: o.id,
                             fullName: o.fullName || '',
@@ -2109,7 +2120,8 @@
                             size: it.size || '',
                             color: it.color || '',
                             quantity: Number(it.quantity) || 1,
-                            supplier_name: it.supplier_name || ''
+                            supplier_name: it.supplier_name || '',
+                            from_stock: !!it.from_stock
                         });
                     });
                 });
@@ -2145,7 +2157,7 @@
                 <tr class="hover:bg-slate-50 transition-all align-middle">
                     <td class="px-4 py-3 w-10"><input type="checkbox" class="export-check w-4 h-4 accent-violet-600 cursor-pointer" data-key="${esc(k)}" ${checked} onchange="onExportRowCheck(this)"></td>
                     <td class="px-3 py-3 text-xs font-black text-slate-700">${idx + 1}</td>
-                    <td class="px-3 py-3 text-sm font-black text-slate-800 uppercase whitespace-nowrap">${esc(r.article || '—')}</td>
+                    <td class="px-3 py-3 text-sm font-black text-slate-800 uppercase whitespace-nowrap">${esc(r.article || '—')}${r.from_stock ? ` <span class="inline-flex items-center gap-0.5 text-[9px] font-black text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded ml-1" title="Зі складу"><i class="fa-solid fa-box text-[8px]"></i>СКЛАД</span>` : ''}</td>
                     <td class="px-3 py-3 text-xs font-bold text-slate-600 whitespace-nowrap">${esc(r.size || '—')}</td>
                     <td class="px-3 py-3 text-xs font-bold text-slate-600 whitespace-nowrap">${esc(r.color || '—')}</td>
                     <td class="px-3 py-3 text-xs text-slate-600">${esc(r.name || '—')}</td>
@@ -2239,6 +2251,7 @@
                 'Колір': r.color || '',
                 'Товар': r.name || '',
                 'Кіл-ть': r.quantity || 1,
+                'Джерело': r.from_stock ? 'Склад' : 'Постачальник',
                 'ФІО': r.fullName || '',
                 'Телефон': r.phone || '',
                 'ТТН': r.ttn || '',
@@ -2274,7 +2287,7 @@
             const wsDetail = XLSX.utils.json_to_sheet(detailRows);
             wsDetail['!cols'] = [
                 { wch: 5 }, { wch: 12 }, { wch: 10 }, { wch: 14 }, { wch: 24 },
-                { wch: 7 }, { wch: 24 }, { wch: 14 }, { wch: 18 }, { wch: 16 }, { wch: 14 }
+                { wch: 7 }, { wch: 12 }, { wch: 24 }, { wch: 14 }, { wch: 18 }, { wch: 16 }, { wch: 14 }
             ];
             XLSX.utils.book_append_sheet(wb, wsDetail, 'Замовлення');
 
