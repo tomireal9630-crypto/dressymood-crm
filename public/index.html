@@ -10,6 +10,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/css/style.css">
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 </head>
 <body class="bg-[#f8fafc] flex h-screen overflow-hidden text-slate-700">
 
@@ -403,6 +404,12 @@
                         </select>
                     </div>
                     <div>
+                        <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">Артикул</label>
+                        <select id="exportArticleFilter" onchange="loadExport()" class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
+                            <option value="">Всі артикули</option>
+                        </select>
+                    </div>
+                    <div>
                         <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">Період</label>
                         <select id="exportDateFilter" onchange="onExportDateChange()" class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
                             <option value="">Весь час</option>
@@ -424,8 +431,11 @@
                     </div>
                     <button onclick="resetExportFilters()" class="px-3 py-2 rounded-lg text-xs font-bold bg-rose-50 text-rose-500 hover:bg-rose-100 transition-all">Скинути</button>
                     <div class="flex-1"></div>
-                    <button onclick="copyExportGrouping()" class="px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider bg-emerald-500 text-white hover:bg-emerald-600 transition-all">
-                        <i class="fa-solid fa-copy mr-1"></i> Копіювати групування
+                    <button onclick="copyExportGrouping()" class="px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider bg-slate-100 text-slate-600 hover:bg-slate-200 transition-all">
+                        <i class="fa-solid fa-copy mr-1"></i> Копіювати
+                    </button>
+                    <button onclick="exportToExcel()" class="px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider bg-emerald-500 text-white hover:bg-emerald-600 transition-all">
+                        <i class="fa-solid fa-file-excel mr-1"></i> Експорт в Excel
                     </button>
                 </div>
 
@@ -1626,7 +1636,7 @@
         }
 
         function resetExportFilters() {
-            ['exportStatusFilter', 'exportSupplierFilter', 'exportDateFilter', 'exportDateFrom', 'exportDateTo']
+            ['exportStatusFilter', 'exportSupplierFilter', 'exportArticleFilter', 'exportDateFilter', 'exportDateFrom', 'exportDateTo']
                 .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
             const wrap = document.getElementById('exportPeriodWrap');
             if (wrap) wrap.classList.add('hidden');
@@ -1655,17 +1665,34 @@
             } catch (e) { /* мовчки */ }
         }
 
+        async function fillExportArticleFilter() {
+            const f = document.getElementById('exportArticleFilter');
+            if (!f) return;
+            try {
+                const r = await fetch('/api/orders/articles');
+                const d = await r.json();
+                const list = Array.isArray(d) ? d : [];
+                const cur = f.value;
+                f.innerHTML = `<option value="">Всі артикули</option>` +
+                    list.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
+                if ([...f.options].some(o => o.value === cur)) f.value = cur;
+            } catch (e) { /* мовчки */ }
+        }
+
         async function loadExport() {
             fillExportStatusFilter();
             fillExportSupplierFilter();
+            fillExportArticleFilter();
             const table = document.getElementById('exportTable');
             if (!table) return;
             try {
                 const status = (document.getElementById('exportStatusFilter') || {}).value || '';
                 const supplier = (document.getElementById('exportSupplierFilter') || {}).value || '';
+                const article = (document.getElementById('exportArticleFilter') || {}).value || '';
                 const params = new URLSearchParams({ view: 'export' });
                 if (status) params.set('status', status);
                 if (supplier) params.set('supplier', supplier);
+                if (article) params.set('article', article);
                 const { from, to } = exportDateRange();
                 if (from) params.set('dateFrom', from);
                 if (to) params.set('dateTo', to);
@@ -1680,6 +1707,7 @@
                     if (!items.length) return;
                     items.forEach(it => {
                         if (supplier && (it.supplier_name || '') !== supplier) return;
+                        if (article && (it.article || '') !== article) return;
                         exportRows.push({
                             orderId: o.id,
                             fullName: o.fullName || '',
@@ -1808,6 +1836,65 @@
                 () => { /* без alert, кнопка коротко мигне */ },
                 () => alert('Не вдалося скопіювати')
             );
+        }
+
+        function exportToExcel() {
+            if (typeof XLSX === 'undefined') { alert('Бібліотека Excel ще завантажується, спробуйте за секунду.'); return; }
+            const selected = exportRows.filter(r => exportSelected.has(exportRowKey(r)));
+            if (!selected.length) { alert('Нічого не вибрано'); return; }
+
+            const detailRows = selected.map((r, i) => ({
+                '№': i + 1,
+                'Артикул': r.article || '',
+                'Розмір': r.size || '',
+                'Колір': r.color || '',
+                'Товар': r.name || '',
+                'Кіл-ть': r.quantity || 1,
+                'ФІО': r.fullName || '',
+                'Телефон': r.phone || '',
+                'ТТН': r.ttn || '',
+                'Постачальник': r.supplier_name || '',
+                'Статус': r.status || ''
+            }));
+
+            const groups = new Map();
+            selected.forEach(r => {
+                const key = `${r.article}|${r.size}|${r.color}`;
+                const g = groups.get(key) || { article: r.article, size: r.size, color: r.color, qty: 0 };
+                g.qty += r.quantity;
+                groups.set(key, g);
+            });
+            const groupArr = [...groups.values()].sort((a, b) =>
+                (a.article || '').localeCompare(b.article || '') ||
+                (a.size || '').localeCompare(b.size || '') ||
+                (a.color || '').localeCompare(b.color || '')
+            );
+            const groupRows = groupArr.map((g, i) => ({
+                '№': i + 1,
+                'Модель': g.article || '',
+                'Розмір': g.size || '',
+                'Колір': g.color || '',
+                'Кіл-ть': g.qty
+            }));
+
+            const wb = XLSX.utils.book_new();
+            const wsGroup = XLSX.utils.json_to_sheet(groupRows);
+            wsGroup['!cols'] = [{ wch: 5 }, { wch: 12 }, { wch: 10 }, { wch: 14 }, { wch: 8 }];
+            XLSX.utils.book_append_sheet(wb, wsGroup, 'Групування');
+
+            const wsDetail = XLSX.utils.json_to_sheet(detailRows);
+            wsDetail['!cols'] = [
+                { wch: 5 }, { wch: 12 }, { wch: 10 }, { wch: 14 }, { wch: 24 },
+                { wch: 7 }, { wch: 24 }, { wch: 14 }, { wch: 18 }, { wch: 16 }, { wch: 14 }
+            ];
+            XLSX.utils.book_append_sheet(wb, wsDetail, 'Замовлення');
+
+            const sup = (document.getElementById('exportSupplierFilter') || {}).value || '';
+            const d = new Date();
+            const p = n => String(n).padStart(2, '0');
+            const stamp = `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
+            const name = `vigruzka_${sup ? sup.replace(/[^a-z0-9а-яіїєґ_-]+/gi, '_') + '_' : ''}${stamp}.xlsx`;
+            XLSX.writeFile(wb, name);
         }
 
         let editingOrderId = null;

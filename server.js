@@ -238,6 +238,11 @@ app.get('/api/orders', checkAuth, async (req, res) => {
       conditions.push(`EXISTS (SELECT 1 FROM order_items oi3 WHERE oi3.order_id = o.id AND oi3.supplier_name = $${params.length})`);
     }
 
+    if (req.query.article) {
+      params.push(req.query.article);
+      conditions.push(`EXISTS (SELECT 1 FROM order_items oi4 WHERE oi4.order_id = o.id AND oi4.article = $${params.length})`);
+    }
+
     if (dateFrom) {
       params.push(dateFrom);
       conditions.push(`o.created_at >= $${params.length}::date`);
@@ -409,6 +414,17 @@ app.get('/api/orders/suppliers', checkAuth, async (req, res) => {
        ORDER BY supplier_name ASC`
     );
     res.json(r.rows.map(x => x.supplier_name));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/orders/articles', checkAuth, async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT DISTINCT article FROM order_items
+       WHERE article IS NOT NULL AND article <> ''
+       ORDER BY article ASC`
+    );
+    res.json(r.rows.map(x => x.article));
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
