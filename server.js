@@ -212,6 +212,9 @@ app.get('/api/orders', checkAuth, async (req, res) => {
     } else if (view === 'deleted') {
       params.push(DELETED_STATUS);
       conditions.push(`o.status = $${params.length}`);
+    } else if (view === 'export') {
+      params.push(DELETED_STATUS);
+      conditions.push(`o.status <> $${params.length}`);
     } else {
       params.push([...ARCHIVE_STATUSES, DELETED_STATUS]);
       conditions.push(`o.status <> ALL($${params.length})`);

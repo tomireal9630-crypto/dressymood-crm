@@ -377,7 +377,99 @@
                     </table>
                 </div>
             </div>
-            <div id="view-export" class="view-content h-full flex flex-col items-center justify-center text-center"><i class="fa-solid fa-file-export text-6xl text-slate-200 mb-6"></i><h3 class="text-xl font-bold text-slate-400">Розділ "Вигрузка"</h3></div>
+            <div id="view-export" class="view-content h-full">
+                <div class="flex justify-between items-start mb-6 gap-4 flex-wrap">
+                    <div>
+                        <h2 class="text-3xl font-black text-slate-800 uppercase italic tracking-tighter">Вигрузка</h2>
+                        <p class="text-slate-400 font-medium text-sm">Відбір замовлень для постачальника</p>
+                    </div>
+                    <div class="text-right">
+                        <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Вибрано</div>
+                        <div class="text-2xl font-black text-violet-600"><span id="exportSelectedCount">0</span> / <span id="exportTotalCount">0</span></div>
+                    </div>
+                </div>
+
+                <div class="flex items-end gap-2 flex-wrap bg-white border border-slate-100 rounded-2xl p-3 shadow-sm mb-6">
+                    <div>
+                        <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">Статус</label>
+                        <select id="exportStatusFilter" onchange="loadExport()" class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
+                            <option value="">Всі статуси</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">Постачальник</label>
+                        <select id="exportSupplierFilter" onchange="loadExport()" class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
+                            <option value="">Всі постачальники</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">Період</label>
+                        <select id="exportDateFilter" onchange="onExportDateChange()" class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
+                            <option value="">Весь час</option>
+                            <option value="today">Сьогодні</option>
+                            <option value="yesterday">Вчора</option>
+                            <option value="month">Цей місяць</option>
+                            <option value="period">Обраний період</option>
+                        </select>
+                    </div>
+                    <div id="exportPeriodWrap" class="hidden items-end gap-2">
+                        <div>
+                            <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">З дати</label>
+                            <input type="date" id="exportDateFrom" onchange="loadExport()" class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
+                        </div>
+                        <div>
+                            <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">По дату</label>
+                            <input type="date" id="exportDateTo" onchange="loadExport()" class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
+                        </div>
+                    </div>
+                    <button onclick="resetExportFilters()" class="px-3 py-2 rounded-lg text-xs font-bold bg-rose-50 text-rose-500 hover:bg-rose-100 transition-all">Скинути</button>
+                    <div class="flex-1"></div>
+                    <button onclick="copyExportGrouping()" class="px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider bg-emerald-500 text-white hover:bg-emerald-600 transition-all">
+                        <i class="fa-solid fa-copy mr-1"></i> Копіювати групування
+                    </button>
+                </div>
+
+                <div class="flex gap-6 items-start">
+                    <div class="flex-1 bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/40 border border-slate-100 overflow-x-auto">
+                        <table class="w-full text-left min-w-[900px]">
+                            <thead>
+                                <tr class="bg-slate-50/50 border-b border-slate-100">
+                                    <th class="px-4 py-4 w-10"><input type="checkbox" id="exportMasterCheck" class="w-4 h-4 accent-violet-600 cursor-pointer" onchange="onExportMasterCheck(this)"></th>
+                                    <th class="px-3 py-4 text-[11px] font-black text-slate-500 uppercase tracking-widest">№</th>
+                                    <th class="px-3 py-4 text-[11px] font-black text-slate-500 uppercase tracking-widest">Артикул</th>
+                                    <th class="px-3 py-4 text-[11px] font-black text-slate-500 uppercase tracking-widest">Розмір</th>
+                                    <th class="px-3 py-4 text-[11px] font-black text-slate-500 uppercase tracking-widest">Колір</th>
+                                    <th class="px-3 py-4 text-[11px] font-black text-slate-500 uppercase tracking-widest">Товар</th>
+                                    <th class="px-3 py-4 text-[11px] font-black text-slate-500 uppercase tracking-widest">ФІО</th>
+                                    <th class="px-3 py-4 text-[11px] font-black text-slate-500 uppercase tracking-widest">ТТН</th>
+                                    <th class="px-3 py-4 text-[11px] font-black text-slate-500 uppercase tracking-widest">Постач.</th>
+                                    <th class="px-3 py-4 text-[11px] font-black text-slate-500 uppercase tracking-widest">Статус</th>
+                                </tr>
+                            </thead>
+                            <tbody id="exportTable" class="divide-y divide-slate-50"></tbody>
+                        </table>
+                    </div>
+
+                    <div class="w-80 shrink-0 bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/40 border border-slate-100 overflow-hidden">
+                        <div class="bg-violet-50/60 border-b border-violet-100 px-5 py-4">
+                            <div class="text-[10px] font-black text-violet-500 uppercase tracking-widest">Групування</div>
+                            <div class="text-xs text-slate-500 font-medium mt-0.5">По вибраних рядках</div>
+                        </div>
+                        <table class="w-full text-left text-xs">
+                            <thead>
+                                <tr class="bg-slate-50/50 border-b border-slate-100">
+                                    <th class="px-3 py-3 text-[10px] font-black text-slate-500 uppercase tracking-widest">№</th>
+                                    <th class="px-3 py-3 text-[10px] font-black text-slate-500 uppercase tracking-widest">Модель</th>
+                                    <th class="px-3 py-3 text-[10px] font-black text-slate-500 uppercase tracking-widest">Розмір</th>
+                                    <th class="px-3 py-3 text-[10px] font-black text-slate-500 uppercase tracking-widest">Колір</th>
+                                    <th class="px-3 py-3 text-[10px] font-black text-slate-500 uppercase tracking-widest text-center">Кіл-ть</th>
+                                </tr>
+                            </thead>
+                            <tbody id="exportGroupTable" class="divide-y divide-slate-50"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
 
             <div id="view-settings" class="view-content h-full">
                 <div class="mb-8">
@@ -827,6 +919,7 @@
             if (view === 'theme') renderThemeCards();
             if (view === 'settings') { loadNpSettings(); loadSmsSettings(); loadCheckboxSettings(); }
             if (view === 'regulars') loadRegulars();
+            if (view === 'export') loadExport();
             refreshData();
         }
 
@@ -834,6 +927,7 @@
             if (['orders', 'archive', 'deleted'].includes(currentView)) loadOrders();
             if (currentView === 'warehouse') loadWarehouseData();
             if (currentView === 'stock') loadStockData();
+            if (currentView === 'export') loadExport();
         }
 
         // --- НОВА ПОШТА ---
@@ -1498,6 +1592,222 @@
 
         function ttnSoon() {
             alert('Скоро — інтеграція з Нова Пошта (ТТН / чек).');
+        }
+
+        // --- ВИГРУЗКА ---
+        let exportRows = []; // плоский список: {orderId, fullName, ttn, status, article, name, size, color, supplier_name}
+        const exportSelected = new Set(); // ключі вибраних рядків (rowKey)
+
+        function exportDateRange() {
+            const v = (document.getElementById('exportDateFilter') || {}).value || '';
+            const iso = d => d.toISOString().slice(0, 10);
+            const now = new Date();
+            if (v === 'today') return { from: iso(now), to: iso(now) };
+            if (v === 'yesterday') {
+                const y = new Date(now); y.setDate(y.getDate() - 1);
+                return { from: iso(y), to: iso(y) };
+            }
+            if (v === 'month') return {
+                from: iso(new Date(now.getFullYear(), now.getMonth(), 1)),
+                to: iso(new Date(now.getFullYear(), now.getMonth() + 1, 0))
+            };
+            if (v === 'period') return {
+                from: (document.getElementById('exportDateFrom') || {}).value || '',
+                to: (document.getElementById('exportDateTo') || {}).value || ''
+            };
+            return { from: '', to: '' };
+        }
+
+        function onExportDateChange() {
+            const v = (document.getElementById('exportDateFilter') || {}).value || '';
+            const wrap = document.getElementById('exportPeriodWrap');
+            if (wrap) wrap.classList.toggle('hidden', v !== 'period');
+            loadExport();
+        }
+
+        function resetExportFilters() {
+            ['exportStatusFilter', 'exportSupplierFilter', 'exportDateFilter', 'exportDateFrom', 'exportDateTo']
+                .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+            const wrap = document.getElementById('exportPeriodWrap');
+            if (wrap) wrap.classList.add('hidden');
+            loadExport();
+        }
+
+        function fillExportStatusFilter() {
+            const f = document.getElementById('exportStatusFilter');
+            if (f && f.options.length <= 1) {
+                f.innerHTML = `<option value="">Всі статуси</option>` +
+                    STATUSES.map(s => `<option value="${s}">${s}</option>`).join('');
+            }
+        }
+
+        async function fillExportSupplierFilter() {
+            const f = document.getElementById('exportSupplierFilter');
+            if (!f) return;
+            try {
+                const r = await fetch('/api/orders/suppliers');
+                const d = await r.json();
+                const list = Array.isArray(d) ? d : [];
+                const cur = f.value;
+                f.innerHTML = `<option value="">Всі постачальники</option>` +
+                    list.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
+                if ([...f.options].some(o => o.value === cur)) f.value = cur;
+            } catch (e) { /* мовчки */ }
+        }
+
+        async function loadExport() {
+            fillExportStatusFilter();
+            fillExportSupplierFilter();
+            const table = document.getElementById('exportTable');
+            if (!table) return;
+            try {
+                const status = (document.getElementById('exportStatusFilter') || {}).value || '';
+                const supplier = (document.getElementById('exportSupplierFilter') || {}).value || '';
+                const params = new URLSearchParams({ view: 'export' });
+                if (status) params.set('status', status);
+                if (supplier) params.set('supplier', supplier);
+                const { from, to } = exportDateRange();
+                if (from) params.set('dateFrom', from);
+                if (to) params.set('dateTo', to);
+
+                const res = await fetch('/api/orders?' + params.toString());
+                const data = await res.json();
+                const orders = Array.isArray(data) ? data : [];
+
+                exportRows = [];
+                orders.forEach(o => {
+                    const items = Array.isArray(o.items) ? o.items : [];
+                    if (!items.length) return;
+                    items.forEach(it => {
+                        if (supplier && (it.supplier_name || '') !== supplier) return;
+                        exportRows.push({
+                            orderId: o.id,
+                            fullName: o.fullName || '',
+                            phone: o.phone || '',
+                            ttn: o.ttn || '',
+                            status: o.status || '',
+                            itemId: it.id,
+                            article: it.article || '',
+                            name: it.name || '',
+                            size: it.size || '',
+                            color: it.color || '',
+                            quantity: Number(it.quantity) || 1,
+                            supplier_name: it.supplier_name || ''
+                        });
+                    });
+                });
+
+                renderExportTable();
+            } catch (e) { console.error(e); }
+        }
+
+        function exportRowKey(r) {
+            return r.orderId + ':' + r.itemId;
+        }
+
+        function renderExportTable() {
+            const table = document.getElementById('exportTable');
+            if (!table) return;
+            const validKeys = new Set(exportRows.map(exportRowKey));
+            [...exportSelected].forEach(k => { if (!validKeys.has(k)) exportSelected.delete(k); });
+
+            if (!exportRows.length) {
+                table.innerHTML = `<tr><td colspan="10" class="p-8 text-center text-slate-400 font-medium">Пусто</td></tr>`;
+                document.getElementById('exportTotalCount').textContent = '0';
+                document.getElementById('exportSelectedCount').textContent = '0';
+                document.getElementById('exportGroupTable').innerHTML = `<tr><td colspan="5" class="p-4 text-center text-slate-300 text-xs">—</td></tr>`;
+                const m = document.getElementById('exportMasterCheck'); if (m) m.checked = false;
+                return;
+            }
+
+            table.innerHTML = exportRows.map((r, idx) => {
+                const k = exportRowKey(r);
+                const checked = exportSelected.has(k) ? 'checked' : '';
+                const stCls = statusConfig[r.status] || 'bg-slate-100 text-slate-500';
+                return `
+                <tr class="hover:bg-slate-50 transition-all align-middle">
+                    <td class="px-4 py-3 w-10"><input type="checkbox" class="export-check w-4 h-4 accent-violet-600 cursor-pointer" data-key="${esc(k)}" ${checked} onchange="onExportRowCheck(this)"></td>
+                    <td class="px-3 py-3 text-xs font-black text-slate-700">${idx + 1}</td>
+                    <td class="px-3 py-3 text-sm font-black text-slate-800 uppercase whitespace-nowrap">${esc(r.article || '—')}</td>
+                    <td class="px-3 py-3 text-xs font-bold text-slate-600 whitespace-nowrap">${esc(r.size || '—')}</td>
+                    <td class="px-3 py-3 text-xs font-bold text-slate-600 whitespace-nowrap">${esc(r.color || '—')}</td>
+                    <td class="px-3 py-3 text-xs text-slate-600">${esc(r.name || '—')}</td>
+                    <td class="px-3 py-3 text-xs">
+                        <div class="font-bold text-slate-800 leading-tight">${esc(r.fullName || '—')}</div>
+                        <div class="text-[10px] text-slate-400 font-medium mt-0.5">${esc(r.phone || '')}</div>
+                    </td>
+                    <td class="px-3 py-3 text-[11px] font-mono font-bold text-slate-700 whitespace-nowrap">${esc(r.ttn || '—')}</td>
+                    <td class="px-3 py-3 text-[11px] font-bold text-slate-600 whitespace-nowrap">${esc(r.supplier_name || '—')}</td>
+                    <td class="px-3 py-3"><span class="text-[10px] font-black px-2 py-1 rounded-full ring-1 ring-inset ${stCls}">${esc(r.status)}</span></td>
+                </tr>`;
+            }).join('');
+
+            document.getElementById('exportTotalCount').textContent = String(exportRows.length);
+            updateExportSelectionUi();
+        }
+
+        function onExportRowCheck(cb) {
+            const k = cb.dataset.key;
+            if (cb.checked) exportSelected.add(k); else exportSelected.delete(k);
+            updateExportSelectionUi();
+        }
+
+        function onExportMasterCheck(cb) {
+            exportSelected.clear();
+            if (cb.checked) exportRows.forEach(r => exportSelected.add(exportRowKey(r)));
+            document.querySelectorAll('#exportTable .export-check').forEach(x => { x.checked = cb.checked; });
+            updateExportSelectionUi();
+        }
+
+        function updateExportSelectionUi() {
+            const total = exportRows.length;
+            const sel = exportSelected.size;
+            document.getElementById('exportSelectedCount').textContent = String(sel);
+            const m = document.getElementById('exportMasterCheck');
+            if (m) m.checked = total > 0 && sel === total;
+            renderExportGrouping();
+        }
+
+        function renderExportGrouping() {
+            const tbody = document.getElementById('exportGroupTable');
+            if (!tbody) return;
+            const groups = new Map(); // key: article|size|color -> {article, size, color, qty}
+            exportRows.forEach(r => {
+                if (!exportSelected.has(exportRowKey(r))) return;
+                const key = `${r.article}|${r.size}|${r.color}`;
+                const g = groups.get(key) || { article: r.article, size: r.size, color: r.color, qty: 0 };
+                g.qty += r.quantity;
+                groups.set(key, g);
+            });
+            const arr = [...groups.values()].sort((a, b) =>
+                (a.article || '').localeCompare(b.article || '') ||
+                (a.size || '').localeCompare(b.size || '') ||
+                (a.color || '').localeCompare(b.color || '')
+            );
+            if (!arr.length) {
+                tbody.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-slate-300 text-xs">—</td></tr>`;
+                return;
+            }
+            tbody.innerHTML = arr.map((g, i) => `
+                <tr class="hover:bg-slate-50">
+                    <td class="px-3 py-2 font-black text-slate-700">${i + 1}</td>
+                    <td class="px-3 py-2 font-black text-slate-800 uppercase">${esc(g.article || '—')}</td>
+                    <td class="px-3 py-2 font-bold text-slate-600">${esc(g.size || '—')}</td>
+                    <td class="px-3 py-2 font-bold text-slate-600">${esc(g.color || '—')}</td>
+                    <td class="px-3 py-2 text-center font-black text-violet-600">${g.qty}</td>
+                </tr>`).join('');
+        }
+
+        function copyExportGrouping() {
+            const rows = [...document.querySelectorAll('#exportGroupTable tr')]
+                .map(tr => [...tr.children].map(td => td.textContent.trim()).join('\t'))
+                .filter(line => line && line !== '—');
+            if (!rows.length) { alert('Нічого не вибрано'); return; }
+            const text = '№\tМодель\tРозмір\tКолір\tКіл-ть\n' + rows.join('\n');
+            navigator.clipboard.writeText(text).then(
+                () => { /* без alert, кнопка коротко мигне */ },
+                () => alert('Не вдалося скопіювати')
+            );
         }
 
         let editingOrderId = null;
