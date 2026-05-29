@@ -1896,6 +1896,7 @@
                     const itemsHtml = items.map(it => `
                         <div class="text-sm font-black text-slate-800 uppercase leading-tight">${esc(it.article || '-')}
                             ${it.quantity > 1 ? `<span class="text-[10px] text-violet-500">×${it.quantity}</span>` : ''}
+                            ${it.from_stock ? `<span class="inline-flex items-center gap-1 text-[9px] font-black text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded ml-1" title="Списано з наявності"><i class="fa-solid fa-box text-[8px]"></i>СКЛАД</span>` : ''}
                             <div class="text-xs text-slate-500 font-medium normal-case">${esc(it.name || '')}</div>
                         </div>`).join('') || '<span class="text-slate-300 text-sm">—</span>';
                     const charHtml = items.map(it =>
@@ -2561,6 +2562,9 @@
             const v = x => esc(data[x] != null ? data[x] : '');
             const div = document.createElement('div');
             div.className = 'order-item bg-white border border-slate-100 rounded-xl p-4 grid grid-cols-3 gap-3 relative';
+            div.dataset.stockId = data.stock_id || '';
+            div.dataset.fromStock = data.from_stock ? '1' : '';
+            div.dataset.stockQty = '0';
             div.innerHTML = `
                 <button type="button" onclick="this.closest('.order-item').remove()" class="absolute -top-2 -right-2 w-6 h-6 bg-rose-500 text-white rounded-full text-xs hover:bg-rose-600">×</button>
                 <div>
@@ -2586,8 +2590,62 @@
                 <div>
                     <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">Ціна</label>
                     <input type="number" data-f="price" value="${data.price != null ? Number(data.price) : 0}" min="0" onfocus="this.select()" class="w-full px-3 py-2 bg-slate-50 border border-slate-100 rounded-lg outline-none text-sm font-black">
+                </div>
+                <div class="col-span-3 stock-row hidden flex items-center gap-3 px-3 py-2 rounded-lg bg-emerald-50 border border-emerald-100">
+                    <i class="fa-solid fa-box text-emerald-600"></i>
+                    <div class="text-xs font-bold text-emerald-700 stock-info"></div>
+                    <label class="ml-auto flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" class="stock-check w-4 h-4 accent-emerald-600 cursor-pointer">
+                        <span class="text-xs font-black text-emerald-700 uppercase tracking-wider">Списати з наявності</span>
+                    </label>
                 </div>`;
+            const aInp = div.querySelector('[data-f="article"]');
+            const cInp = div.querySelector('[data-f="color"]');
+            const sInp = div.querySelector('[data-f="size"]');
+            const check = div.querySelector('.stock-check');
+            const refresh = () => checkItemStock(div);
+            [aInp, cInp, sInp].forEach(el => el.addEventListener('blur', refresh));
+            check.addEventListener('change', () => {
+                div.dataset.fromStock = check.checked ? '1' : '';
+            });
+            if (data.from_stock) check.checked = true;
+            setTimeout(() => checkItemStock(div), 0);
             return div;
+        }
+
+        async function checkItemStock(rowEl) {
+            const article = rowEl.querySelector('[data-f="article"]').value.trim();
+            const color = rowEl.querySelector('[data-f="color"]').value.trim();
+            const size = rowEl.querySelector('[data-f="size"]').value.trim();
+            const stockRow = rowEl.querySelector('.stock-row');
+            const info = rowEl.querySelector('.stock-info');
+            const check = rowEl.querySelector('.stock-check');
+            const wasFromStock = rowEl.dataset.fromStock === '1';
+            if (!article || !color || !size) {
+                if (!wasFromStock) { stockRow.classList.add('hidden'); rowEl.dataset.stockId = ''; }
+                return;
+            }
+            try {
+                const r = await fetch(`/api/stock/lookup?article=${encodeURIComponent(article)}&color=${encodeURIComponent(color)}&size=${encodeURIComponent(size)}`);
+                const d = await r.json();
+                if (d.stock_id && d.quantity > 0) {
+                    rowEl.dataset.stockId = d.stock_id;
+                    rowEl.dataset.stockQty = d.quantity;
+                    info.textContent = `На складі: ${d.quantity} шт — ${article} / ${size} / ${color}`;
+                    stockRow.classList.remove('hidden');
+                    check.disabled = false;
+                } else if (wasFromStock) {
+                    info.textContent = `Вже списано з наявності (${article} / ${size} / ${color})`;
+                    stockRow.classList.remove('hidden');
+                    check.checked = true;
+                    check.disabled = false;
+                } else {
+                    rowEl.dataset.stockId = '';
+                    stockRow.classList.add('hidden');
+                    check.checked = false;
+                    rowEl.dataset.fromStock = '';
+                }
+            } catch (e) { /* мовчки */ }
         }
 
         function addOrderItem() {
@@ -2697,6 +2755,10 @@
                     it.supplier_name = supSel.options[supSel.selectedIndex].text;
                 } else if (supSel && supSel.value) {
                     it.supplier_id = supSel.value;
+                }
+                if (row.dataset.fromStock && row.dataset.stockId) {
+                    it.from_stock = true;
+                    it.stock_id = parseInt(row.dataset.stockId);
                 }
                 return it;
             }).filter(i => i.article || i.name);
