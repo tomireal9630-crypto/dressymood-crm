@@ -251,7 +251,88 @@
                 </div>
             </div>
 
-            <div id="view-dashboard" class="view-content h-full flex flex-col items-center justify-center text-center"><i class="fa-solid fa-chart-pie text-6xl text-slate-200 mb-6"></i><h3 class="text-xl font-bold text-slate-400">Розділ "Дашборд"</h3></div>
+            <div id="view-dashboard" class="view-content h-full">
+                <div class="mb-6">
+                    <h2 class="text-3xl font-black text-slate-800 uppercase italic tracking-tighter">Дашборд</h2>
+                </div>
+
+                <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
+                    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 flex items-center gap-4">
+                        <div class="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-500 flex items-center justify-center shrink-0"><i class="fa-solid fa-plus text-xl"></i></div>
+                        <div>
+                            <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Нові</div>
+                            <div id="dashKpiNew" class="text-2xl font-black text-emerald-500">0</div>
+                        </div>
+                    </div>
+                    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 flex items-center gap-4">
+                        <div class="w-12 h-12 rounded-xl bg-amber-50 text-amber-500 flex items-center justify-center shrink-0"><i class="fa-regular fa-clock text-xl"></i></div>
+                        <div>
+                            <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest">В роботі</div>
+                            <div id="dashKpiWorking" class="text-2xl font-black text-amber-500">0</div>
+                        </div>
+                    </div>
+                    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 flex items-center gap-4">
+                        <div class="w-12 h-12 rounded-xl bg-blue-50 text-blue-500 flex items-center justify-center shrink-0"><i class="fa-regular fa-clipboard text-xl"></i></div>
+                        <div>
+                            <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Прийняті</div>
+                            <div id="dashKpiAccepted" class="text-2xl font-black text-blue-500">0</div>
+                        </div>
+                    </div>
+                    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 flex items-center gap-4">
+                        <div class="w-12 h-12 rounded-xl bg-cyan-50 text-cyan-500 flex items-center justify-center shrink-0"><i class="fa-solid fa-check text-xl"></i></div>
+                        <div>
+                            <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Продажі</div>
+                            <div id="dashKpiSales" class="text-2xl font-black text-cyan-500">0</div>
+                        </div>
+                    </div>
+                    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 flex items-center gap-4">
+                        <div class="w-12 h-12 rounded-xl bg-rose-50 text-rose-500 flex items-center justify-center shrink-0"><i class="fa-solid fa-ban text-xl"></i></div>
+                        <div>
+                            <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Відмови</div>
+                            <div id="dashKpiRefused" class="text-2xl font-black text-rose-500">0</div>
+                        </div>
+                    </div>
+                    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 flex items-center gap-4">
+                        <div class="w-12 h-12 rounded-xl bg-pink-50 text-pink-500 flex items-center justify-center shrink-0"><i class="fa-solid fa-phone-slash text-xl"></i></div>
+                        <div>
+                            <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Не дозвони</div>
+                            <div id="dashKpiCallbacks" class="text-2xl font-black text-pink-500">0</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex items-end gap-3 flex-wrap bg-white border border-slate-100 rounded-2xl p-4 shadow-sm mb-6">
+                    <div>
+                        <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">З</label>
+                        <input type="date" id="dashFrom" onchange="loadDashboard()" class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
+                    </div>
+                    <div>
+                        <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">По</label>
+                        <input type="date" id="dashTo" onchange="loadDashboard()" class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
+                    </div>
+                    <div>
+                        <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">Статус</label>
+                        <select id="dashStatus" onchange="loadDashboard()" class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
+                            <option value="">Всі статуси</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                    <div class="px-6 py-4 border-b border-slate-100 text-[11px] font-black text-slate-400 uppercase tracking-widest">По днях</div>
+                    <table class="w-full text-left">
+                        <thead>
+                            <tr class="bg-slate-50/50 border-b border-slate-100">
+                                <th class="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Дата</th>
+                                <th class="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center w-24">Кіл-ть</th>
+                                <th class="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Графік</th>
+                                <th class="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right w-32">Сума</th>
+                            </tr>
+                        </thead>
+                        <tbody id="dashByDayTable" class="divide-y divide-slate-50"></tbody>
+                    </table>
+                </div>
+            </div>
             <div id="view-archive" class="view-content h-full">
                 <div class="flex justify-between items-start mb-6 gap-4 flex-wrap">
                     <div>
@@ -1084,7 +1165,7 @@
             const btn = document.getElementById(`btn-${view}`);
             if (btn) btn.classList.add('active');
 
-            const titles = { 'orders': 'ЗАМОВЛЕННЯ', 'warehouse': 'СКЛАД', 'callbacks': 'НЕ ДОЗВОНИ', 'statistics': 'СТАТИСТИКА' };
+            const titles = { 'orders': 'ЗАМОВЛЕННЯ', 'warehouse': 'СКЛАД', 'callbacks': 'НЕ ДОЗВОНИ', 'statistics': 'СТАТИСТИКА', 'dashboard': 'ДАШБОРД' };
             document.getElementById('current-view-title').innerText = titles[view] || view.toUpperCase();
 
             document.querySelectorAll('.view-content').forEach(el => el.classList.remove('active'));
@@ -1096,6 +1177,7 @@
             if (view === 'regulars') loadRegulars();
             if (view === 'export') loadExport();
             if (view === 'statistics') switchStatsTab('buyout');
+            if (view === 'dashboard') { if (!dashInit) initDashboard(); else loadDashboard(); }
             refreshData();
         }
 
@@ -2130,6 +2212,83 @@
             const stamp = `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
             const name = `vigruzka_${sup ? sup.replace(/[^a-z0-9а-яіїєґ_-]+/gi, '_') + '_' : ''}${stamp}.xlsx`;
             XLSX.writeFile(wb, name);
+        }
+
+        // --- ДАШБОРД ---
+        let dashInit = false;
+
+        async function initDashboard() {
+            dashInit = true;
+            const iso = d => d.toISOString().slice(0, 10);
+            const now = new Date();
+            const from = new Date(now); from.setDate(from.getDate() - 30);
+            const fEl = document.getElementById('dashFrom');
+            const tEl = document.getElementById('dashTo');
+            if (fEl && !fEl.value) fEl.value = iso(from);
+            if (tEl && !tEl.value) tEl.value = iso(now);
+            const sSel = document.getElementById('dashStatus');
+            if (sSel && sSel.options.length <= 1) {
+                sSel.innerHTML = `<option value="">Всі статуси</option>` +
+                    STATUSES.map(s => `<option value="${s}">${s}</option>`).join('');
+            }
+            loadDashboard();
+        }
+
+        async function loadDashboard() {
+            const from = (document.getElementById('dashFrom') || {}).value || '';
+            const to = (document.getElementById('dashTo') || {}).value || '';
+            const status = (document.getElementById('dashStatus') || {}).value || '';
+            const params = new URLSearchParams();
+            if (from) params.set('dateFrom', from);
+            if (to) params.set('dateTo', to);
+            if (status) params.set('status', status);
+            let data;
+            try {
+                const r = await fetch('/api/stats/dashboard?' + params.toString());
+                data = await r.json();
+            } catch (e) {
+                data = { kpi: {}, byDay: [] };
+            }
+            const k = data.kpi || {};
+            document.getElementById('dashKpiNew').textContent = k.new || 0;
+            document.getElementById('dashKpiWorking').textContent = k.working || 0;
+            document.getElementById('dashKpiAccepted').textContent = k.accepted || 0;
+            document.getElementById('dashKpiSales').textContent = k.sales || 0;
+            document.getElementById('dashKpiRefused').textContent = k.refused || 0;
+            document.getElementById('dashKpiCallbacks').textContent = k.callbacks || 0;
+            renderDashByDay(Array.isArray(data.byDay) ? data.byDay : []);
+        }
+
+        function renderDashByDay(rows) {
+            const tbody = document.getElementById('dashByDayTable');
+            if (!tbody) return;
+            if (!rows.length) {
+                tbody.innerHTML = `<tr><td colspan="4" class="p-8 text-center text-slate-400 font-medium">Пусто за вибраний період</td></tr>`;
+                return;
+            }
+            const maxCount = Math.max(...rows.map(r => r.count));
+            const fmtSum = n => Number(n).toLocaleString('uk-UA') + ' ₴';
+            const fmtDay = d => {
+                const [y, m, day] = d.split('-');
+                return `${day}.${m}.${y}`;
+            };
+            tbody.innerHTML = rows.map(r => {
+                const pct = maxCount ? Math.round(r.count / maxCount * 100) : 0;
+                return `
+                <tr class="hover:bg-slate-50 transition-all">
+                    <td class="px-6 py-4 text-sm font-bold text-slate-700">${esc(fmtDay(r.date))}</td>
+                    <td class="px-6 py-4 text-center text-sm font-black text-slate-800">${r.count}</td>
+                    <td class="px-6 py-4">
+                        <div class="flex items-center gap-3">
+                            <div class="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
+                                <div class="h-full rounded-full" style="width:${pct}%;background:linear-gradient(90deg,#8b5cf6,#ec4899)"></div>
+                            </div>
+                            <div class="text-[11px] font-bold text-slate-400 w-10 text-right">${pct}%</div>
+                        </div>
+                    </td>
+                    <td class="px-6 py-4 text-right text-sm font-black text-violet-600">${fmtSum(r.sum)}</td>
+                </tr>`;
+            }).join('');
         }
 
         // --- СТАТИСТИКА ---

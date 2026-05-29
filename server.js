@@ -431,6 +431,56 @@ app.get('/api/orders/suppliers', checkAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+app.get('/api/stats/dashboard', checkAuth, async (req, res) => {
+  const { dateFrom, dateTo, status } = req.query;
+  try {
+    const dateParams = [];
+    const dateConds = [];
+    if (dateFrom) { dateParams.push(dateFrom); dateConds.push(`o.created_at >= $${dateParams.length}::date`); }
+    if (dateTo)   { dateParams.push(dateTo);   dateConds.push(`o.created_at < ($${dateParams.length}::date + interval '1 day')`); }
+    const dateWhere = dateConds.length ? 'WHERE ' + dateConds.join(' AND ') : '';
+
+    const kpiQ = `
+      SELECT
+        COUNT(*) FILTER (WHERE o.status = 'Новый')::int AS new_cnt,
+        COUNT(*) FILTER (WHERE o.status = 'В работе')::int AS working,
+        COUNT(*) FILTER (WHERE o.status IN ('В работе','Доставка','В пути','На почте','Продажа'))::int AS accepted,
+        COUNT(*) FILTER (WHERE o.status = 'Продажа')::int AS sales,
+        COUNT(*) FILTER (WHERE o.status = 'Отказ')::int AS refused,
+        COUNT(*) FILTER (WHERE o.status IN ('Не дозвон','Не дозвон2'))::int AS callbacks
+      FROM orders o ${dateWhere}`;
+
+    const byDayParams = [...dateParams];
+    const byDayConds = [...dateConds];
+    if (status) {
+      byDayParams.push(status);
+      byDayConds.push(`o.status = $${byDayParams.length}`);
+    }
+    const byDayWhere = byDayConds.length ? 'WHERE ' + byDayConds.join(' AND ') : '';
+    const byDayQ = `
+      SELECT to_char(date_trunc('day', o.created_at), 'YYYY-MM-DD') AS date,
+             COUNT(*)::int AS count,
+             COALESCE(SUM((SELECT COALESCE(SUM(oi.price * oi.quantity),0) FROM order_items oi WHERE oi.order_id = o.id)), 0)::numeric AS sum
+      FROM orders o ${byDayWhere}
+      GROUP BY date_trunc('day', o.created_at)
+      ORDER BY date_trunc('day', o.created_at) DESC`;
+
+    const [k, d] = await Promise.all([pool.query(kpiQ, dateParams), pool.query(byDayQ, byDayParams)]);
+    const kpi = k.rows[0] || {};
+    res.json({
+      kpi: {
+        new: kpi.new_cnt || 0,
+        working: kpi.working || 0,
+        accepted: kpi.accepted || 0,
+        sales: kpi.sales || 0,
+        refused: kpi.refused || 0,
+        callbacks: kpi.callbacks || 0
+      },
+      byDay: d.rows.map(r => ({ date: r.date, count: r.count, sum: Number(r.sum) || 0 }))
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.get('/api/stats/buyout', checkAuth, async (req, res) => {
   const { dateFrom, dateTo, supplier } = req.query;
   try {
