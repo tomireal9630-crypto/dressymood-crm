@@ -372,7 +372,7 @@ app.post('/api/orders/manual', checkAuth, async (req, res) => {
         if (s.rows.length) supplierName = s.rows[0].name;
       }
       const qty = parseInt(it.quantity) || 1;
-      const fromStock = !!it.from_stock && it.stock_id;
+      const fromStock = Boolean(it.from_stock && it.stock_id);
       if (fromStock) {
         const upd = await client.query(
           `UPDATE stock SET quantity = quantity - $1 WHERE id = $2 AND quantity >= $1`,
@@ -715,7 +715,7 @@ app.put('/api/orders/:id(\\d+)/full', checkAuth, async (req, res) => {
         if (s.rows.length) supplierName = s.rows[0].name;
       }
       const qty = parseInt(it.quantity) || 1;
-      const fromStock = !!it.from_stock && it.stock_id;
+      const fromStock = Boolean(it.from_stock && it.stock_id);
       await client.query(
         `INSERT INTO order_items (order_id, article, name, supplier_id, supplier_name,
           size, color, price, quantity, from_stock, stock_id)
