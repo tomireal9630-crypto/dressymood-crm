@@ -714,9 +714,80 @@
                     </div>
                 </div>
                 <div id="stats-tab-approval" class="stats-tab-content hidden">
-                    <div class="bg-white rounded-2xl border border-slate-100 p-16 text-center text-slate-400">
-                        <i class="fa-solid fa-check-double text-5xl mb-4 text-slate-200"></i>
-                        <div class="font-bold">Апрув — в розробці</div>
+                    <div class="flex items-end gap-3 flex-wrap mb-6">
+                        <div>
+                            <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">З</label>
+                            <input type="date" id="statsApprovalFrom" class="px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
+                        </div>
+                        <div>
+                            <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">По</label>
+                            <input type="date" id="statsApprovalTo" class="px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
+                        </div>
+                        <button onclick="loadApprovalStats()" class="px-5 py-2 rounded-lg text-xs font-black uppercase tracking-wider text-white transition-all"
+                            style="background:linear-gradient(135deg,#8b5cf6,#ec4899)">Показати</button>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+                        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+                            <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Заявок</div>
+                            <div id="apKpiTotal" class="text-3xl font-black text-slate-800">0</div>
+                        </div>
+                        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+                            <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Підтверджено</div>
+                            <div id="apKpiApproved" class="text-3xl font-black text-emerald-500">0</div>
+                        </div>
+                        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+                            <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">В очікуванні</div>
+                            <div id="apKpiPending" class="text-3xl font-black text-amber-500">0</div>
+                        </div>
+                        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+                            <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Відмов</div>
+                            <div id="apKpiRefused" class="text-3xl font-black text-rose-500">0</div>
+                        </div>
+                        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 border-2 border-violet-200">
+                            <div class="text-[10px] font-black text-violet-500 uppercase tracking-widest mb-2">% Апруву</div>
+                            <div id="apKpiPct" class="text-3xl font-black text-violet-600">0%</div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                            <div class="px-6 py-4 border-b border-slate-100 text-[11px] font-black text-slate-400 uppercase tracking-widest">По днях</div>
+                            <table class="w-full text-left">
+                                <thead>
+                                    <tr class="bg-slate-50/50 border-b border-slate-100">
+                                        <th class="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Дата</th>
+                                        <th class="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Заявок</th>
+                                        <th class="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Підтв.</th>
+                                        <th class="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">% Апруву</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="approvalByDayTable" class="divide-y divide-slate-50"></tbody>
+                            </table>
+                        </div>
+                        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                            <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between gap-3">
+                                <div class="text-[11px] font-black text-slate-400 uppercase tracking-widest">По артикулах</div>
+                                <select id="statsApprovalArticleSort" onchange="renderApprovalArticleTable()" class="px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg outline-none text-[11px] font-bold text-slate-600">
+                                    <option value="pctAsc">% апруву ↑</option>
+                                    <option value="pctDesc">% апруву ↓</option>
+                                    <option value="totalDesc">Заявок ↓</option>
+                                    <option value="approvedDesc">Підтв. ↓</option>
+                                    <option value="articleAsc">Артикул А→Я</option>
+                                </select>
+                            </div>
+                            <table class="w-full text-left">
+                                <thead>
+                                    <tr class="bg-slate-50/50 border-b border-slate-100">
+                                        <th class="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Артикул</th>
+                                        <th class="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Заявок</th>
+                                        <th class="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Підтв.</th>
+                                        <th class="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">% Апруву</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="approvalByArticleTable" class="divide-y divide-slate-50"></tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
                 <div id="stats-tab-summary" class="stats-tab-content hidden">
@@ -2301,6 +2372,7 @@
             const target = document.getElementById('stats-tab-' + tab);
             if (target) target.classList.remove('hidden');
             if (tab === 'buyout' && !statsBuyoutInit) initBuyoutStats();
+            if (tab === 'approval' && !statsApprovalInit) initApprovalStats();
         }
 
         async function initBuyoutStats() {
@@ -2379,6 +2451,99 @@
                     <td class="px-6 py-4 text-center font-bold text-slate-700">${r.total}</td>
                     <td class="px-6 py-4 text-center font-black text-emerald-600">${r.sales}</td>
                     <td class="px-6 py-4 text-center font-bold text-slate-700">${r.refused}</td>
+                </tr>`).join('');
+        }
+
+        // --- АПРУВ ---
+        let approvalData = { kpi: {}, byDay: [], byArticle: [] };
+        let statsApprovalInit = false;
+
+        async function initApprovalStats() {
+            statsApprovalInit = true;
+            const iso = d => d.toISOString().slice(0, 10);
+            const now = new Date();
+            const from = new Date(now); from.setDate(from.getDate() - 30);
+            const fromEl = document.getElementById('statsApprovalFrom');
+            const toEl = document.getElementById('statsApprovalTo');
+            if (fromEl && !fromEl.value) fromEl.value = iso(from);
+            if (toEl && !toEl.value) toEl.value = iso(now);
+            loadApprovalStats();
+        }
+
+        async function loadApprovalStats() {
+            const from = (document.getElementById('statsApprovalFrom') || {}).value || '';
+            const to = (document.getElementById('statsApprovalTo') || {}).value || '';
+            const params = new URLSearchParams();
+            if (from) params.set('dateFrom', from);
+            if (to) params.set('dateTo', to);
+            try {
+                const r = await fetch('/api/stats/approval?' + params.toString());
+                approvalData = await r.json();
+            } catch (e) {
+                approvalData = { kpi: {}, byDay: [], byArticle: [] };
+            }
+            const k = approvalData.kpi || {};
+            document.getElementById('apKpiTotal').textContent = k.total || 0;
+            document.getElementById('apKpiApproved').textContent = k.approved || 0;
+            document.getElementById('apKpiPending').textContent = k.pending || 0;
+            document.getElementById('apKpiRefused').textContent = k.refused || 0;
+            document.getElementById('apKpiPct').textContent = (k.approvalPct || 0) + '%';
+            renderApprovalByDay();
+            renderApprovalArticleTable();
+        }
+
+        function approvalPctBar(pct) {
+            const cls = pct >= 70 ? '#10b981' : pct >= 40 ? '#f59e0b' : '#f43f5e';
+            return `
+                <div class="flex items-center gap-2">
+                    <div class="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden min-w-[60px]">
+                        <div class="h-full rounded-full" style="width:${pct}%;background:${cls}"></div>
+                    </div>
+                    <div class="text-[11px] font-black w-10 text-right" style="color:${cls}">${pct}%</div>
+                </div>`;
+        }
+
+        function renderApprovalByDay() {
+            const tbody = document.getElementById('approvalByDayTable');
+            if (!tbody) return;
+            const rows = approvalData.byDay || [];
+            if (!rows.length) {
+                tbody.innerHTML = `<tr><td colspan="4" class="p-8 text-center text-slate-400 font-medium">Пусто</td></tr>`;
+                return;
+            }
+            const fmtDay = d => { const [y, m, day] = d.split('-'); return `${day}.${m}.${y}`; };
+            tbody.innerHTML = rows.map(r => `
+                <tr class="hover:bg-slate-50 transition-all">
+                    <td class="px-4 py-3 text-sm font-bold text-slate-700 whitespace-nowrap">${esc(fmtDay(r.date))}</td>
+                    <td class="px-4 py-3 text-center text-sm font-black text-slate-800">${r.total}</td>
+                    <td class="px-4 py-3 text-center text-sm font-black text-emerald-600">${r.approved}</td>
+                    <td class="px-4 py-3">${approvalPctBar(r.approvalPct)}</td>
+                </tr>`).join('');
+        }
+
+        function renderApprovalArticleTable() {
+            const tbody = document.getElementById('approvalByArticleTable');
+            if (!tbody) return;
+            const sort = (document.getElementById('statsApprovalArticleSort') || {}).value || 'pctAsc';
+            const rows = [...(approvalData.byArticle || [])];
+            const sorters = {
+                pctAsc:       (a,b) => a.approvalPct - b.approvalPct || b.total - a.total,
+                pctDesc:      (a,b) => b.approvalPct - a.approvalPct || b.total - a.total,
+                totalDesc:    (a,b) => b.total - a.total,
+                approvedDesc: (a,b) => b.approved - a.approved,
+                articleAsc:   (a,b) => (a.article || '').localeCompare(b.article || '')
+            };
+            rows.sort(sorters[sort] || sorters.pctAsc);
+            if (!rows.length) {
+                tbody.innerHTML = `<tr><td colspan="4" class="p-8 text-center text-slate-400 font-medium">Пусто</td></tr>`;
+                return;
+            }
+            tbody.innerHTML = rows.map(r => `
+                <tr class="hover:bg-slate-50 transition-all">
+                    <td class="px-4 py-3 text-sm font-black text-slate-800 uppercase whitespace-nowrap">${esc(r.article)}</td>
+                    <td class="px-4 py-3 text-center text-sm font-bold text-slate-700">${r.total}</td>
+                    <td class="px-4 py-3 text-center text-sm font-black text-emerald-600">${r.approved}</td>
+                    <td class="px-4 py-3">${approvalPctBar(r.approvalPct)}</td>
                 </tr>`).join('');
         }
 

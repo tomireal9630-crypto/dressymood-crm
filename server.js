@@ -481,6 +481,62 @@ app.get('/api/stats/dashboard', checkAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+app.get('/api/stats/approval', checkAuth, async (req, res) => {
+  const { dateFrom, dateTo } = req.query;
+  try {
+    const params = [];
+    const conds = [`o.status <> '✗✗✗'`];
+    const dateExpr = `COALESCE(o.original_created_at, o.created_at)`;
+    if (dateFrom) { params.push(dateFrom); conds.push(`${dateExpr} >= $${params.length}::date`); }
+    if (dateTo)   { params.push(dateTo);   conds.push(`${dateExpr} < ($${params.length}::date + interval '1 day')`); }
+    const where = 'WHERE ' + conds.join(' AND ');
+
+    const APPROVED = `('В работе','Доставка','В пути','На почте','Продажа')`;
+    const PENDING  = `('Новый','Не дозвон','Не дозвон2')`;
+    const REFUSED  = `('Отказ','Возврат','Ошибка в ТТН','Отбой','Переадресация')`;
+
+    const kpiQ = `
+      SELECT COUNT(*)::int AS total,
+             COUNT(*) FILTER (WHERE o.status IN ${APPROVED})::int AS approved,
+             COUNT(*) FILTER (WHERE o.status IN ${PENDING})::int AS pending,
+             COUNT(*) FILTER (WHERE o.status IN ${REFUSED})::int AS refused
+      FROM orders o ${where}`;
+
+    const byDayQ = `
+      SELECT to_char(date_trunc('day', ${dateExpr}), 'YYYY-MM-DD') AS date,
+             COUNT(*)::int AS total,
+             COUNT(*) FILTER (WHERE o.status IN ${APPROVED})::int AS approved
+      FROM orders o ${where}
+      GROUP BY date_trunc('day', ${dateExpr})
+      ORDER BY date_trunc('day', ${dateExpr}) DESC`;
+
+    const byArtQ = `
+      WITH leads AS (SELECT o.id, o.status FROM orders o ${where})
+      SELECT oi.article,
+             COUNT(DISTINCT l.id)::int AS total,
+             COUNT(DISTINCT l.id) FILTER (WHERE l.status IN ${APPROVED})::int AS approved
+      FROM leads l
+      JOIN order_items oi ON oi.order_id = l.id
+      WHERE oi.article IS NOT NULL AND oi.article <> ''
+      GROUP BY oi.article
+      ORDER BY oi.article`;
+
+    const [k, d, a] = await Promise.all([
+      pool.query(kpiQ, params),
+      pool.query(byDayQ, params),
+      pool.query(byArtQ, params)
+    ]);
+    const kpi = k.rows[0] || { total: 0, approved: 0, pending: 0, refused: 0 };
+    const approvalPct = kpi.total ? Math.round(kpi.approved / kpi.total * 100) : 0;
+    const enrich = r => ({ ...r, approvalPct: r.total ? Math.round(r.approved / r.total * 100) : 0 });
+    res.json({
+      kpi: { ...kpi, approvalPct },
+      byDay: d.rows.map(enrich),
+      byArticle: a.rows.map(enrich)
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.get('/api/stats/buyout', checkAuth, async (req, res) => {
   const { dateFrom, dateTo, supplier } = req.query;
   try {
