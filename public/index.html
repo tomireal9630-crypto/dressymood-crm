@@ -546,6 +546,106 @@
                 </div>
             </div>
 
+            <div id="view-statistics" class="view-content h-full">
+                <div class="mb-6">
+                    <h2 class="text-3xl font-black text-slate-800 uppercase italic tracking-tighter">Статистика</h2>
+                </div>
+
+                <div class="flex items-center gap-6 border-b border-slate-200 mb-6">
+                    <button onclick="switchStatsTab('buyout')" data-stats-tab="buyout" class="stats-tab pb-3 text-sm font-bold transition-all">Викуп</button>
+                    <button onclick="switchStatsTab('roi')" data-stats-tab="roi" class="stats-tab pb-3 text-sm font-bold transition-all">РОИ</button>
+                    <button onclick="switchStatsTab('approval')" data-stats-tab="approval" class="stats-tab pb-3 text-sm font-bold transition-all">Апрув</button>
+                    <button onclick="switchStatsTab('summary')" data-stats-tab="summary" class="stats-tab pb-3 text-sm font-bold transition-all">Зведена</button>
+                </div>
+
+                <div id="stats-tab-buyout" class="stats-tab-content">
+                    <div class="flex items-end gap-3 flex-wrap mb-6">
+                        <div>
+                            <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">З</label>
+                            <input type="date" id="statsBuyoutFrom" class="px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
+                        </div>
+                        <div>
+                            <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">По</label>
+                            <input type="date" id="statsBuyoutTo" class="px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
+                        </div>
+                        <div>
+                            <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">Постачальник</label>
+                            <select id="statsBuyoutSupplier" class="px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
+                                <option value="">Всі</option>
+                            </select>
+                        </div>
+                        <button onclick="loadBuyoutStats()" class="px-5 py-2 rounded-lg text-xs font-black uppercase tracking-wider text-white transition-all"
+                            style="background:linear-gradient(135deg,#8b5cf6,#ec4899)">Показати</button>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+                            <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Завершених</div>
+                            <div id="kpiCompleted" class="text-3xl font-black text-slate-800">0</div>
+                        </div>
+                        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+                            <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Продажі</div>
+                            <div id="kpiSales" class="text-3xl font-black text-emerald-500">0</div>
+                        </div>
+                        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+                            <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Відмови</div>
+                            <div id="kpiRefused" class="text-3xl font-black text-slate-800">0</div>
+                        </div>
+                        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+                            <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">% відмов</div>
+                            <div id="kpiRefusedPct" class="text-3xl font-black text-amber-500">0%</div>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center gap-3 mb-3">
+                        <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Сортування</label>
+                        <select id="statsBuyoutSort" onchange="renderBuyoutTable()" class="flex-1 px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
+                            <option value="refusedPctAsc">% відмов ↑</option>
+                            <option value="refusedPctDesc">% відмов ↓</option>
+                            <option value="totalDesc">Замовлень ↓</option>
+                            <option value="totalAsc">Замовлень ↑</option>
+                            <option value="salesDesc">Продажі ↓</option>
+                            <option value="refusedDesc">Відмови ↓</option>
+                            <option value="articleAsc">Артикул А→Я</option>
+                        </select>
+                    </div>
+
+                    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-x-auto">
+                        <table class="w-full text-left min-w-[700px]">
+                            <thead>
+                                <tr class="bg-slate-50/50 border-b border-slate-100">
+                                    <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Модель</th>
+                                    <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">% відмов</th>
+                                    <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Замовлень</th>
+                                    <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Продажів</th>
+                                    <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Відмов</th>
+                                </tr>
+                            </thead>
+                            <tbody id="buyoutStatsTable" class="divide-y divide-slate-50"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div id="stats-tab-roi" class="stats-tab-content hidden">
+                    <div class="bg-white rounded-2xl border border-slate-100 p-16 text-center text-slate-400">
+                        <i class="fa-solid fa-percent text-5xl mb-4 text-slate-200"></i>
+                        <div class="font-bold">РОИ — в розробці</div>
+                    </div>
+                </div>
+                <div id="stats-tab-approval" class="stats-tab-content hidden">
+                    <div class="bg-white rounded-2xl border border-slate-100 p-16 text-center text-slate-400">
+                        <i class="fa-solid fa-check-double text-5xl mb-4 text-slate-200"></i>
+                        <div class="font-bold">Апрув — в розробці</div>
+                    </div>
+                </div>
+                <div id="stats-tab-summary" class="stats-tab-content hidden">
+                    <div class="bg-white rounded-2xl border border-slate-100 p-16 text-center text-slate-400">
+                        <i class="fa-solid fa-chart-pie text-5xl mb-4 text-slate-200"></i>
+                        <div class="font-bold">Зведена — в розробці</div>
+                    </div>
+                </div>
+            </div>
+
             <div id="view-settings" class="view-content h-full">
                 <div class="mb-8">
                     <h2 class="text-3xl font-black text-slate-800 uppercase italic tracking-tighter">Налаштування</h2>
@@ -984,7 +1084,7 @@
             const btn = document.getElementById(`btn-${view}`);
             if (btn) btn.classList.add('active');
 
-            const titles = { 'orders': 'ЗАМОВЛЕННЯ', 'warehouse': 'СКЛАД', 'callbacks': 'НЕ ДОЗВОНИ' };
+            const titles = { 'orders': 'ЗАМОВЛЕННЯ', 'warehouse': 'СКЛАД', 'callbacks': 'НЕ ДОЗВОНИ', 'statistics': 'СТАТИСТИКА' };
             document.getElementById('current-view-title').innerText = titles[view] || view.toUpperCase();
 
             document.querySelectorAll('.view-content').forEach(el => el.classList.remove('active'));
@@ -995,6 +1095,7 @@
             if (view === 'settings') { loadNpSettings(); loadSmsSettings(); loadCheckboxSettings(); }
             if (view === 'regulars') loadRegulars();
             if (view === 'export') loadExport();
+            if (view === 'statistics') switchStatsTab('buyout');
             refreshData();
         }
 
@@ -2029,6 +2130,97 @@
             const stamp = `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
             const name = `vigruzka_${sup ? sup.replace(/[^a-z0-9а-яіїєґ_-]+/gi, '_') + '_' : ''}${stamp}.xlsx`;
             XLSX.writeFile(wb, name);
+        }
+
+        // --- СТАТИСТИКА ---
+        let buyoutData = { totals: { completed: 0, sales: 0, refused: 0, refusedPct: 0 }, byArticle: [] };
+        let statsBuyoutInit = false;
+
+        function switchStatsTab(tab) {
+            document.querySelectorAll('.stats-tab').forEach(b => b.classList.toggle('active', b.dataset.statsTab === tab));
+            document.querySelectorAll('.stats-tab-content').forEach(el => el.classList.add('hidden'));
+            const target = document.getElementById('stats-tab-' + tab);
+            if (target) target.classList.remove('hidden');
+            if (tab === 'buyout' && !statsBuyoutInit) initBuyoutStats();
+        }
+
+        async function initBuyoutStats() {
+            statsBuyoutInit = true;
+            const iso = d => d.toISOString().slice(0, 10);
+            const now = new Date();
+            const from = new Date(now); from.setDate(from.getDate() - 30);
+            const fromEl = document.getElementById('statsBuyoutFrom');
+            const toEl = document.getElementById('statsBuyoutTo');
+            if (fromEl && !fromEl.value) fromEl.value = iso(from);
+            if (toEl && !toEl.value) toEl.value = iso(now);
+            try {
+                const r = await fetch('/api/orders/suppliers');
+                const list = await r.json();
+                const sel = document.getElementById('statsBuyoutSupplier');
+                if (sel && Array.isArray(list)) {
+                    sel.innerHTML = `<option value="">Всі</option>` +
+                        list.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
+                }
+            } catch (e) { /* мовчки */ }
+            loadBuyoutStats();
+        }
+
+        async function loadBuyoutStats() {
+            const from = (document.getElementById('statsBuyoutFrom') || {}).value || '';
+            const to = (document.getElementById('statsBuyoutTo') || {}).value || '';
+            const sup = (document.getElementById('statsBuyoutSupplier') || {}).value || '';
+            const params = new URLSearchParams();
+            if (from) params.set('dateFrom', from);
+            if (to) params.set('dateTo', to);
+            if (sup) params.set('supplier', sup);
+            try {
+                const r = await fetch('/api/stats/buyout?' + params.toString());
+                buyoutData = await r.json();
+            } catch (e) {
+                buyoutData = { totals: { completed: 0, sales: 0, refused: 0, refusedPct: 0 }, byArticle: [] };
+            }
+            const t = buyoutData.totals || {};
+            document.getElementById('kpiCompleted').textContent = t.completed || 0;
+            document.getElementById('kpiSales').textContent = t.sales || 0;
+            document.getElementById('kpiRefused').textContent = t.refused || 0;
+            document.getElementById('kpiRefusedPct').textContent = (t.refusedPct || 0) + '%';
+            renderBuyoutTable();
+        }
+
+        function pctBadge(p) {
+            const cls = p === 0 ? 'bg-emerald-50 text-emerald-600'
+                      : p < 30 ? 'bg-amber-50 text-amber-600'
+                      : 'bg-rose-50 text-rose-600';
+            return `<span class="inline-flex items-center text-[11px] font-black px-3 py-1 rounded-full ${cls}">${p}%</span>`;
+        }
+
+        function renderBuyoutTable() {
+            const tbody = document.getElementById('buyoutStatsTable');
+            if (!tbody) return;
+            const sort = (document.getElementById('statsBuyoutSort') || {}).value || 'refusedPctAsc';
+            const rows = [...(buyoutData.byArticle || [])];
+            const sorters = {
+                refusedPctAsc:  (a,b) => a.refusedPct - b.refusedPct || b.total - a.total,
+                refusedPctDesc: (a,b) => b.refusedPct - a.refusedPct || b.total - a.total,
+                totalDesc:      (a,b) => b.total - a.total,
+                totalAsc:       (a,b) => a.total - b.total,
+                salesDesc:      (a,b) => b.sales - a.sales,
+                refusedDesc:    (a,b) => b.refused - a.refused,
+                articleAsc:     (a,b) => (a.article || '').localeCompare(b.article || '')
+            };
+            rows.sort(sorters[sort] || sorters.refusedPctAsc);
+            if (!rows.length) {
+                tbody.innerHTML = `<tr><td colspan="5" class="p-8 text-center text-slate-400 font-medium">Пусто за вибраний період</td></tr>`;
+                return;
+            }
+            tbody.innerHTML = rows.map(r => `
+                <tr class="hover:bg-slate-50 transition-all">
+                    <td class="px-6 py-4 font-black text-slate-800 uppercase">${esc(r.article)}</td>
+                    <td class="px-6 py-4">${pctBadge(r.refusedPct)}</td>
+                    <td class="px-6 py-4 text-center font-bold text-slate-700">${r.total}</td>
+                    <td class="px-6 py-4 text-center font-black text-emerald-600">${r.sales}</td>
+                    <td class="px-6 py-4 text-center font-bold text-slate-700">${r.refused}</td>
+                </tr>`).join('');
         }
 
         let editingOrderId = null;

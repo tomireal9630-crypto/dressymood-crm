@@ -431,6 +431,53 @@ app.get('/api/orders/suppliers', checkAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+app.get('/api/stats/buyout', checkAuth, async (req, res) => {
+  const { dateFrom, dateTo, supplier } = req.query;
+  try {
+    const params = [];
+    const conditions = [`o.status IN ('Продажа','Отказ')`];
+    if (dateFrom) { params.push(dateFrom); conditions.push(`o.created_at >= $${params.length}::date`); }
+    if (dateTo)   { params.push(dateTo);   conditions.push(`o.created_at < ($${params.length}::date + interval '1 day')`); }
+    if (supplier) {
+      params.push(supplier);
+      conditions.push(`EXISTS (SELECT 1 FROM order_items oi WHERE oi.order_id = o.id AND oi.supplier_name = $${params.length})`);
+    }
+    const where = 'WHERE ' + conditions.join(' AND ');
+
+    const totalsQ = `
+      SELECT COUNT(*)::int AS completed,
+             COUNT(*) FILTER (WHERE o.status = 'Продажа')::int AS sales,
+             COUNT(*) FILTER (WHERE o.status = 'Отказ')::int AS refused
+      FROM orders o ${where}`;
+
+    const byArtQ = `
+      WITH completed AS (
+        SELECT o.id, o.status FROM orders o ${where}
+      )
+      SELECT oi.article AS article,
+             COUNT(DISTINCT c.id)::int AS total,
+             COUNT(DISTINCT c.id) FILTER (WHERE c.status = 'Продажа')::int AS sales,
+             COUNT(DISTINCT c.id) FILTER (WHERE c.status = 'Отказ')::int AS refused
+      FROM completed c
+      JOIN order_items oi ON oi.order_id = c.id
+      WHERE oi.article IS NOT NULL AND oi.article <> ''
+      GROUP BY oi.article
+      ORDER BY oi.article`;
+
+    const [t, a] = await Promise.all([pool.query(totalsQ, params), pool.query(byArtQ, params)]);
+    const totals = t.rows[0] || { completed: 0, sales: 0, refused: 0 };
+    const refusedPct = totals.completed ? Math.round(totals.refused / totals.completed * 100) : 0;
+    const byArticle = a.rows.map(r => ({
+      article: r.article,
+      total: r.total,
+      sales: r.sales,
+      refused: r.refused,
+      refusedPct: r.total ? Math.round(r.refused / r.total * 100) : 0
+    }));
+    res.json({ totals: { ...totals, refusedPct }, byArticle });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.get('/api/orders/articles', checkAuth, async (req, res) => {
   try {
     const r = await pool.query(
