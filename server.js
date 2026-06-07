@@ -1621,6 +1621,19 @@ app.delete('/api/warehouse/products/:id', checkAuth, async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+app.patch('/api/warehouse/products/:id', checkAuth, async (req, res) => {
+    const allowed = ['cost', 'price'];
+    const keys = Object.keys(req.body).filter(k => allowed.includes(k));
+    if (!keys.length) return res.status(400).json({ error: 'Нічого оновлювати' });
+    const setClause = keys.map((k, i) => `${k} = $${i + 1}`).join(', ');
+    const values = keys.map(k => Number(req.body[k]) || 0);
+    values.push(req.params.id);
+    try {
+        await pool.query(`UPDATE products SET ${setClause} WHERE id = $${values.length}`, values);
+        res.json({ success: true });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // --- API НАЯВНОСТІ ---
 // Перевірка наявності на складі за артикул+колір+розмір
 app.get('/api/stock/lookup', checkAuth, async (req, res) => {
