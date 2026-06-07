@@ -200,7 +200,7 @@ app.post('/api/login', (req, res) => {
 app.post('/api/logout', (req, res) => { req.session.destroy(); res.json({ success: true }); });
 
 // --- API ЗАМОВЛЕНЬ ---
-const ARCHIVE_STATUSES = ['Продажа', 'Отказ'];
+const ARCHIVE_STATUSES = ['Продажа', 'Отказ', 'Отбой'];
 const DELETED_STATUS = '✗✗✗';
 
 app.get('/api/orders', checkAuth, async (req, res) => {
@@ -504,9 +504,9 @@ app.get('/api/stats/approval', checkAuth, async (req, res) => {
     if (dateTo)   { params.push(dateTo);   conds.push(`${dateExpr} < ($${params.length}::date + interval '1 day')`); }
     const where = 'WHERE ' + conds.join(' AND ');
 
-    const APPROVED = `('В работе','Доставка','В пути','На почте','Продажа')`;
-    const PENDING  = `('Новый','Не дозвон','Не дозвон2')`;
-    const REFUSED  = `('Отказ','Возврат','Ошибка в ТТН','Отбой','Переадресация')`;
+    const APPROVED = `('В работе','Доставка','В пути','На почте','Продажа','Отказ','Возврат','Ошибка в ТТН','Переадресация')`;
+    const PENDING  = `('Новый','Новий','Не дозвон','Не дозвон2')`;
+    const REFUSED  = `('Отбой')`;
 
     const kpiQ = `
       SELECT COUNT(*)::int AS total,
