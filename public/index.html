@@ -1056,6 +1056,17 @@
         </div>
     </main>
 
+    <div id="bulkActionBar" class="fixed bottom-6 left-1/2 -translate-x-1/2 z-[80] hidden items-center gap-3 bg-slate-900 text-white px-5 py-3 rounded-2xl shadow-2xl shadow-slate-900/30">
+        <div class="text-sm font-bold">Вибрано: <span id="bulkSelectedCount" class="text-violet-300">0</span></div>
+        <div class="w-px h-6 bg-slate-700"></div>
+        <select id="bulkStatusSelect" class="bg-slate-800 text-white text-xs font-bold px-3 py-2 rounded-lg outline-none border border-slate-700 cursor-pointer">
+            <option value="">— Новий статус —</option>
+        </select>
+        <button onclick="applyBulkStatus()" class="px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider text-white transition-all"
+            style="background:linear-gradient(135deg,#8b5cf6,#ec4899)">Застосувати</button>
+        <button onclick="clearBulkSelection()" title="Зняти виділення" class="w-9 h-9 flex items-center justify-center rounded-lg bg-slate-800 hover:bg-slate-700 transition-all"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+
     <div id="orderModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] hidden items-center justify-center p-6">
         <div class="bg-white w-full max-w-3xl rounded-[2.5rem] shadow-2xl flex flex-col max-h-[90vh]">
             <div class="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 shrink-0">
@@ -2055,6 +2066,7 @@
                     const p = x => String(x).padStart(2, '0');
                     st.textContent = `${p(n.getHours())}:${p(n.getMinutes())}`;
                 }
+                updateBulkBar();
             } catch (e) { console.error(e); }
         }
 
@@ -2874,6 +2886,7 @@
             const tbody = masterEl.closest('table').querySelector('tbody');
             if (!tbody) return;
             tbody.querySelectorAll('.order-check').forEach(c => { c.checked = masterEl.checked; });
+            updateBulkBar();
         }
         function onRowCheck() {
             document.querySelectorAll('table').forEach(tbl => {
@@ -2885,11 +2898,60 @@
                 master.checked = checked === boxes.length;
                 master.indeterminate = checked > 0 && checked < boxes.length;
             });
+            updateBulkBar();
         }
         function getSelectedOrderIds() {
             const ids = new Set();
             document.querySelectorAll('.order-check:checked').forEach(c => ids.add(Number(c.dataset.id)));
             return [...ids];
+        }
+
+        function updateBulkBar() {
+            const bar = document.getElementById('bulkActionBar');
+            if (!bar) return;
+            const ids = getSelectedOrderIds();
+            document.getElementById('bulkSelectedCount').textContent = ids.length;
+            const sel = document.getElementById('bulkStatusSelect');
+            if (sel && sel.options.length <= 1) {
+                sel.innerHTML = `<option value="">— Новий статус —</option>` +
+                    STATUSES.map(s => `<option value="${s}">${s}</option>`).join('');
+            }
+            bar.classList.toggle('hidden', ids.length === 0);
+            bar.classList.toggle('flex', ids.length > 0);
+        }
+
+        function clearBulkSelection() {
+            document.querySelectorAll('.order-check:checked').forEach(c => c.checked = false);
+            document.querySelectorAll('.master-check').forEach(m => { m.checked = false; m.indeterminate = false; });
+            updateBulkBar();
+        }
+
+        async function applyBulkStatus() {
+            const ids = getSelectedOrderIds();
+            if (!ids.length) return;
+            const status = (document.getElementById('bulkStatusSelect') || {}).value || '';
+            if (!status) { alert('Оберіть статус'); return; }
+            if (!confirm(`Змінити статус на «${status}» для ${ids.length} замовлень?`)) return;
+            const btn = event && event.target ? event.target : null;
+            if (btn) { btn.disabled = true; btn.style.opacity = '.6'; }
+            try {
+                const results = await Promise.allSettled(ids.map(id =>
+                    fetch(`/api/orders/${id}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ status })
+                    })
+                ));
+                const failed = results.filter(r => r.status === 'rejected' || (r.value && !r.value.ok)).length;
+                if (failed) alert(`Оновлено ${ids.length - failed} з ${ids.length}. Помилок: ${failed}`);
+                clearBulkSelection();
+                loadOrders();
+                updateCallbacksBadge();
+            } catch (err) {
+                alert('Помилка: ' + err.message);
+            } finally {
+                if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
+            }
         }
 
         document.getElementById('addOrderForm').onsubmit = async (e) => {
