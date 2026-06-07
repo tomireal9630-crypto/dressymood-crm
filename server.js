@@ -152,7 +152,9 @@ async function updateDatabaseSchema() {
             ADD COLUMN IF NOT EXISTS size VARCHAR(50) DEFAULT '',
             ADD COLUMN IF NOT EXISTS color VARCHAR(50) DEFAULT '',
             ADD COLUMN IF NOT EXISTS price NUMERIC DEFAULT 0,
-            ADD COLUMN IF NOT EXISTS quantity INTEGER NOT NULL DEFAULT 1;
+            ADD COLUMN IF NOT EXISTS quantity INTEGER NOT NULL DEFAULT 1,
+            ADD COLUMN IF NOT EXISTS from_stock BOOLEAN DEFAULT false,
+            ADD COLUMN IF NOT EXISTS stock_id INTEGER;
         `);
 
         console.log("База даних успішно верифікована.");
@@ -268,7 +270,8 @@ app.get('/api/orders', checkAuth, async (req, res) => {
              COALESCE(json_agg(json_build_object(
                'id', oi.id, 'article', oi.article, 'name', oi.name,
                'supplier_name', oi.supplier_name, 'size', oi.size,
-               'color', oi.color, 'price', oi.price, 'quantity', oi.quantity
+               'color', oi.color, 'price', oi.price, 'quantity', oi.quantity,
+               'from_stock', oi.from_stock, 'stock_id', oi.stock_id
              ) ORDER BY oi.id) FILTER (WHERE oi.id IS NOT NULL), '[]') AS items,
              COALESCE(SUM(oi.price * oi.quantity), 0) AS total
       FROM orders o
@@ -368,12 +371,22 @@ app.post('/api/orders/manual', checkAuth, async (req, res) => {
         const s = await client.query('SELECT name FROM suppliers WHERE id = $1', [it.supplier_id]);
         if (s.rows.length) supplierName = s.rows[0].name;
       }
+      const qty = parseInt(it.quantity) || 1;
+      const fromStock = Boolean(it.from_stock && it.stock_id);
+      if (fromStock) {
+        const upd = await client.query(
+          `UPDATE stock SET quantity = quantity - $1 WHERE id = $2 AND quantity >= $1`,
+          [qty, it.stock_id]
+        );
+        if (upd.rowCount === 0) throw new Error(`Недостатньо на складі для "${it.article}" ${it.size} ${it.color}`);
+      }
       await client.query(
         `INSERT INTO order_items (order_id, article, name, supplier_id, supplier_name,
-          size, color, price, quantity)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+          size, color, price, quantity, from_stock, stock_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
         [orderId, it.article || '', it.name || '', it.supplier_id || null, supplierName,
-         it.size || '', it.color || '', Number(it.price) || 0, parseInt(it.quantity) || 1]
+         it.size || '', it.color || '', Number(it.price) || 0, qty,
+         fromStock, fromStock ? it.stock_id : null]
       );
     }
 
@@ -605,7 +618,8 @@ app.get('/api/orders/:id(\\d+)', checkAuth, async (req, res) => {
              o.city_ref, o.warehouse_ref, o.warehouse_type,
              COALESCE(json_agg(json_build_object(
                'article', oi.article, 'name', oi.name, 'supplier_name', oi.supplier_name,
-               'size', oi.size, 'color', oi.color, 'price', oi.price, 'quantity', oi.quantity
+               'size', oi.size, 'color', oi.color, 'price', oi.price, 'quantity', oi.quantity,
+               'from_stock', oi.from_stock, 'stock_id', oi.stock_id
              ) ORDER BY oi.id) FILTER (WHERE oi.id IS NOT NULL), '[]') AS items
       FROM orders o
       JOIN customers c ON o.customer_id = c.id
@@ -661,19 +675,54 @@ app.put('/api/orders/:id(\\d+)/full', checkAuth, async (req, res) => {
        b.city_ref || '', b.warehouse_ref || '', b.warehouse_type || '', orderId]
     );
 
+    // Збираємо що вже було списано раніше (per stock_id) — щоб не списувати двічі при редагуванні
+    const prevRes = await client.query(
+      `SELECT stock_id, quantity FROM order_items WHERE order_id = $1 AND from_stock = true AND stock_id IS NOT NULL`,
+      [orderId]
+    );
+    const prevDeducted = new Map();
+    prevRes.rows.forEach(r => {
+      prevDeducted.set(r.stock_id, (prevDeducted.get(r.stock_id) || 0) + (parseInt(r.quantity) || 0));
+    });
+
     await client.query('DELETE FROM order_items WHERE order_id = $1', [orderId]);
+
+    // Скільки потрібно зараз
+    const needed = new Map();
+    for (const it of list) {
+      if (it.from_stock && it.stock_id) {
+        const qty = parseInt(it.quantity) || 1;
+        needed.set(it.stock_id, (needed.get(it.stock_id) || 0) + qty);
+      }
+    }
+    // Списуємо лише дельту (нове - вже списане). Зменшення не повертається на склад (вручну).
+    for (const [stockId, needQty] of needed) {
+      const already = prevDeducted.get(stockId) || 0;
+      const delta = needQty - already;
+      if (delta > 0) {
+        const upd = await client.query(
+          `UPDATE stock SET quantity = quantity - $1 WHERE id = $2 AND quantity >= $1`,
+          [delta, stockId]
+        );
+        if (upd.rowCount === 0) throw new Error(`Недостатньо на складі (id=${stockId})`);
+      }
+    }
+
     for (const it of list) {
       let supplierName = it.supplier_name || '';
       if (it.supplier_id) {
         const s = await client.query('SELECT name FROM suppliers WHERE id = $1', [it.supplier_id]);
         if (s.rows.length) supplierName = s.rows[0].name;
       }
+      const qty = parseInt(it.quantity) || 1;
+      const fromStock = Boolean(it.from_stock && it.stock_id);
       await client.query(
         `INSERT INTO order_items (order_id, article, name, supplier_id, supplier_name,
-          size, color, price, quantity)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+          size, color, price, quantity, from_stock, stock_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
         [orderId, it.article || '', it.name || '', it.supplier_id || null, supplierName,
-         it.size || '', it.color || '', Number(it.price) || 0, parseInt(it.quantity) || 1]
+         it.size || '', it.color || '', Number(it.price) || 0, qty,
+         fromStock, fromStock ? it.stock_id : null]
       );
     }
 
@@ -1510,6 +1559,24 @@ app.delete('/api/warehouse/products/:id', checkAuth, async (req, res) => {
 });
 
 // --- API НАЯВНОСТІ ---
+// Перевірка наявності на складі за артикул+колір+розмір
+app.get('/api/stock/lookup', checkAuth, async (req, res) => {
+    const article = String(req.query.article || '').trim();
+    const color = String(req.query.color || '').trim();
+    const size = String(req.query.size || '').trim();
+    if (!article || !color || !size) return res.json({ stock_id: null, quantity: 0 });
+    try {
+        const r = await pool.query(`
+            SELECT s.id, s.quantity
+            FROM stock s JOIN products p ON p.id = s.product_id
+            WHERE p.article = $1 AND s.color ILIKE $2 AND s.size ILIKE $3 AND s.quantity > 0
+            LIMIT 1
+        `, [article, color, size]);
+        if (!r.rows.length) return res.json({ stock_id: null, quantity: 0 });
+        res.json({ stock_id: r.rows[0].id, quantity: r.rows[0].quantity });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.get('/api/stock', checkAuth, async (req, res) => {
     try {
         const result = await pool.query(`
