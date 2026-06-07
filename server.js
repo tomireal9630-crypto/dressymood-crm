@@ -494,6 +494,69 @@ app.get('/api/stats/dashboard', checkAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+app.get('/api/stats/roi', checkAuth, async (req, res) => {
+  const { dateFrom, dateTo } = req.query;
+  try {
+    const params = [];
+    const conds = [`o.status = 'Продажа'`];
+    if (dateFrom) { params.push(dateFrom); conds.push(`o.created_at >= $${params.length}::date`); }
+    if (dateTo)   { params.push(dateTo);   conds.push(`o.created_at < ($${params.length}::date + interval '1 day')`); }
+    const where = 'WHERE ' + conds.join(' AND ');
+
+    // Собівартість беремо з products (MAX(cost) на артикул — консервативна оцінка прибутку)
+    const totalsQ = `
+      SELECT
+        COUNT(DISTINCT o.id)::int AS orders,
+        COALESCE(SUM(oi.quantity), 0)::int AS units,
+        COALESCE(SUM(oi.price * oi.quantity), 0)::numeric AS revenue,
+        COALESCE(SUM(COALESCE((SELECT MAX(cost) FROM products p WHERE p.article = oi.article), 0) * oi.quantity), 0)::numeric AS cost
+      FROM orders o
+      JOIN order_items oi ON oi.order_id = o.id
+      ${where}`;
+
+    const byArtQ = `
+      SELECT
+        oi.article,
+        COUNT(DISTINCT o.id)::int AS orders,
+        COALESCE(SUM(oi.quantity), 0)::int AS units,
+        COALESCE(SUM(oi.price * oi.quantity), 0)::numeric AS revenue,
+        COALESCE(SUM(COALESCE((SELECT MAX(cost) FROM products p WHERE p.article = oi.article), 0) * oi.quantity), 0)::numeric AS cost
+      FROM orders o
+      JOIN order_items oi ON oi.order_id = o.id
+      ${where}
+      AND oi.article IS NOT NULL AND oi.article <> ''
+      GROUP BY oi.article
+      ORDER BY oi.article`;
+
+    const [t, a] = await Promise.all([pool.query(totalsQ, params), pool.query(byArtQ, params)]);
+    const tr = t.rows[0] || {};
+    const revenue = Number(tr.revenue) || 0;
+    const cost = Number(tr.cost) || 0;
+    const profit = revenue - cost;
+    const margin = revenue ? Math.round(profit / revenue * 100) : 0;
+
+    const byArticle = a.rows.map(r => {
+      const rev = Number(r.revenue) || 0;
+      const c = Number(r.cost) || 0;
+      const p = rev - c;
+      return {
+        article: r.article,
+        orders: r.orders,
+        units: r.units,
+        revenue: rev,
+        cost: c,
+        profit: p,
+        margin: rev ? Math.round(p / rev * 100) : 0
+      };
+    });
+
+    res.json({
+      totals: { orders: tr.orders || 0, units: tr.units || 0, revenue, cost, profit, margin },
+      byArticle
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.get('/api/stats/approval', checkAuth, async (req, res) => {
   const { dateFrom, dateTo } = req.query;
   try {

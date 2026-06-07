@@ -716,9 +716,70 @@
                 </div>
 
                 <div id="stats-tab-roi" class="stats-tab-content hidden">
-                    <div class="bg-white rounded-2xl border border-slate-100 p-16 text-center text-slate-400">
-                        <i class="fa-solid fa-percent text-5xl mb-4 text-slate-200"></i>
-                        <div class="font-bold">РОИ — в розробці</div>
+                    <div class="flex items-end gap-3 flex-wrap mb-6">
+                        <div>
+                            <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">З</label>
+                            <input type="date" id="statsRoiFrom" class="px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
+                        </div>
+                        <div>
+                            <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">По</label>
+                            <input type="date" id="statsRoiTo" class="px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
+                        </div>
+                        <button onclick="loadRoiStats()" class="px-5 py-2 rounded-lg text-xs font-black uppercase tracking-wider text-white transition-all"
+                            style="background:linear-gradient(135deg,#8b5cf6,#ec4899)">Показати</button>
+                        <div class="ml-auto text-[11px] font-bold text-slate-400 italic flex items-center gap-2">
+                            <i class="fa-brands fa-facebook text-blue-400"></i>
+                            Реклама — з'явиться після інтеграції з FB Ads
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+                            <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Виручка</div>
+                            <div id="roiKpiRevenue" class="text-2xl font-black text-slate-800">0 ₴</div>
+                            <div class="text-[10px] text-slate-400 mt-1"><span id="roiKpiOrders">0</span> викуплено · <span id="roiKpiUnits">0</span> шт</div>
+                        </div>
+                        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+                            <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Собівартість</div>
+                            <div id="roiKpiCost" class="text-2xl font-black text-rose-500">0 ₴</div>
+                        </div>
+                        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 border-2 border-emerald-200">
+                            <div class="text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-2">Прибуток</div>
+                            <div id="roiKpiProfit" class="text-2xl font-black text-emerald-600">0 ₴</div>
+                        </div>
+                        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+                            <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Маржа</div>
+                            <div id="roiKpiMargin" class="text-2xl font-black text-violet-600">0%</div>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center gap-3 mb-3">
+                        <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Сортування</label>
+                        <select id="statsRoiSort" onchange="renderRoiTable()" class="flex-1 px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
+                            <option value="profitDesc">Прибуток ↓</option>
+                            <option value="profitAsc">Прибуток ↑</option>
+                            <option value="revenueDesc">Виручка ↓</option>
+                            <option value="marginDesc">Маржа ↓</option>
+                            <option value="ordersDesc">Викуплено ↓</option>
+                            <option value="articleAsc">Артикул А→Я</option>
+                        </select>
+                    </div>
+
+                    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-x-auto">
+                        <table class="w-full text-left min-w-[800px]">
+                            <thead>
+                                <tr class="bg-slate-50/50 border-b border-slate-100">
+                                    <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Модель</th>
+                                    <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Викуплено</th>
+                                    <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Одиниць</th>
+                                    <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Виручка</th>
+                                    <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Собівартість</th>
+                                    <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Прибуток</th>
+                                    <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Маржа</th>
+                                </tr>
+                            </thead>
+                            <tbody id="roiStatsTable" class="divide-y divide-slate-50"></tbody>
+                        </table>
                     </div>
                 </div>
                 <div id="stats-tab-approval" class="stats-tab-content hidden">
@@ -2387,6 +2448,7 @@
             if (target) target.classList.remove('hidden');
             if (tab === 'buyout' && !statsBuyoutInit) initBuyoutStats();
             if (tab === 'approval' && !statsApprovalInit) initApprovalStats();
+            if (tab === 'roi' && !statsRoiInit) initRoiStats();
         }
 
         async function initBuyoutStats() {
@@ -2559,6 +2621,83 @@
                     <td class="px-4 py-3 text-center text-sm font-black text-emerald-600">${r.approved}</td>
                     <td class="px-4 py-3">${approvalPctBar(r.approvalPct)}</td>
                 </tr>`).join('');
+        }
+
+        // --- РОИ ---
+        let roiData = { totals: {}, byArticle: [] };
+        let statsRoiInit = false;
+
+        async function initRoiStats() {
+            statsRoiInit = true;
+            const iso = d => d.toISOString().slice(0, 10);
+            const now = new Date();
+            const from = new Date(now); from.setDate(from.getDate() - 30);
+            const fromEl = document.getElementById('statsRoiFrom');
+            const toEl = document.getElementById('statsRoiTo');
+            if (fromEl && !fromEl.value) fromEl.value = iso(from);
+            if (toEl && !toEl.value) toEl.value = iso(now);
+            loadRoiStats();
+        }
+
+        async function loadRoiStats() {
+            const from = (document.getElementById('statsRoiFrom') || {}).value || '';
+            const to = (document.getElementById('statsRoiTo') || {}).value || '';
+            const params = new URLSearchParams();
+            if (from) params.set('dateFrom', from);
+            if (to) params.set('dateTo', to);
+            try {
+                const r = await fetch('/api/stats/roi?' + params.toString());
+                roiData = await r.json();
+            } catch (e) {
+                roiData = { totals: {}, byArticle: [] };
+            }
+            const t = roiData.totals || {};
+            const uah = n => Number(n || 0).toLocaleString('uk-UA') + ' ₴';
+            document.getElementById('roiKpiRevenue').textContent = uah(t.revenue);
+            document.getElementById('roiKpiOrders').textContent = t.orders || 0;
+            document.getElementById('roiKpiUnits').textContent = t.units || 0;
+            document.getElementById('roiKpiCost').textContent = uah(t.cost);
+            document.getElementById('roiKpiProfit').textContent = uah(t.profit);
+            document.getElementById('roiKpiMargin').textContent = (t.margin || 0) + '%';
+            renderRoiTable();
+        }
+
+        function renderRoiTable() {
+            const tbody = document.getElementById('roiStatsTable');
+            if (!tbody) return;
+            const sort = (document.getElementById('statsRoiSort') || {}).value || 'profitDesc';
+            const rows = [...(roiData.byArticle || [])];
+            const sorters = {
+                profitDesc:  (a,b) => b.profit - a.profit,
+                profitAsc:   (a,b) => a.profit - b.profit,
+                revenueDesc: (a,b) => b.revenue - a.revenue,
+                marginDesc:  (a,b) => b.margin - a.margin,
+                ordersDesc:  (a,b) => b.orders - a.orders,
+                articleAsc:  (a,b) => (a.article || '').localeCompare(b.article || '')
+            };
+            rows.sort(sorters[sort] || sorters.profitDesc);
+            if (!rows.length) {
+                tbody.innerHTML = `<tr><td colspan="7" class="p-8 text-center text-slate-400 font-medium">Немає продажів за період</td></tr>`;
+                return;
+            }
+            const uah = n => Number(n || 0).toLocaleString('uk-UA') + ' ₴';
+            tbody.innerHTML = rows.map(r => {
+                const mCls = r.margin >= 50 ? 'bg-emerald-50 text-emerald-600'
+                           : r.margin >= 20 ? 'bg-amber-50 text-amber-600'
+                           : r.margin >= 0  ? 'bg-slate-100 text-slate-500'
+                           : 'bg-rose-50 text-rose-600';
+                const pCls = r.profit > 0 ? 'text-emerald-600' : r.profit < 0 ? 'text-rose-600' : 'text-slate-500';
+                return `
+                <tr class="hover:bg-slate-50 transition-all">
+                    <td class="px-6 py-4 font-black text-slate-800 uppercase">${esc(r.article)}</td>
+                    <td class="px-6 py-4 text-center font-bold text-slate-700">${r.orders}</td>
+                    <td class="px-6 py-4 text-center font-bold text-slate-700">${r.units}</td>
+                    <td class="px-6 py-4 text-right text-sm font-black text-slate-800">${uah(r.revenue)}</td>
+                    <td class="px-6 py-4 text-right text-sm font-bold text-rose-500">${uah(r.cost)}</td>
+                    <td class="px-6 py-4 text-right text-sm font-black ${pCls}">${uah(r.profit)}</td>
+                    <td class="px-6 py-4 text-center"><span class="inline-flex items-center text-[11px] font-black px-3 py-1 rounded-full ${mCls}">${r.margin}%</span></td>
+                </tr>`;
+            }).join('');
         }
 
         let editingOrderId = null;
