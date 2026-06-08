@@ -1300,6 +1300,18 @@
         }
         applySidebar(localStorage.getItem('crm-nav') === 'collapsed');
 
+        // Глобальна обгортка fetch: при 401 кидаємо на сторінку входу
+        (() => {
+            const _origFetch = window.fetch.bind(window);
+            window.fetch = async (...args) => {
+                const res = await _origFetch(...args);
+                if (res.status === 401 && !location.pathname.endsWith('/login.html')) {
+                    location.href = '/login.html';
+                }
+                return res;
+            };
+        })();
+
         function esc(v) {
             return String(v ?? '').replace(/[&<>"']/g, c => (
                 { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]

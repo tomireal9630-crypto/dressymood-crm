@@ -3,6 +3,7 @@ const express = require('express');
 const { Pool } = require('pg');
 const path = require('path');
 const session = require('express-session');
+const PgSession = require('connect-pg-simple')(session);
 const crypto = require('crypto');
 
 const app = express();
@@ -165,10 +166,12 @@ async function updateDatabaseSchema() {
 updateDatabaseSchema();
 
 app.use(session({
+  store: new PgSession({ pool, createTableIfMissing: true }),
   secret: process.env.SESSION_SECRET || 'tomireal_space_layout',
   resave: false,
   saveUninitialized: false,
-  cookie: { secure: isProduction, httpOnly: true, sameSite: 'lax', maxAge: 24 * 60 * 60 * 1000 }
+  rolling: true,
+  cookie: { secure: isProduction, httpOnly: true, sameSite: 'lax', maxAge: 30 * 24 * 60 * 60 * 1000 }
 }));
 
 app.use(express.json());
