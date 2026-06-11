@@ -159,6 +159,38 @@ async function updateDatabaseSchema() {
             ADD COLUMN IF NOT EXISTS stock_id INTEGER;
         `);
 
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS fb_ad_accounts (
+                id SERIAL PRIMARY KEY,
+                name VARCHAR(255) NOT NULL,
+                fb_account_id VARCHAR(64) NOT NULL UNIQUE,
+                access_token TEXT NOT NULL,
+                is_active BOOLEAN DEFAULT true,
+                last_sync_at TIMESTAMP WITH TIME ZONE,
+                last_sync_error TEXT DEFAULT '',
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+        `);
+
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS fb_spend_daily (
+                id SERIAL PRIMARY KEY,
+                ad_account_id INTEGER REFERENCES fb_ad_accounts(id) ON DELETE CASCADE,
+                date DATE NOT NULL,
+                campaign_id VARCHAR(64) NOT NULL,
+                campaign_name TEXT NOT NULL DEFAULT '',
+                article VARCHAR(255),
+                spend NUMERIC DEFAULT 0,
+                impressions BIGINT DEFAULT 0,
+                clicks BIGINT DEFAULT 0,
+                leads INTEGER DEFAULT 0,
+                last_synced_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                UNIQUE(ad_account_id, date, campaign_id)
+            );
+        `);
+        await pool.query(`CREATE INDEX IF NOT EXISTS idx_fb_spend_date ON fb_spend_daily(date);`);
+        await pool.query(`CREATE INDEX IF NOT EXISTS idx_fb_spend_article ON fb_spend_daily(article);`);
+
         console.log("База даних успішно верифікована.");
     } catch (err) {
         console.error("Помилка автоматичної міграції:", err);
@@ -501,13 +533,16 @@ app.get('/api/stats/dashboard', checkAuth, async (req, res) => {
 app.get('/api/stats/roi', checkAuth, async (req, res) => {
   const { dateFrom, dateTo } = req.query;
   try {
-    const params = [];
-    const conds = [`o.status = 'Продажа'`];
-    if (dateFrom) { params.push(dateFrom); conds.push(`o.created_at >= $${params.length}::date`); }
-    if (dateTo)   { params.push(dateTo);   conds.push(`o.created_at < ($${params.length}::date + interval '1 day')`); }
-    const where = 'WHERE ' + conds.join(' AND ');
+    const settings = await getEconomicsSettings();
+    const returnCost = Number(settings.return_cost) || 0;
 
-    // Собівартість беремо з products (MAX(cost) на артикул — консервативна оцінка прибутку)
+    // Виручка/COGS — тільки Продажа
+    const soldParams = [];
+    const soldConds = [`o.status = 'Продажа'`];
+    if (dateFrom) { soldParams.push(dateFrom); soldConds.push(`o.created_at >= $${soldParams.length}::date`); }
+    if (dateTo)   { soldParams.push(dateTo);   soldConds.push(`o.created_at < ($${soldParams.length}::date + interval '1 day')`); }
+    const soldWhere = 'WHERE ' + soldConds.join(' AND ');
+
     const totalsQ = `
       SELECT
         COUNT(DISTINCT o.id)::int AS orders,
@@ -516,7 +551,7 @@ app.get('/api/stats/roi', checkAuth, async (req, res) => {
         COALESCE(SUM(COALESCE((SELECT MAX(cost) FROM products p WHERE p.article = oi.article), 0) * oi.quantity), 0)::numeric AS cost
       FROM orders o
       JOIN order_items oi ON oi.order_id = o.id
-      ${where}`;
+      ${soldWhere}`;
 
     const byArtQ = `
       SELECT
@@ -527,35 +562,133 @@ app.get('/api/stats/roi', checkAuth, async (req, res) => {
         COALESCE(SUM(COALESCE((SELECT MAX(cost) FROM products p WHERE p.article = oi.article), 0) * oi.quantity), 0)::numeric AS cost
       FROM orders o
       JOIN order_items oi ON oi.order_id = o.id
-      ${where}
+      ${soldWhere}
       AND oi.article IS NOT NULL AND oi.article <> ''
-      GROUP BY oi.article
-      ORDER BY oi.article`;
+      GROUP BY oi.article`;
 
-    const [t, a] = await Promise.all([pool.query(totalsQ, params), pool.query(byArtQ, params)]);
+    // Повернення (для returns cost) — Отказ/Возврат/Ошибка в ТТН в період, по артикулу
+    const refusedConds = [`o.status IN ('Отказ','Возврат','Ошибка в ТТН')`];
+    if (dateFrom) refusedConds.push(`o.created_at >= '${dateFrom}'::date`);
+    if (dateTo)   refusedConds.push(`o.created_at < ('${dateTo}'::date + interval '1 day')`);
+    const refusedWhere = 'WHERE ' + refusedConds.join(' AND ');
+    const refusedByArtQ = `
+      SELECT oi.article, COUNT(DISTINCT o.id)::int AS refused
+      FROM orders o JOIN order_items oi ON oi.order_id = o.id
+      ${refusedWhere}
+      AND oi.article IS NOT NULL AND oi.article <> ''
+      GROUP BY oi.article`;
+    const refusedTotalQ = `
+      SELECT COUNT(DISTINCT o.id)::int AS refused
+      FROM orders o ${refusedWhere}`;
+
+    // AdSpend з fb_spend_daily
+    const spendConds = [];
+    if (dateFrom) spendConds.push(`date >= '${dateFrom}'::date`);
+    if (dateTo)   spendConds.push(`date <= '${dateTo}'::date`);
+    const spendWhere = spendConds.length ? 'WHERE ' + spendConds.join(' AND ') : '';
+    const spendTotalQ = `
+      SELECT
+        COALESCE(SUM(spend), 0)::numeric AS spend,
+        COALESCE(SUM(leads), 0)::int AS leads
+      FROM fb_spend_daily ${spendWhere}`;
+    const spendByArtQ = `
+      SELECT article, SUM(spend)::numeric AS spend, SUM(leads)::int AS leads
+      FROM fb_spend_daily ${spendWhere}
+      ${spendConds.length ? 'AND' : 'WHERE'} article IS NOT NULL AND article <> ''
+      GROUP BY article`;
+    const spendUnmappedQ = `
+      SELECT COALESCE(SUM(spend), 0)::numeric AS spend, COALESCE(SUM(leads), 0)::int AS leads
+      FROM fb_spend_daily ${spendWhere}
+      ${spendConds.length ? 'AND' : 'WHERE'} (article IS NULL OR article = '')`;
+
+    const [t, a, refT, refA, spT, spA, spU] = await Promise.all([
+      pool.query(totalsQ, soldParams),
+      pool.query(byArtQ, soldParams),
+      pool.query(refusedTotalQ),
+      pool.query(refusedByArtQ),
+      pool.query(spendTotalQ),
+      pool.query(spendByArtQ),
+      pool.query(spendUnmappedQ)
+    ]);
+
     const tr = t.rows[0] || {};
     const revenue = Number(tr.revenue) || 0;
     const cost = Number(tr.cost) || 0;
-    const profit = revenue - cost;
-    const margin = revenue ? Math.round(profit / revenue * 100) : 0;
+    const grossProfit = revenue - cost;
+    const adSpend = Number(spT.rows[0].spend) || 0;
+    const leadsTotal = Number(spT.rows[0].leads) || 0;
+    const refusedTotal = Number(refT.rows[0].refused) || 0;
+    const returnsCost = refusedTotal * returnCost;
+    const netProfit = grossProfit - adSpend - returnsCost;
+    const roas = adSpend ? revenue / adSpend : 0;
+    const roi = adSpend ? netProfit / adSpend * 100 : 0;
+    const cpl = leadsTotal ? adSpend / leadsTotal : 0;
+    const cpo = (tr.orders || 0) ? adSpend / tr.orders : 0;
+    const margin = revenue ? Math.round(grossProfit / revenue * 100) : 0;
 
-    const byArticle = a.rows.map(r => {
+    const refusedMap = {};
+    refA.rows.forEach(r => { refusedMap[r.article] = Number(r.refused) || 0; });
+    const spendMap = {};
+    spA.rows.forEach(r => { spendMap[r.article] = { spend: Number(r.spend) || 0, leads: Number(r.leads) || 0 }; });
+
+    const articleSet = new Set();
+    a.rows.forEach(r => articleSet.add(r.article));
+    Object.keys(spendMap).forEach(art => articleSet.add(art));
+    Object.keys(refusedMap).forEach(art => articleSet.add(art));
+
+    const salesByArt = {};
+    a.rows.forEach(r => { salesByArt[r.article] = r; });
+
+    const byArticle = [...articleSet].map(article => {
+      const r = salesByArt[article] || { orders: 0, units: 0, revenue: 0, cost: 0 };
       const rev = Number(r.revenue) || 0;
       const c = Number(r.cost) || 0;
-      const p = rev - c;
+      const gross = rev - c;
+      const refused = refusedMap[article] || 0;
+      const ret = refused * returnCost;
+      const sp = (spendMap[article] && spendMap[article].spend) || 0;
+      const ld = (spendMap[article] && spendMap[article].leads) || 0;
+      const net = gross - sp - ret;
       return {
-        article: r.article,
-        orders: r.orders,
-        units: r.units,
+        article,
+        orders: Number(r.orders) || 0,
+        units: Number(r.units) || 0,
         revenue: rev,
         cost: c,
-        profit: p,
-        margin: rev ? Math.round(p / rev * 100) : 0
+        gross_profit: gross,
+        ad_spend: sp,
+        leads: ld,
+        refused,
+        returns_cost: ret,
+        net_profit: net,
+        roas: sp ? rev / sp : 0,
+        roi: sp ? net / sp * 100 : 0,
+        cpl: ld ? sp / ld : 0,
+        cpo: r.orders ? sp / r.orders : 0,
+        margin: rev ? Math.round(gross / rev * 100) : 0
       };
     });
 
     res.json({
-      totals: { orders: tr.orders || 0, units: tr.units || 0, revenue, cost, profit, margin },
+      totals: {
+        orders: tr.orders || 0,
+        units: tr.units || 0,
+        revenue,
+        cost,
+        gross_profit: grossProfit,
+        ad_spend: adSpend,
+        leads: leadsTotal,
+        refused: refusedTotal,
+        returns_cost: returnsCost,
+        net_profit: netProfit,
+        roas,
+        roi,
+        cpl,
+        cpo,
+        margin
+      },
+      unmapped_ad_spend: Number(spU.rows[0].spend) || 0,
+      unmapped_leads: Number(spU.rows[0].leads) || 0,
       byArticle
     });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -746,6 +879,181 @@ app.get('/api/products/:id(\\d+)/economics', checkAuth, async (req, res) => {
     });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
+
+// ===================== FACEBOOK ADS INTEGRATION =====================
+const FB_API_VERSION = 'v19.0';
+
+function extractArticleFromCampaign(campaignName, pattern) {
+  if (!campaignName) return null;
+  try {
+    const re = new RegExp(pattern);
+    const m = campaignName.match(re);
+    if (m && m[1]) return m[1].trim();
+  } catch (e) { /* invalid regex */ }
+  return null;
+}
+
+function getLeadCountFromActions(actions) {
+  if (!Array.isArray(actions)) return 0;
+  let leads = 0;
+  for (const a of actions) {
+    const t = String(a.action_type || '');
+    if (t === 'lead' || t === 'onsite_conversion.lead_grouped' || t === 'offsite_conversion.fb_pixel_lead') {
+      leads += Number(a.value) || 0;
+    }
+  }
+  return Math.round(leads);
+}
+
+async function fbGet(url) {
+  const resp = await fetch(url);
+  const j = await resp.json();
+  if (!resp.ok || j.error) {
+    throw new Error((j.error && j.error.message) || ('HTTP ' + resp.status));
+  }
+  return j;
+}
+
+async function fbTestAccount(accountId, accessToken) {
+  const cleanId = String(accountId).replace(/^act_/, '');
+  const url = `https://graph.facebook.com/${FB_API_VERSION}/act_${cleanId}?fields=name,account_status&access_token=${encodeURIComponent(accessToken)}`;
+  return await fbGet(url);
+}
+
+// Тягне insights з FB за останні N днів і пише в БД (UPSERT)
+async function syncFbAccount(account, daysBack) {
+  const settings = await getEconomicsSettings();
+  const pattern = settings.campaign_regex || '\\[([^\\]]+)\\]';
+  const cleanId = String(account.fb_account_id).replace(/^act_/, '');
+  const since = new Date(); since.setDate(since.getDate() - (daysBack || 7));
+  const until = new Date();
+  const iso = d => d.toISOString().slice(0, 10);
+  const timeRange = JSON.stringify({ since: iso(since), until: iso(until) });
+  const fields = 'spend,impressions,clicks,actions,campaign_id,campaign_name';
+  const params = new URLSearchParams({
+    fields,
+    level: 'campaign',
+    time_increment: '1',
+    time_range: timeRange,
+    limit: '500',
+    access_token: account.access_token
+  });
+  let url = `https://graph.facebook.com/${FB_API_VERSION}/act_${cleanId}/insights?${params.toString()}`;
+  let inserted = 0;
+  while (url) {
+    const j = await fbGet(url);
+    const rows = Array.isArray(j.data) ? j.data : [];
+    for (const r of rows) {
+      const date = r.date_start;
+      const campaignId = r.campaign_id;
+      const campaignName = r.campaign_name || '';
+      const article = extractArticleFromCampaign(campaignName, pattern);
+      const spend = Number(r.spend) || 0;
+      const impressions = Number(r.impressions) || 0;
+      const clicks = Number(r.clicks) || 0;
+      const leads = getLeadCountFromActions(r.actions);
+      await pool.query(`
+        INSERT INTO fb_spend_daily (ad_account_id, date, campaign_id, campaign_name, article, spend, impressions, clicks, leads, last_synced_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, NOW())
+        ON CONFLICT (ad_account_id, date, campaign_id) DO UPDATE SET
+          campaign_name = EXCLUDED.campaign_name,
+          article = EXCLUDED.article,
+          spend = EXCLUDED.spend,
+          impressions = EXCLUDED.impressions,
+          clicks = EXCLUDED.clicks,
+          leads = EXCLUDED.leads,
+          last_synced_at = NOW()
+      `, [account.id, date, campaignId, campaignName, article, spend, impressions, clicks, leads]);
+      inserted++;
+    }
+    url = (j.paging && j.paging.next) ? j.paging.next : null;
+  }
+  return inserted;
+}
+
+async function syncAllFbAccounts(daysBack) {
+  const r = await pool.query(`SELECT * FROM fb_ad_accounts WHERE is_active = true`);
+  for (const acc of r.rows) {
+    try {
+      const n = await syncFbAccount(acc, daysBack);
+      await pool.query(`UPDATE fb_ad_accounts SET last_sync_at = NOW(), last_sync_error = '' WHERE id = $1`, [acc.id]);
+      console.log(`[FB sync] ${acc.name}: ${n} rows`);
+    } catch (err) {
+      console.error(`[FB sync] ${acc.name} error:`, err.message);
+      await pool.query(`UPDATE fb_ad_accounts SET last_sync_at = NOW(), last_sync_error = $1 WHERE id = $2`, [String(err.message || err), acc.id]);
+    }
+  }
+}
+
+// CRUD кабінетів
+app.get('/api/fb/accounts', checkAuth, async (req, res) => {
+  try {
+    const r = await pool.query(`
+      SELECT id, name, fb_account_id, is_active, last_sync_at, last_sync_error, created_at
+      FROM fb_ad_accounts ORDER BY name`);
+    res.json(r.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/fb/accounts', checkAuth, async (req, res) => {
+  const { name, fb_account_id, access_token } = req.body;
+  if (!name || !fb_account_id || !access_token) {
+    return res.status(400).json({ error: 'Заповніть ім\'я, Account ID і токен' });
+  }
+  const cleanId = String(fb_account_id).replace(/^act_/, '').trim();
+  try {
+    await fbTestAccount(cleanId, access_token);
+    const r = await pool.query(`
+      INSERT INTO fb_ad_accounts (name, fb_account_id, access_token)
+      VALUES ($1, $2, $3) RETURNING id`, [name.trim(), cleanId, access_token.trim()]);
+    res.json({ success: true, id: r.rows[0].id });
+  } catch (err) {
+    const msg = /unique/i.test(err.message) ? 'Цей Account ID вже додано' : err.message;
+    res.status(400).json({ error: msg });
+  }
+});
+
+app.patch('/api/fb/accounts/:id(\\d+)', checkAuth, async (req, res) => {
+  const allowed = ['name', 'is_active', 'access_token'];
+  const keys = Object.keys(req.body).filter(k => allowed.includes(k));
+  if (!keys.length) return res.status(400).json({ error: 'Нічого оновити' });
+  const setClause = keys.map((k, i) => `${k} = $${i + 1}`).join(', ');
+  const values = keys.map(k => req.body[k]);
+  values.push(req.params.id);
+  try {
+    await pool.query(`UPDATE fb_ad_accounts SET ${setClause} WHERE id = $${values.length}`, values);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/fb/accounts/:id(\\d+)', checkAuth, async (req, res) => {
+  try {
+    await pool.query(`DELETE FROM fb_ad_accounts WHERE id = $1`, [req.params.id]);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/fb/accounts/:id(\\d+)/test', checkAuth, async (req, res) => {
+  try {
+    const r = await pool.query(`SELECT fb_account_id, access_token FROM fb_ad_accounts WHERE id = $1`, [req.params.id]);
+    if (!r.rows.length) return res.status(404).json({ error: 'Not found' });
+    const info = await fbTestAccount(r.rows[0].fb_account_id, r.rows[0].access_token);
+    res.json({ success: true, info });
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+// Ручний refresh синхронізації FB
+app.post('/api/fb/sync', checkAuth, async (req, res) => {
+  const daysBack = Number(req.body && req.body.days) || 7;
+  try {
+    await syncAllFbAccounts(daysBack);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Cron: щогодинна синхронізація. Перший виклик через хв після старту.
+setTimeout(() => { syncAllFbAccounts(7).catch(e => console.error('[FB sync init]', e.message)); }, 60 * 1000);
+setInterval(() => { syncAllFbAccounts(7).catch(e => console.error('[FB sync cron]', e.message)); }, 60 * 60 * 1000);
 
 // Юніт-економіка по всіх товарах одним запитом
 app.get('/api/stats/unit-economics', checkAuth, async (req, res) => {

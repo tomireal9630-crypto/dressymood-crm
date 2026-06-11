@@ -733,24 +733,42 @@
                         </div>
                     </div>
 
-                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
-                            <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Виручка</div>
-                            <div id="roiKpiRevenue" class="text-2xl font-black text-slate-800">0 ₴</div>
-                            <div class="text-[10px] text-slate-400 mt-1"><span id="roiKpiOrders">0</span> викуплено · <span id="roiKpiUnits">0</span> шт</div>
+                    <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 mb-6">
+                        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-4">
+                            <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Виручка</div>
+                            <div id="roiKpiRevenue" class="text-xl font-black text-slate-800">0 ₴</div>
+                            <div class="text-[10px] text-slate-400 mt-1"><span id="roiKpiOrders">0</span> прод · <span id="roiKpiUnits">0</span> шт</div>
                         </div>
-                        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
-                            <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Собівартість</div>
-                            <div id="roiKpiCost" class="text-2xl font-black text-rose-500">0 ₴</div>
+                        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-4">
+                            <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Ad Spend</div>
+                            <div id="roiKpiSpend" class="text-xl font-black text-blue-500">0 ₴</div>
+                            <div class="text-[10px] text-slate-400 mt-1"><span id="roiKpiLeads">0</span> лідів</div>
                         </div>
-                        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 border-2 border-emerald-200">
-                            <div class="text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-2">Прибуток</div>
-                            <div id="roiKpiProfit" class="text-2xl font-black text-emerald-600">0 ₴</div>
+                        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-4">
+                            <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">ROAS</div>
+                            <div id="roiKpiRoas" class="text-xl font-black text-violet-600">0.00×</div>
+                            <div class="text-[10px] text-slate-400 mt-1">CPL <span id="roiKpiCpl">0</span> ₴</div>
                         </div>
-                        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
-                            <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Маржа</div>
-                            <div id="roiKpiMargin" class="text-2xl font-black text-violet-600">0%</div>
+                        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-4">
+                            <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Собів.+Поверн.</div>
+                            <div id="roiKpiCosts" class="text-xl font-black text-rose-500">0 ₴</div>
+                            <div class="text-[10px] text-slate-400 mt-1"><span id="roiKpiRefused">0</span> відмов на НП</div>
                         </div>
+                        <div class="bg-white rounded-2xl shadow-sm border-2 border-emerald-200 p-4">
+                            <div class="text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-1">Чистий прибуток</div>
+                            <div id="roiKpiNetProfit" class="text-xl font-black text-emerald-600">0 ₴</div>
+                            <div class="text-[10px] text-slate-400 mt-1">Маржа <span id="roiKpiMargin">0%</span></div>
+                        </div>
+                        <div class="bg-white rounded-2xl shadow-sm border-2 border-violet-200 p-4">
+                            <div class="text-[10px] font-black text-violet-500 uppercase tracking-widest mb-1">ROI</div>
+                            <div id="roiKpiRoi" class="text-xl font-black text-violet-600">0%</div>
+                            <div class="text-[10px] text-slate-400 mt-1">CPO <span id="roiKpiCpo">0</span> ₴</div>
+                        </div>
+                    </div>
+
+                    <div id="roiUnmapped" class="hidden bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 mb-4 text-xs text-amber-700 font-medium">
+                        <i class="fa-solid fa-triangle-exclamation mr-1"></i>
+                        Кампанії без тегу артикулу витратили <b><span id="roiUnmappedSpend">0</span> ₴</b> (<span id="roiUnmappedLeads">0</span> лідів). Перевір назви — мають містити <code>[№XX]</code>.
                     </div>
 
                     <div class="flex items-center gap-3 mb-3">
@@ -766,16 +784,19 @@
                     </div>
 
                     <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-x-auto">
-                        <table class="w-full text-left min-w-[800px]">
+                        <table class="w-full text-left min-w-[1200px] text-xs">
                             <thead>
                                 <tr class="bg-slate-50/50 border-b border-slate-100">
-                                    <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Модель</th>
-                                    <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Викуплено</th>
-                                    <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Одиниць</th>
-                                    <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Виручка</th>
-                                    <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Собівартість</th>
-                                    <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Прибуток</th>
-                                    <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Маржа</th>
+                                    <th class="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Модель</th>
+                                    <th class="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Прод.</th>
+                                    <th class="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Виручка</th>
+                                    <th class="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Собів.</th>
+                                    <th class="px-4 py-3 text-[10px] font-black text-blue-500 uppercase tracking-widest text-right">Ad Spend</th>
+                                    <th class="px-4 py-3 text-[10px] font-black text-rose-500 uppercase tracking-widest text-right">Поверн.</th>
+                                    <th class="px-4 py-3 text-[10px] font-black text-violet-500 uppercase tracking-widest text-center">ROAS</th>
+                                    <th class="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">CPL</th>
+                                    <th class="px-4 py-3 text-[10px] font-black text-emerald-500 uppercase tracking-widest text-right">Чист. пр.</th>
+                                    <th class="px-4 py-3 text-[10px] font-black text-violet-500 uppercase tracking-widest text-center">ROI</th>
                                 </tr>
                             </thead>
                             <tbody id="roiStatsTable" class="divide-y divide-slate-50"></tbody>
@@ -1085,6 +1106,46 @@
                         <div class="flex items-center gap-3 pt-2">
                             <button type="submit" class="bg-violet-600 text-white px-8 py-3 rounded-xl font-black text-sm uppercase tracking-widest hover:bg-violet-700 transition-all">Зберегти</button>
                             <span id="econSaveResult" class="text-sm font-bold"></span>
+                        </div>
+                    </form>
+                </div>
+
+                <div class="bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/40 border border-slate-100 p-10 max-w-3xl mt-8">
+                    <div class="mb-6 flex justify-between items-start gap-4">
+                        <div>
+                            <h3 class="text-xl font-black text-slate-800 uppercase italic"><i class="fa-brands fa-facebook text-blue-500 mr-2"></i>Facebook Ads</h3>
+                            <p class="text-[11px] text-slate-400 font-medium">Підключені рекламні кабінети. Синхронізація щогодини автоматично.</p>
+                        </div>
+                        <button onclick="fbSyncNow()" id="fbSyncBtn" class="px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider bg-blue-500 text-white hover:bg-blue-600 transition-all whitespace-nowrap">
+                            <i class="fa-solid fa-rotate mr-1"></i> Оновити зараз
+                        </button>
+                    </div>
+
+                    <div id="fbAccountsList" class="space-y-2 mb-6"></div>
+
+                    <form id="fbAddAccountForm" class="bg-slate-50 border border-slate-100 rounded-2xl p-5 space-y-4">
+                        <div class="text-xs font-black text-slate-500 uppercase tracking-widest">Додати кабінет</div>
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">Назва (для тебе)</label>
+                                <input type="text" name="name" required placeholder="Кабінет 1"
+                                    class="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-lg outline-none font-bold text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">Ad Account ID</label>
+                                <input type="text" name="fb_account_id" required placeholder="act_1234567890 або 1234567890"
+                                    class="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-lg outline-none font-mono text-sm">
+                            </div>
+                            <div class="col-span-2">
+                                <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">Access Token (System User)</label>
+                                <input type="text" name="access_token" required placeholder="EAAB..."
+                                    class="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-lg outline-none font-mono text-xs">
+                                <div class="text-[10px] text-slate-400 font-medium mt-1">Long-lived токен з прав <code>ads_read</code> у Business Manager</div>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <button type="submit" class="bg-blue-500 text-white px-5 py-2 rounded-lg font-black text-xs uppercase tracking-widest hover:bg-blue-600 transition-all">Додати + перевірити</button>
+                            <span id="fbAddResult" class="text-sm font-bold"></span>
                         </div>
                     </form>
                 </div>
@@ -1428,7 +1489,7 @@
             if (targetContent) targetContent.classList.add('active');
 
             if (view === 'theme') renderThemeCards();
-            if (view === 'settings') { loadNpSettings(); loadSmsSettings(); loadCheckboxSettings(); loadEconSettings(); }
+            if (view === 'settings') { loadNpSettings(); loadSmsSettings(); loadCheckboxSettings(); loadEconSettings(); loadFbAccounts(); }
             if (view === 'regulars') loadRegulars();
             if (view === 'export') loadExport();
             if (view === 'statistics') switchStatsTab('buyout');
@@ -1907,6 +1968,118 @@
                     if (res) { res.textContent = '✕ ' + err.message; res.style.color = '#dc2626'; }
                 }
             };
+        }
+
+        // --- НАЛАШТУВАННЯ: FACEBOOK ADS ---
+        async function loadFbAccounts() {
+            try {
+                const r = await fetch('/api/fb/accounts');
+                const list = await r.json();
+                const wrap = document.getElementById('fbAccountsList');
+                if (!wrap) return;
+                if (!Array.isArray(list) || !list.length) {
+                    wrap.innerHTML = `<div class="text-center text-slate-400 italic text-sm py-6 border-2 border-dashed border-slate-200 rounded-xl">Жодного кабінету ще не додано</div>`;
+                    return;
+                }
+                wrap.innerHTML = list.map(a => {
+                    const synced = a.last_sync_at ? new Date(a.last_sync_at).toLocaleString('uk-UA') : '—';
+                    const err = a.last_sync_error || '';
+                    const statusBadge = err
+                        ? `<span class="text-[10px] font-black text-rose-600 bg-rose-50 px-2 py-1 rounded" title="${esc(err)}">✗ Помилка</span>`
+                        : (a.last_sync_at ? `<span class="text-[10px] font-black text-emerald-600 bg-emerald-50 px-2 py-1 rounded">✓ Активний</span>` : `<span class="text-[10px] font-black text-slate-500 bg-slate-100 px-2 py-1 rounded">— очікує —</span>`);
+                    const activeToggle = a.is_active
+                        ? `<button onclick="toggleFbAccount(${a.id}, false)" title="Призупинити" class="text-amber-500 hover:text-amber-600 transition-all p-1.5"><i class="fa-solid fa-pause"></i></button>`
+                        : `<button onclick="toggleFbAccount(${a.id}, true)" title="Активувати" class="text-emerald-500 hover:text-emerald-600 transition-all p-1.5"><i class="fa-solid fa-play"></i></button>`;
+                    return `
+                    <div class="flex items-center gap-3 bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 ${a.is_active ? '' : 'opacity-60'}">
+                        <i class="fa-brands fa-facebook text-blue-500 text-xl"></i>
+                        <div class="flex-1 min-w-0">
+                            <div class="font-bold text-slate-800 text-sm">${esc(a.name)}</div>
+                            <div class="text-[10px] text-slate-400 font-mono">act_${esc(a.fb_account_id)} · синх. ${esc(synced)}</div>
+                            ${err ? `<div class="text-[10px] text-rose-500 font-medium mt-0.5 truncate" title="${esc(err)}">${esc(err)}</div>` : ''}
+                        </div>
+                        ${statusBadge}
+                        ${activeToggle}
+                        <button onclick="testFbAccount(${a.id})" title="Перевірити" class="text-slate-400 hover:text-blue-500 transition-all p-1.5"><i class="fa-solid fa-circle-check"></i></button>
+                        <button onclick="deleteFbAccount(${a.id})" title="Видалити" class="text-slate-400 hover:text-rose-500 transition-all p-1.5"><i class="fa-solid fa-trash-can"></i></button>
+                    </div>`;
+                }).join('');
+            } catch (e) { /* мовчки */ }
+        }
+
+        let fbAccountsReady = false;
+        function setupFbAccounts() {
+            if (fbAccountsReady) return;
+            fbAccountsReady = true;
+            const f = document.getElementById('fbAddAccountForm');
+            if (!f) return;
+            f.onsubmit = async (e) => {
+                e.preventDefault();
+                const res = document.getElementById('fbAddResult');
+                if (res) { res.textContent = 'Перевірка…'; res.style.color = '#64748b'; }
+                const fd = {
+                    name: f.name.value.trim(),
+                    fb_account_id: f.fb_account_id.value.trim(),
+                    access_token: f.access_token.value.trim()
+                };
+                try {
+                    const r = await fetch('/api/fb/accounts', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(fd)
+                    });
+                    const j = await r.json();
+                    if (!r.ok) throw new Error(j.error || 'Помилка');
+                    if (res) { res.textContent = '✓ Кабінет додано'; res.style.color = '#16a34a'; }
+                    f.reset();
+                    loadFbAccounts();
+                } catch (err) {
+                    if (res) { res.textContent = '✕ ' + err.message; res.style.color = '#dc2626'; }
+                }
+            };
+        }
+
+        async function toggleFbAccount(id, isActive) {
+            try {
+                await fetch(`/api/fb/accounts/${id}`, {
+                    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ is_active: isActive })
+                });
+                loadFbAccounts();
+            } catch (e) { alert('Помилка: ' + e.message); }
+        }
+
+        async function deleteFbAccount(id) {
+            if (!confirm('Видалити цей FB-кабінет? Дані витрат залишаться в БД.')) return;
+            try {
+                await fetch(`/api/fb/accounts/${id}`, { method: 'DELETE' });
+                loadFbAccounts();
+            } catch (e) { alert('Помилка: ' + e.message); }
+        }
+
+        async function testFbAccount(id) {
+            try {
+                const r = await fetch(`/api/fb/accounts/${id}/test`, { method: 'POST' });
+                const j = await r.json();
+                if (!r.ok) throw new Error(j.error || 'Помилка');
+                alert('✓ Підключення працює.\nКабінет: ' + (j.info && j.info.name ? j.info.name : ''));
+            } catch (e) { alert('✕ ' + e.message); }
+        }
+
+        async function fbSyncNow() {
+            const btn = document.getElementById('fbSyncBtn');
+            const orig = btn ? btn.innerHTML : '';
+            if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Синхронізація…'; }
+            try {
+                const r = await fetch('/api/fb/sync', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ days: 7 })
+                });
+                const j = await r.json();
+                if (!r.ok) throw new Error(j.error || 'Помилка');
+                loadFbAccounts();
+                alert('✓ Синхронізовано');
+            } catch (e) { alert('✕ ' + e.message); }
+            finally { if (btn) { btn.disabled = false; btn.innerHTML = orig; } }
         }
 
         async function generateReceipt(id) {
@@ -2816,12 +2989,38 @@
             }
             const t = roiData.totals || {};
             const uah = n => Number(n || 0).toLocaleString('uk-UA') + ' ₴';
+            const int = n => Number(n || 0).toLocaleString('uk-UA');
             document.getElementById('roiKpiRevenue').textContent = uah(t.revenue);
-            document.getElementById('roiKpiOrders').textContent = t.orders || 0;
-            document.getElementById('roiKpiUnits').textContent = t.units || 0;
-            document.getElementById('roiKpiCost').textContent = uah(t.cost);
-            document.getElementById('roiKpiProfit').textContent = uah(t.profit);
+            document.getElementById('roiKpiOrders').textContent = int(t.orders);
+            document.getElementById('roiKpiUnits').textContent = int(t.units);
+            document.getElementById('roiKpiSpend').textContent = uah(t.ad_spend);
+            document.getElementById('roiKpiLeads').textContent = int(t.leads);
+            document.getElementById('roiKpiRoas').textContent = (Number(t.roas || 0)).toFixed(2) + '×';
+            document.getElementById('roiKpiCpl').textContent = Math.round(t.cpl || 0);
+            document.getElementById('roiKpiCosts').textContent = uah((Number(t.cost) || 0) + (Number(t.returns_cost) || 0));
+            document.getElementById('roiKpiRefused').textContent = int(t.refused);
+            document.getElementById('roiKpiNetProfit').textContent = uah(t.net_profit);
+            const npEl = document.getElementById('roiKpiNetProfit');
+            if (npEl) npEl.style.color = (t.net_profit || 0) >= 0 ? '#059669' : '#e11d48';
             document.getElementById('roiKpiMargin').textContent = (t.margin || 0) + '%';
+            document.getElementById('roiKpiRoi').textContent = Math.round(t.roi || 0) + '%';
+            const roiEl = document.getElementById('roiKpiRoi');
+            if (roiEl) roiEl.style.color = (t.roi || 0) >= 0 ? '#7c3aed' : '#e11d48';
+            document.getElementById('roiKpiCpo').textContent = Math.round(t.cpo || 0);
+
+            const unmappedWrap = document.getElementById('roiUnmapped');
+            if (unmappedWrap) {
+                const us = Number(roiData.unmapped_ad_spend) || 0;
+                const ul = Number(roiData.unmapped_leads) || 0;
+                if (us > 0 || ul > 0) {
+                    document.getElementById('roiUnmappedSpend').textContent = int(us);
+                    document.getElementById('roiUnmappedLeads').textContent = int(ul);
+                    unmappedWrap.classList.remove('hidden');
+                } else {
+                    unmappedWrap.classList.add('hidden');
+                }
+            }
+
             renderRoiTable();
         }
 
@@ -2831,34 +3030,44 @@
             const sort = (document.getElementById('statsRoiSort') || {}).value || 'profitDesc';
             const rows = [...(roiData.byArticle || [])];
             const sorters = {
-                profitDesc:  (a,b) => b.profit - a.profit,
-                profitAsc:   (a,b) => a.profit - b.profit,
-                revenueDesc: (a,b) => b.revenue - a.revenue,
-                marginDesc:  (a,b) => b.margin - a.margin,
-                ordersDesc:  (a,b) => b.orders - a.orders,
+                profitDesc:  (a,b) => (b.net_profit||0) - (a.net_profit||0),
+                profitAsc:   (a,b) => (a.net_profit||0) - (b.net_profit||0),
+                revenueDesc: (a,b) => (b.revenue||0) - (a.revenue||0),
+                marginDesc:  (a,b) => (b.roi||0) - (a.roi||0),
+                ordersDesc:  (a,b) => (b.orders||0) - (a.orders||0),
                 articleAsc:  (a,b) => (a.article || '').localeCompare(b.article || '')
             };
             rows.sort(sorters[sort] || sorters.profitDesc);
             if (!rows.length) {
-                tbody.innerHTML = `<tr><td colspan="7" class="p-8 text-center text-slate-400 font-medium">Немає продажів за період</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="10" class="p-8 text-center text-slate-400 font-medium">Немає даних за період</td></tr>`;
                 return;
             }
             const uah = n => Number(n || 0).toLocaleString('uk-UA') + ' ₴';
             tbody.innerHTML = rows.map(r => {
-                const mCls = r.margin >= 50 ? 'bg-emerald-50 text-emerald-600'
-                           : r.margin >= 20 ? 'bg-amber-50 text-amber-600'
-                           : r.margin >= 0  ? 'bg-slate-100 text-slate-500'
-                           : 'bg-rose-50 text-rose-600';
-                const pCls = r.profit > 0 ? 'text-emerald-600' : r.profit < 0 ? 'text-rose-600' : 'text-slate-500';
+                const roasV = Number(r.roas) || 0;
+                const roiV = Number(r.roi) || 0;
+                const roasCls = roasV >= 2.5 ? 'bg-emerald-50 text-emerald-600'
+                              : roasV >= 1.5 ? 'bg-amber-50 text-amber-600'
+                              : roasV > 0   ? 'bg-rose-50 text-rose-600'
+                              : 'bg-slate-100 text-slate-400';
+                const roiCls = roiV >= 50  ? 'bg-emerald-50 text-emerald-600'
+                             : roiV >= 0   ? 'bg-amber-50 text-amber-600'
+                             : roiV < 0    ? 'bg-rose-50 text-rose-600'
+                             : 'bg-slate-100 text-slate-400';
+                const npCls = (r.net_profit || 0) > 0 ? 'text-emerald-600' : (r.net_profit || 0) < 0 ? 'text-rose-600' : 'text-slate-500';
+                const noSpend = !r.ad_spend;
                 return `
                 <tr class="hover:bg-slate-50 transition-all">
-                    <td class="px-6 py-4 font-black text-slate-800 uppercase">${esc(r.article)}</td>
-                    <td class="px-6 py-4 text-center font-bold text-slate-700">${r.orders}</td>
-                    <td class="px-6 py-4 text-center font-bold text-slate-700">${r.units}</td>
-                    <td class="px-6 py-4 text-right text-sm font-black text-slate-800">${uah(r.revenue)}</td>
-                    <td class="px-6 py-4 text-right text-sm font-bold text-rose-500">${uah(r.cost)}</td>
-                    <td class="px-6 py-4 text-right text-sm font-black ${pCls}">${uah(r.profit)}</td>
-                    <td class="px-6 py-4 text-center"><span class="inline-flex items-center text-[11px] font-black px-3 py-1 rounded-full ${mCls}">${r.margin}%</span></td>
+                    <td class="px-4 py-3 font-black text-slate-800 uppercase whitespace-nowrap">${esc(r.article)}</td>
+                    <td class="px-4 py-3 text-center font-bold text-slate-700">${r.orders}</td>
+                    <td class="px-4 py-3 text-right font-black text-slate-800">${uah(r.revenue)}</td>
+                    <td class="px-4 py-3 text-right font-bold text-rose-500">${uah(r.cost)}</td>
+                    <td class="px-4 py-3 text-right font-black text-blue-500">${uah(r.ad_spend)}</td>
+                    <td class="px-4 py-3 text-right font-bold text-rose-500">${uah(r.returns_cost)}<div class="text-[10px] text-slate-400 font-medium">${r.refused} шт</div></td>
+                    <td class="px-4 py-3 text-center">${noSpend ? '<span class="text-slate-300">—</span>' : `<span class="inline-flex items-center text-[11px] font-black px-2.5 py-1 rounded-full ${roasCls}">${roasV.toFixed(2)}×</span>`}</td>
+                    <td class="px-4 py-3 text-right text-xs font-bold text-slate-600">${noSpend ? '—' : Math.round(r.cpl) + ' ₴'}</td>
+                    <td class="px-4 py-3 text-right font-black ${npCls}">${uah(r.net_profit)}</td>
+                    <td class="px-4 py-3 text-center">${noSpend ? '<span class="text-slate-300">—</span>' : `<span class="inline-flex items-center text-[11px] font-black px-2.5 py-1 rounded-full ${roiCls}">${Math.round(roiV)}%</span>`}</td>
                 </tr>`;
             }).join('');
         }
@@ -3566,6 +3775,7 @@
         setupSmsSettings();
         setupCheckboxSettings();
         setupEconSettings();
+        setupFbAccounts();
         refreshData();
 
         // Автооновлення списку замовлень кожні 15 c (без перешкод під час редагування)
