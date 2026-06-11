@@ -120,11 +120,12 @@ async function updateDatabaseSchema() {
         `);
 
         await pool.query(`
-            ALTER TABLE products 
+            ALTER TABLE products
             ADD COLUMN IF NOT EXISTS cost NUMERIC DEFAULT 0,
             ADD COLUMN IF NOT EXISTS price NUMERIC DEFAULT 0,
             ADD COLUMN IF NOT EXISTS supplier_id INTEGER REFERENCES suppliers(id) ON DELETE SET NULL,
-            ADD COLUMN IF NOT EXISTS links TEXT DEFAULT '';
+            ADD COLUMN IF NOT EXISTS links TEXT DEFAULT '',
+            ADD COLUMN IF NOT EXISTS target_roi_pct INTEGER;
         `);
 
         await pool.query(`
@@ -613,6 +614,216 @@ app.get('/api/stats/approval', checkAuth, async (req, res) => {
       byDay: d.rows.map(enrich),
       byArticle: a.rows.map(enrich)
     });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// --- ГЛОБАЛЬНІ НАЛАШТУВАННЯ ЕКОНОМІКИ ---
+const ECONOMICS_DEFAULTS = {
+  return_cost: 110,
+  lookback_days: 30,
+  settlement_days: 14,
+  target_roi_pct: 30,
+  campaign_regex: '\\[([^\\]]+)\\]'
+};
+
+async function getEconomicsSettings() {
+  const r = await pool.query(`SELECT value FROM app_settings WHERE key = 'economics'`);
+  return { ...ECONOMICS_DEFAULTS, ...(r.rows.length ? r.rows[0].value : {}) };
+}
+
+app.get('/api/settings/economics', checkAuth, async (req, res) => {
+  try { res.json(await getEconomicsSettings()); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/settings/economics', checkAuth, async (req, res) => {
+  const allowed = ['return_cost', 'lookback_days', 'settlement_days', 'target_roi_pct', 'campaign_regex'];
+  const current = await getEconomicsSettings();
+  const next = { ...current };
+  for (const k of allowed) {
+    if (req.body[k] !== undefined && req.body[k] !== '') {
+      next[k] = k === 'campaign_regex' ? String(req.body[k]) : Number(req.body[k]);
+    }
+  }
+  try {
+    await pool.query(
+      `INSERT INTO app_settings (key, value) VALUES ('economics', $1)
+       ON CONFLICT (key) DO UPDATE SET value = $1`, [next]);
+    res.json({ success: true, settings: next });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// --- ЕКОНОМІКА ТОВАРУ (CPL_max, CPL_recommended) ---
+app.get('/api/products/:id(\\d+)/economics', checkAuth, async (req, res) => {
+  try {
+    const settings = await getEconomicsSettings();
+    const productRes = await pool.query(
+      `SELECT id, article, name, cost, price, target_roi_pct FROM products WHERE id = $1`,
+      [req.params.id]
+    );
+    if (!productRes.rows.length) return res.status(404).json({ error: 'Not found' });
+    const p = productRes.rows[0];
+    const article = p.article;
+    const sellPrice = Number(p.price) || 0;
+    const productCost = Number(p.cost) || 0;
+    const margin = sellPrice - productCost;
+    const targetRoi = (p.target_roi_pct != null ? Number(p.target_roi_pct) : Number(settings.target_roi_pct)) / 100;
+
+    // % Апруву та Викупу по артикулу за lookback_days
+    const lookback = Number(settings.lookback_days) || 30;
+    const APPROVED = `('В работе','Доставка','В пути','На почте','Продажа','Отказ','Возврат','Ошибка в ТТН','Переадресация')`;
+    const SOLD = `('Продажа')`;
+    const REFUSED_AFTER_APPROVE = `('Отказ','Возврат','Ошибка в ТТН')`;
+    const dateExpr = `COALESCE(o.original_created_at, o.created_at)`;
+
+    const statsQ = `
+      WITH leads AS (
+        SELECT DISTINCT o.id, o.status
+        FROM orders o
+        JOIN order_items oi ON oi.order_id = o.id
+        WHERE oi.article = $1
+          AND o.status <> '✗✗✗'
+          AND ${dateExpr} >= (CURRENT_DATE - $2::int)
+      )
+      SELECT
+        COUNT(*)::int AS total_leads,
+        COUNT(*) FILTER (WHERE status IN ${APPROVED})::int AS approved,
+        COUNT(*) FILTER (WHERE status IN ${SOLD})::int AS sold,
+        COUNT(*) FILTER (WHERE status IN ${REFUSED_AFTER_APPROVE})::int AS refused_after
+      FROM leads`;
+
+    const sr = await pool.query(statsQ, [article, lookback]);
+    const s = sr.rows[0] || {};
+    const totalLeads = s.total_leads || 0;
+    const approved = s.approved || 0;
+    const sold = s.sold || 0;
+    const refusedAfter = s.refused_after || 0;
+
+    const approvalRate = totalLeads ? approved / totalLeads : 0;
+    const buyoutRate = approved ? sold / approved : 0;
+    const refusalRate = approved ? refusedAfter / approved : 0;
+    const returnCost = Number(settings.return_cost) || 0;
+
+    // На 100 лідів:
+    //   approved = 100 × approvalRate
+    //   sold     = approved × buyoutRate
+    //   refused  = approved × refusalRate
+    //   Виручка = sold × price
+    //   COGS    = sold × cost
+    //   Returns = refused × return_cost
+    //   ВаловийПрибуток = виручка − COGS − Returns
+    //   CPL_max = ВаловийПрибуток / 100
+    const per100 = {
+      approved: 100 * approvalRate,
+      sold: 100 * approvalRate * buyoutRate,
+      refused: 100 * approvalRate * refusalRate
+    };
+    const revenue = per100.sold * sellPrice;
+    const cogs = per100.sold * productCost;
+    const returns = per100.refused * returnCost;
+    const grossProfit = revenue - cogs - returns;
+    const cpl_max = grossProfit / 100;
+    const cpl_recommended = cpl_max / (1 + targetRoi);
+
+    res.json({
+      product: { id: p.id, article, name: p.name, cost: productCost, price: sellPrice, margin, target_roi_pct: Math.round(targetRoi * 100) },
+      history: {
+        lookback_days: lookback,
+        total_leads: totalLeads,
+        approved,
+        sold,
+        refused_after: refusedAfter,
+        approval_pct: Math.round(approvalRate * 1000) / 10,
+        buyout_pct: Math.round(buyoutRate * 1000) / 10,
+        refusal_pct: Math.round(refusalRate * 1000) / 10
+      },
+      settings: { return_cost: returnCost },
+      cpl: {
+        max: Math.round(cpl_max * 100) / 100,
+        recommended: Math.round(cpl_recommended * 100) / 100,
+        gross_profit_per_100_leads: Math.round(grossProfit * 100) / 100
+      }
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Юніт-економіка по всіх товарах одним запитом
+app.get('/api/stats/unit-economics', checkAuth, async (req, res) => {
+  try {
+    const settings = await getEconomicsSettings();
+    const lookback = Number(settings.lookback_days) || 30;
+    const returnCost = Number(settings.return_cost) || 0;
+    const defaultTargetRoi = Number(settings.target_roi_pct) || 30;
+
+    const APPROVED = `('В работе','Доставка','В пути','На почте','Продажа','Отказ','Возврат','Ошибка в ТТН','Переадресация')`;
+    const SOLD = `('Продажа')`;
+    const REFUSED_AFTER = `('Отказ','Возврат','Ошибка в ТТН')`;
+    const dateExpr = `COALESCE(o.original_created_at, o.created_at)`;
+
+    const sql = `
+      WITH leads AS (
+        SELECT DISTINCT o.id, o.status, oi.article
+        FROM orders o
+        JOIN order_items oi ON oi.order_id = o.id
+        WHERE o.status <> '✗✗✗'
+          AND ${dateExpr} >= (CURRENT_DATE - $1::int)
+          AND oi.article IS NOT NULL AND oi.article <> ''
+      ),
+      stats AS (
+        SELECT article,
+               COUNT(*)::int AS total_leads,
+               COUNT(*) FILTER (WHERE status IN ${APPROVED})::int AS approved,
+               COUNT(*) FILTER (WHERE status IN ${SOLD})::int AS sold,
+               COUNT(*) FILTER (WHERE status IN ${REFUSED_AFTER})::int AS refused_after
+        FROM leads GROUP BY article
+      )
+      SELECT p.id, p.article, p.name,
+             COALESCE(p.cost, 0)::numeric AS cost,
+             COALESCE(p.price, 0)::numeric AS price,
+             p.target_roi_pct,
+             COALESCE(s.total_leads, 0)::int AS total_leads,
+             COALESCE(s.approved, 0)::int AS approved,
+             COALESCE(s.sold, 0)::int AS sold,
+             COALESCE(s.refused_after, 0)::int AS refused_after
+      FROM products p
+      LEFT JOIN stats s ON s.article = p.article
+      ORDER BY p.article`;
+
+    const r = await pool.query(sql, [lookback]);
+    const rows = r.rows.map(row => {
+      const sellPrice = Number(row.price) || 0;
+      const productCost = Number(row.cost) || 0;
+      const margin = sellPrice - productCost;
+      const targetRoi = (row.target_roi_pct != null ? Number(row.target_roi_pct) : defaultTargetRoi) / 100;
+      const total = row.total_leads;
+      const approvalRate = total ? row.approved / total : 0;
+      const buyoutRate = row.approved ? row.sold / row.approved : 0;
+      const refusalRate = row.approved ? row.refused_after / row.approved : 0;
+      const sold100 = 100 * approvalRate * buyoutRate;
+      const refused100 = 100 * approvalRate * refusalRate;
+      const grossProfit100 = sold100 * sellPrice - sold100 * productCost - refused100 * returnCost;
+      const cpl_max = grossProfit100 / 100;
+      const cpl_recommended = cpl_max / (1 + targetRoi);
+
+      return {
+        id: row.id,
+        article: row.article,
+        name: row.name,
+        cost: productCost,
+        price: sellPrice,
+        margin,
+        target_roi_pct: Math.round(targetRoi * 100),
+        total_leads: total,
+        approval_pct: Math.round(approvalRate * 1000) / 10,
+        buyout_pct: Math.round(buyoutRate * 1000) / 10,
+        refusal_pct: Math.round(refusalRate * 1000) / 10,
+        cpl_max: Math.round(cpl_max * 100) / 100,
+        cpl_recommended: Math.round(cpl_recommended * 100) / 100,
+        has_history: total > 0 && row.approved > 0
+      };
+    });
+
+    res.json({ rows, settings: { lookback_days: lookback, return_cost: returnCost, default_target_roi_pct: defaultTargetRoi } });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -1625,7 +1836,7 @@ app.delete('/api/warehouse/products/:id', checkAuth, async (req, res) => {
 });
 
 app.patch('/api/warehouse/products/:id', checkAuth, async (req, res) => {
-    const allowed = ['cost', 'price'];
+    const allowed = ['cost', 'price', 'target_roi_pct'];
     const keys = Object.keys(req.body).filter(k => allowed.includes(k));
     if (!keys.length) return res.status(400).json({ error: 'Нічого оновлювати' });
     const setClause = keys.map((k, i) => `${k} = $${i + 1}`).join(', ');
