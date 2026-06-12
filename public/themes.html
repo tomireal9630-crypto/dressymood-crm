@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Превью тем · CRM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    background: var(--bg-app);
+    color: var(--text-main);
+    transition: background-color .3s ease, color .3s ease;
+    letter-spacing: -0.01em;
+  }
+
+  /* Перемикач зверху */
+  .switcher {
+    position: sticky; top: 0; z-index: 10;
+    display: flex; gap: 12px; padding: 16px 24px;
+    background: rgba(255,255,255,0.85); backdrop-filter: blur(10px);
+    border-bottom: 1px solid #e2e8f0;
+    flex-wrap: wrap;
+  }
+  .switcher h1 { font-size: 14px; font-weight: 800; color: #0f172a; margin-right: auto; align-self: center; }
+  .theme-btn {
+    padding: 10px 18px; border: 2px solid #e2e8f0;
+    background: #fff; border-radius: 12px; cursor: pointer;
+    font-weight: 700; font-size: 13px; color: #475569;
+    transition: all .2s ease;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .theme-btn:hover { border-color: #94a3b8; }
+  .theme-btn.active { border-color: #0f172a; background: #0f172a; color: #fff; }
+  .theme-btn .dot { width: 14px; height: 14px; border-radius: 50%; }
+
+  /* Mockup CRM */
+  .mockup {
+    display: flex;
+    min-height: calc(100vh - 80px);
+  }
+  .sidebar {
+    width: 240px;
+    background: var(--sidebar-bg);
+    color: var(--sidebar-text);
+    padding: 24px 16px;
+    border-right: 1px solid var(--sidebar-border);
+  }
+  .sidebar .logo {
+    font-size: 18px; font-weight: 900; letter-spacing: -0.04em;
+    color: var(--sidebar-logo); margin-bottom: 28px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .sidebar .logo .ic {
+    width: 36px; height: 36px; border-radius: 10px;
+    background: var(--accent);
+    display: flex; align-items: center; justify-content: center;
+    color: #fff;
+  }
+  .sidebar .section { font-size: 9px; font-weight: 900; text-transform: uppercase;
+    color: var(--sidebar-section); letter-spacing: 0.15em;
+    padding: 16px 12px 8px; }
+  .sidebar .item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 12px; border-radius: 8px;
+    color: var(--sidebar-item);
+    font-size: 13px; font-weight: 600;
+    cursor: pointer; margin-bottom: 2px;
+    transition: all .15s ease;
+  }
+  .sidebar .item:hover { background: var(--sidebar-hover); color: var(--sidebar-item-hover); }
+  .sidebar .item.active { background: var(--sidebar-active); color: var(--sidebar-item-active); }
+  .sidebar .item.active i { color: var(--accent); }
+  .sidebar .item i { width: 18px; text-align: center; color: var(--sidebar-icon); }
+
+  .content { flex: 1; padding: 32px; }
+  .content h2 {
+    font-size: 28px; font-weight: 900; color: var(--text-main);
+    font-style: italic; text-transform: uppercase;
+    letter-spacing: -0.04em; margin-bottom: 24px;
+  }
+
+  /* KPI картки */
+  .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+  .kpi-card {
+    background: var(--card-bg); border: 1px solid var(--card-border);
+    border-radius: 16px; padding: 20px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+  }
+  .kpi-label { font-size: 9px; font-weight: 900; color: var(--text-mute);
+    text-transform: uppercase; letter-spacing: 0.15em; margin-bottom: 8px; }
+  .kpi-value { font-size: 24px; font-weight: 900; }
+  .kpi-card.accent { border: 2px solid var(--accent-light); }
+  .kpi-card.accent .kpi-label { color: var(--accent); }
+  .kpi-card.accent .kpi-value { color: var(--accent); }
+
+  /* Кнопки */
+  .btn-row { display: flex; gap: 12px; margin-bottom: 24px; flex-wrap: wrap; }
+  .btn {
+    padding: 10px 20px; border-radius: 10px;
+    font-weight: 800; font-size: 12px;
+    text-transform: uppercase; letter-spacing: 0.1em;
+    cursor: pointer; border: none;
+    transition: all .15s ease;
+  }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { filter: brightness(1.1); }
+  .btn-ghost { background: var(--ghost-bg); color: var(--text-main); }
+  .btn-ghost:hover { background: var(--ghost-bg-hover); }
+  .btn-danger { background: var(--st-refused-bg); color: var(--st-refused-text); }
+
+  /* Таблиця */
+  .table-wrap {
+    background: var(--card-bg); border: 1px solid var(--card-border);
+    border-radius: 20px; overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+  }
+  table { width: 100%; border-collapse: collapse; }
+  thead { background: var(--table-head-bg); border-bottom: 1px solid var(--card-border); }
+  th { padding: 14px 20px; text-align: left; font-size: 10px; font-weight: 900;
+    text-transform: uppercase; color: var(--text-mute); letter-spacing: 0.15em; }
+  td { padding: 16px 20px; font-size: 13px; color: var(--text-main); border-bottom: 1px solid var(--row-border); }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: var(--row-hover); }
+
+  /* Статус badges */
+  .status {
+    display: inline-block; padding: 4px 10px; border-radius: 999px;
+    font-size: 10px; font-weight: 900; text-transform: uppercase;
+  }
+  .st-new      { background: var(--st-new-bg); color: var(--st-new-text); }
+  .st-work     { background: var(--st-work-bg); color: var(--st-work-text); }
+  .st-sale     { background: var(--st-sale-bg); color: var(--st-sale-text); }
+  .st-refused  { background: var(--st-refused-bg); color: var(--st-refused-text); }
+  .st-callback { background: var(--st-callback-bg); color: var(--st-callback-text); }
+
+  .price { font-weight: 900; color: var(--st-sale-text); background: var(--st-sale-bg);
+    padding: 4px 10px; border-radius: 6px; font-size: 12px; }
+
+  /* === ТЕМИ === */
+
+  /* Поточна (Violet) */
+  body[data-theme="current"] {
+    --bg-app: #f8fafc; --text-main: #334155; --text-mute: #94a3b8;
+    --card-bg: #ffffff; --card-border: #f1f5f9;
+    --table-head-bg: #f8fafc; --row-border: #f1f5f9; --row-hover: #f8fafc;
+    --accent: #8b5cf6; --accent-light: #ede9fe;
+    --sidebar-bg: #020617; --sidebar-text: #94a3b8; --sidebar-border: #1e293b;
+    --sidebar-logo: #fff; --sidebar-section: #475569; --sidebar-icon: #64748b;
+    --sidebar-item: #94a3b8; --sidebar-item-hover: #fff; --sidebar-item-active: #fff;
+    --sidebar-hover: rgba(255,255,255,0.06); --sidebar-active: rgba(255,255,255,0.06);
+    --ghost-bg: #f1f5f9; --ghost-bg-hover: #e2e8f0;
+    --st-new-bg: #dbeafe; --st-new-text: #2563eb;
+    --st-work-bg: #fef3c7; --st-work-text: #d97706;
+    --st-sale-bg: #d1fae5; --st-sale-text: #059669;
+    --st-refused-bg: #ffe4e6; --st-refused-text: #e11d48;
+    --st-callback-bg: #fce7f3; --st-callback-text: #db2777;
+  }
+
+  /* 1. Warm Cream */
+  body[data-theme="warm-cream"] {
+    --bg-app: #f5f0e8; --text-main: #3d2e26; --text-mute: #8b7d70;
+    --card-bg: #ffffff; --card-border: #e8dcc8;
+    --table-head-bg: #faf6ed; --row-border: #f0e8d8; --row-hover: #faf6ed;
+    --accent: #8b3a3a; --accent-light: #f0d6d6;
+    --sidebar-bg: #2a1f1a; --sidebar-text: #b8a89a; --sidebar-border: #3d2e26;
+    --sidebar-logo: #f5f0e8; --sidebar-section: #6b5a4d; --sidebar-icon: #8b7d70;
+    --sidebar-item: #b8a89a; --sidebar-item-hover: #f5f0e8; --sidebar-item-active: #f5f0e8;
+    --sidebar-hover: rgba(245,240,232,0.06); --sidebar-active: rgba(245,240,232,0.1);
+    --ghost-bg: #ede4d0; --ghost-bg-hover: #e0d4ba;
+    --st-new-bg: #e8dcc4; --st-new-text: #8b6f3a;
+    --st-work-bg: #f5e0b8; --st-work-text: #a8761a;
+    --st-sale-bg: #d9e5d3; --st-sale-text: #4a6e52;
+    --st-refused-bg: #f0d6d6; --st-refused-text: #8b3a3a;
+    --st-callback-bg: #f0dfc8; --st-callback-text: #a06b3d;
+  }
+
+  /* 2. Soft Sage */
+  body[data-theme="soft-sage"] {
+    --bg-app: #ebe7df; --text-main: #2c3530; --text-mute: #8b9189;
+    --card-bg: #fcfaf6; --card-border: #d8d2c5;
+    --table-head-bg: #f0ebe0; --row-border: #e3dcce; --row-hover: #f0ebe0;
+    --accent: #5b8a72; --accent-light: #d9e5d3;
+    --sidebar-bg: #1f2a26; --sidebar-text: #a8b0a5; --sidebar-border: #2a3530;
+    --sidebar-logo: #ebe7df; --sidebar-section: #5a6660; --sidebar-icon: #8b9189;
+    --sidebar-item: #a8b0a5; --sidebar-item-hover: #ebe7df; --sidebar-item-active: #ebe7df;
+    --sidebar-hover: rgba(235,231,223,0.06); --sidebar-active: rgba(235,231,223,0.1);
+    --ghost-bg: #ddd6c4; --ghost-bg-hover: #ccc5b0;
+    --st-new-bg: #d4ddca; --st-new-text: #5a6e52;
+    --st-work-bg: #ecd8b3; --st-work-text: #8b6a2f;
+    --st-sale-bg: #c8d8be; --st-sale-text: #5b8a72;
+    --st-refused-bg: #e8c8c8; --st-refused-text: #a85d5d;
+    --st-callback-bg: #ecd6b8; --st-callback-text: #a07a3d;
+  }
+
+  /* 3. Nordic Mist */
+  body[data-theme="nordic-mist"] {
+    --bg-app: #f7f8fa; --text-main: #1a1d23; --text-mute: #6b7384;
+    --card-bg: #ffffff; --card-border: #e8eaef;
+    --table-head-bg: #fafbfc; --row-border: #eef0f4; --row-hover: #fafbfc;
+    --accent: #5b7fa8; --accent-light: #dde6f0;
+    --sidebar-bg: #1a1d23; --sidebar-text: #9ba3b5; --sidebar-border: #262a32;
+    --sidebar-logo: #f7f8fa; --sidebar-section: #5a6275; --sidebar-icon: #6b7384;
+    --sidebar-item: #9ba3b5; --sidebar-item-hover: #fff; --sidebar-item-active: #fff;
+    --sidebar-hover: rgba(255,255,255,0.05); --sidebar-active: rgba(255,255,255,0.08);
+    --ghost-bg: #eef0f4; --ghost-bg-hover: #e0e3ea;
+    --st-new-bg: #e0e6ee; --st-new-text: #5b7fa8;
+    --st-work-bg: #f0e0c8; --st-work-text: #a07a3d;
+    --st-sale-bg: #d9e8df; --st-sale-text: #5b8a72;
+    --st-refused-bg: #f0d8d8; --st-refused-text: #b8696e;
+    --st-callback-bg: #f0e0d0; --st-callback-text: #a07550;
+  }
+
+  /* 4. Mocha */
+  body[data-theme="mocha"] {
+    --bg-app: #ede4d7; --text-main: #3d2e26; --text-mute: #8b7d70;
+    --card-bg: #f8f1e4; --card-border: #d8c8b0;
+    --table-head-bg: #f0e6d3; --row-border: #e3d4ba; --row-hover: #f0e6d3;
+    --accent: #8b5a3c; --accent-light: #ead8c8;
+    --sidebar-bg: #3d2e26; --sidebar-text: #c8b89a; --sidebar-border: #4d3a30;
+    --sidebar-logo: #ede4d7; --sidebar-section: #7d6850; --sidebar-icon: #a08868;
+    --sidebar-item: #c8b89a; --sidebar-item-hover: #ede4d7; --sidebar-item-active: #ede4d7;
+    --sidebar-hover: rgba(237,228,215,0.06); --sidebar-active: rgba(237,228,215,0.1);
+    --ghost-bg: #e0d0b0; --ghost-bg-hover: #d0c098;
+    --st-new-bg: #e3d0b0; --st-new-text: #8b6a3a;
+    --st-work-bg: #ead7b3; --st-work-text: #a8761a;
+    --st-sale-bg: #d4dfc8; --st-sale-text: #5b7a4f;
+    --st-refused-bg: #e8c8b8; --st-refused-text: #a85d4d;
+    --st-callback-bg: #ead0b0; --st-callback-text: #8b5a3c;
+  }
+</style>
+</head>
+<body data-theme="current">
+
+  <div class="switcher">
+    <h1>Превью тем CRM — клацай щоб переключити</h1>
+    <button class="theme-btn active" onclick="setTheme(this, 'current')">
+      <span class="dot" style="background:#8b5cf6"></span> Поточна (Violet)
+    </button>
+    <button class="theme-btn" onclick="setTheme(this, 'warm-cream')">
+      <span class="dot" style="background:#8b3a3a"></span> Warm Cream
+    </button>
+    <button class="theme-btn" onclick="setTheme(this, 'soft-sage')">
+      <span class="dot" style="background:#5b8a72"></span> Soft Sage
+    </button>
+    <button class="theme-btn" onclick="setTheme(this, 'nordic-mist')">
+      <span class="dot" style="background:#5b7fa8"></span> Nordic Mist
+    </button>
+    <button class="theme-btn" onclick="setTheme(this, 'mocha')">
+      <span class="dot" style="background:#8b5a3c"></span> Mocha
+    </button>
+  </div>
+
+  <div class="mockup">
+    <aside class="sidebar">
+      <div class="logo">
+        <div class="ic"><i class="fa-solid fa-bag-shopping"></i></div>
+        TOMIREAL
+      </div>
+      <div class="section">Основне</div>
+      <div class="item active"><i class="fa-solid fa-layer-group"></i>Замовлення</div>
+      <div class="item"><i class="fa-solid fa-chart-pie"></i>Дашборд</div>
+      <div class="item"><i class="fa-solid fa-box-archive"></i>Архів</div>
+      <div class="item"><i class="fa-solid fa-phone-slash"></i>Не дозвони</div>
+      <div class="item"><i class="fa-solid fa-user-group"></i>Постійні</div>
+      <div class="section">Склад</div>
+      <div class="item"><i class="fa-solid fa-warehouse"></i>Склад</div>
+      <div class="item"><i class="fa-solid fa-boxes-stacked"></i>Наявність</div>
+      <div class="item"><i class="fa-solid fa-file-export"></i>Вигрузка</div>
+      <div class="section">Система</div>
+      <div class="item"><i class="fa-solid fa-chart-line"></i>Статистика</div>
+      <div class="item"><i class="fa-solid fa-gear"></i>Налаштування</div>
+    </aside>
+
+    <main class="content">
+      <h2>Замовлення</h2>
+
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-label">Нові</div>
+          <div class="kpi-value">12</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">В роботі</div>
+          <div class="kpi-value">34</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Продажі</div>
+          <div class="kpi-value" style="color:var(--st-sale-text)">128</div>
+        </div>
+        <div class="kpi-card accent">
+          <div class="kpi-label">Виручка</div>
+          <div class="kpi-value">192 400 ₴</div>
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-primary"><i class="fa-solid fa-plus"></i> Нове замовлення</button>
+        <button class="btn btn-ghost">Експорт в Excel</button>
+        <button class="btn btn-ghost">Фільтри</button>
+        <button class="btn btn-danger">Видалити вибрані</button>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>№</th>
+              <th>Статус</th>
+              <th>Товар</th>
+              <th>Клієнт</th>
+              <th>Ціна</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><b>#523</b></td>
+              <td><span class="status st-new">Новий</span></td>
+              <td>Сукня №84 / 48-50 / Червона</td>
+              <td>Іваненко Іван</td>
+              <td><span class="price">1 500 ₴</span></td>
+            </tr>
+            <tr>
+              <td><b>#522</b></td>
+              <td><span class="status st-work">В работе</span></td>
+              <td>Сукня №87 / 46-48 / Чорна</td>
+              <td>Петренко Петро</td>
+              <td><span class="price">1 200 ₴</span></td>
+            </tr>
+            <tr>
+              <td><b>#521</b></td>
+              <td><span class="status st-sale">Продажа</span></td>
+              <td>Сукня №92 / 52-54 / Синя</td>
+              <td>Шевченко Анна</td>
+              <td><span class="price">1 800 ₴</span></td>
+            </tr>
+            <tr>
+              <td><b>#520</b></td>
+              <td><span class="status st-callback">Не дозвон</span></td>
+              <td>Сукня №67 / 50-52 / Електрик</td>
+              <td>Коваленко Ольга</td>
+              <td><span class="price">990 ₴</span></td>
+            </tr>
+            <tr>
+              <td><b>#519</b></td>
+              <td><span class="status st-refused">Отказ</span></td>
+              <td>Сукня №84 / 48-50 / Шоколад</td>
+              <td>Демченко Марія</td>
+              <td><span class="price">1 500 ₴</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div style="margin-top:32px; padding:20px; background:var(--card-bg); border:1px solid var(--card-border); border-radius:16px;">
+        <div style="font-size:12px; font-weight:900; text-transform:uppercase; color:var(--text-mute); letter-spacing:0.15em; margin-bottom:12px;">Підказки</div>
+        <p style="font-size:13px; color:var(--text-main); line-height:1.6;">
+          Це лише превью — реальна CRM не змінилась.
+          Клацай кнопки зверху щоб переключити теми і подивитись як виглядає сайдбар, картки, кнопки, статуси, таблиця.
+          Коли вирішиш — скажи "робимо <b>Warm Cream</b>" (або яку обрав) — і я застосую її до всієї CRM.
+        </p>
+      </div>
+    </main>
+  </div>
+
+<script>
+  function setTheme(btn, theme) {
+    document.body.dataset.theme = theme;
+    document.querySelectorAll('.theme-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  }
+</script>
+</body>
+</html>
