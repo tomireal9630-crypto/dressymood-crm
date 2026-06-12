@@ -3815,8 +3815,11 @@
         setInterval(() => {
             if (!['orders', 'archive', 'deleted', 'callbacks'].includes(currentView)) return;
             if (document.querySelector('.modal-active')) return;
+            // Якщо відкрита панель масових дій — не оновлюємо (інакше виділення зникне)
+            const bar = document.getElementById('bulkActionBar');
+            if (bar && !bar.classList.contains('hidden')) return;
             const ae = document.activeElement;
-            if (ae && ae.closest && ae.closest('#ordersTable, #archiveTable, #deletedTable, #callbacksTable, #orderModal, #confirmModal')) return;
+            if (ae && ae.closest && ae.closest('#ordersTable, #archiveTable, #deletedTable, #callbacksTable, #orderModal, #confirmModal, #bulkActionBar')) return;
             loadOrders();
         }, 15000);
     </script>

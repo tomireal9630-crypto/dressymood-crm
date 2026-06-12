@@ -220,6 +220,32 @@ const checkAuth = (req, res, next) => {
   else req.path.startsWith('/api/') ? res.status(401).json({ error: 'Auth' }) : res.redirect('/login.html');
 };
 
+// Простий in-memory rate-limit (sliding window per IP)
+function rateLimit({ windowMs, max, message }) {
+  const hits = new Map(); // ip -> [timestamp, ...]
+  return (req, res, next) => {
+    const ip = (req.headers['x-forwarded-for'] || req.ip || '').split(',')[0].trim() || 'unknown';
+    const now = Date.now();
+    const arr = (hits.get(ip) || []).filter(t => now - t < windowMs);
+    if (arr.length >= max) {
+      return res.status(429).json({ error: message || 'Too many requests' });
+    }
+    arr.push(now);
+    hits.set(ip, arr);
+    // легке прибирання застарілих записів — кожен 100-й запит
+    if (hits.size > 100 && Math.random() < 0.01) {
+      for (const [k, v] of hits) {
+        const fresh = v.filter(t => now - t < windowMs);
+        if (fresh.length === 0) hits.delete(k); else hits.set(k, fresh);
+      }
+    }
+    next();
+  };
+}
+
+const loginLimiter = rateLimit({ windowMs: 5 * 60 * 1000, max: 5, message: 'Забагато спроб входу. Спробуйте за 5 хв.' });
+const landingLimiter = rateLimit({ windowMs: 60 * 1000, max: 10, message: 'Too many requests' });
+
 function safeEqual(a, b) {
   const bufA = Buffer.from(String(a));
   const bufB = Buffer.from(String(b));
@@ -227,7 +253,7 @@ function safeEqual(a, b) {
   return crypto.timingSafeEqual(bufA, bufB);
 }
 
-app.post('/api/login', (req, res) => {
+app.post('/api/login', loginLimiter, (req, res) => {
   const { username, password } = req.body;
   const okUser = safeEqual(username || '', process.env.ADMIN_USERNAME || '');
   const okPass = safeEqual(password || '', process.env.ADMIN_PASSWORD || '');
@@ -494,11 +520,12 @@ app.get('/api/stats/dashboard', checkAuth, async (req, res) => {
     if (dateTo)   { dateParams.push(dateTo);   dateConds.push(`${dateExpr} < ($${dateParams.length}::date + interval '1 day')`); }
     const dateWhere = dateConds.length ? 'WHERE ' + dateConds.join(' AND ') : '';
 
+    // "Прийняті" — узгоджено з Апрувом: всі статуси, де менеджер додзвонився і клієнт підтвердив
     const kpiQ = `
       SELECT
         COUNT(*) FILTER (WHERE o.status = 'Новый')::int AS new_cnt,
         COUNT(*) FILTER (WHERE o.status = 'В работе')::int AS working,
-        COUNT(*) FILTER (WHERE o.status IN ('В работе','Доставка','В пути','На почте','Продажа'))::int AS accepted,
+        COUNT(*) FILTER (WHERE o.status IN ('В работе','Доставка','В пути','На почте','Продажа','Отказ','Возврат','Ошибка в ТТН','Переадресация'))::int AS accepted,
         COUNT(*) FILTER (WHERE o.status = 'Продажа')::int AS sales,
         COUNT(*) FILTER (WHERE o.status = 'Отказ')::int AS refused,
         COUNT(*) FILTER (WHERE o.status IN ('Не дозвон','Не дозвон2'))::int AS callbacks
@@ -540,12 +567,14 @@ app.get('/api/stats/roi', checkAuth, async (req, res) => {
   try {
     const settings = await getEconomicsSettings();
     const returnCost = Number(settings.return_cost) || 0;
+    // Дата ліда (а не дата зміни статусу) — щоб збігалось з Apriv, Дашбордом, юніт-економікою
+    const dateExpr = `COALESCE(o.original_created_at, o.created_at)`;
 
-    // Виручка/COGS — тільки Продажа
+    // Виручка/COGS — тільки Продажа, по даті ліда
     const soldParams = [];
     const soldConds = [`o.status = 'Продажа'`];
-    if (dateFrom) { soldParams.push(dateFrom); soldConds.push(`o.created_at >= $${soldParams.length}::date`); }
-    if (dateTo)   { soldParams.push(dateTo);   soldConds.push(`o.created_at < ($${soldParams.length}::date + interval '1 day')`); }
+    if (dateFrom) { soldParams.push(dateFrom); soldConds.push(`${dateExpr} >= $${soldParams.length}::date`); }
+    if (dateTo)   { soldParams.push(dateTo);   soldConds.push(`${dateExpr} < ($${soldParams.length}::date + interval '1 day')`); }
     const soldWhere = 'WHERE ' + soldConds.join(' AND ');
 
     const totalsQ = `
@@ -571,10 +600,11 @@ app.get('/api/stats/roi', checkAuth, async (req, res) => {
       AND oi.article IS NOT NULL AND oi.article <> ''
       GROUP BY oi.article`;
 
-    // Повернення (для returns cost) — Отказ/Возврат/Ошибка в ТТН в період, по артикулу
+    // Повернення (для returns cost) — Отказ/Возврат/Ошибка в ТТН в період, по даті ліда
+    const refusedParams = [];
     const refusedConds = [`o.status IN ('Отказ','Возврат','Ошибка в ТТН')`];
-    if (dateFrom) refusedConds.push(`o.created_at >= '${dateFrom}'::date`);
-    if (dateTo)   refusedConds.push(`o.created_at < ('${dateTo}'::date + interval '1 day')`);
+    if (dateFrom) { refusedParams.push(dateFrom); refusedConds.push(`${dateExpr} >= $${refusedParams.length}::date`); }
+    if (dateTo)   { refusedParams.push(dateTo);   refusedConds.push(`${dateExpr} < ($${refusedParams.length}::date + interval '1 day')`); }
     const refusedWhere = 'WHERE ' + refusedConds.join(' AND ');
     const refusedByArtQ = `
       SELECT oi.article, COUNT(DISTINCT o.id)::int AS refused
@@ -586,10 +616,11 @@ app.get('/api/stats/roi', checkAuth, async (req, res) => {
       SELECT COUNT(DISTINCT o.id)::int AS refused
       FROM orders o ${refusedWhere}`;
 
-    // AdSpend з fb_spend_daily
+    // AdSpend з fb_spend_daily (по даті активності реклами — це і є дата ліда)
+    const spendParams = [];
     const spendConds = [];
-    if (dateFrom) spendConds.push(`date >= '${dateFrom}'::date`);
-    if (dateTo)   spendConds.push(`date <= '${dateTo}'::date`);
+    if (dateFrom) { spendParams.push(dateFrom); spendConds.push(`date >= $${spendParams.length}::date`); }
+    if (dateTo)   { spendParams.push(dateTo);   spendConds.push(`date <= $${spendParams.length}::date`); }
     const spendWhere = spendConds.length ? 'WHERE ' + spendConds.join(' AND ') : '';
     const spendTotalQ = `
       SELECT
@@ -609,11 +640,11 @@ app.get('/api/stats/roi', checkAuth, async (req, res) => {
     const [t, a, refT, refA, spT, spA, spU] = await Promise.all([
       pool.query(totalsQ, soldParams),
       pool.query(byArtQ, soldParams),
-      pool.query(refusedTotalQ),
-      pool.query(refusedByArtQ),
-      pool.query(spendTotalQ),
-      pool.query(spendByArtQ),
-      pool.query(spendUnmappedQ)
+      pool.query(refusedTotalQ, refusedParams),
+      pool.query(refusedByArtQ, refusedParams),
+      pool.query(spendTotalQ, spendParams),
+      pool.query(spendByArtQ, spendParams),
+      pool.query(spendUnmappedQ, spendParams)
     ]);
 
     const tr = t.rows[0] || {};
@@ -1145,8 +1176,10 @@ app.get('/api/stats/buyout', checkAuth, async (req, res) => {
   try {
     const params = [];
     const conditions = [`o.status IN ('Продажа','Отказ')`];
-    if (dateFrom) { params.push(dateFrom); conditions.push(`o.created_at >= $${params.length}::date`); }
-    if (dateTo)   { params.push(dateTo);   conditions.push(`o.created_at < ($${params.length}::date + interval '1 day')`); }
+    // Дата ліда — для узгодженості з Апрувом, Дашбордом, юніт-економікою, ROI
+    const dateExpr = `COALESCE(o.original_created_at, o.created_at)`;
+    if (dateFrom) { params.push(dateFrom); conditions.push(`${dateExpr} >= $${params.length}::date`); }
+    if (dateTo)   { params.push(dateTo);   conditions.push(`${dateExpr} < ($${params.length}::date + interval '1 day')`); }
     if (supplier) {
       params.push(supplier);
       conditions.push(`EXISTS (SELECT 1 FROM order_items oi WHERE oi.order_id = o.id AND oi.supplier_name = $${params.length})`);
@@ -1346,7 +1379,7 @@ function normalizeUaPhone(raw) {
 }
 
 // --- ПРИЙОМ ЗАМОВЛЕНЬ З ЛЕНДІНГІВ (публічний, захищений ключем) ---
-app.post('/api/landing/order', async (req, res) => {
+app.post('/api/landing/order', landingLimiter, async (req, res) => {
   const expected = process.env.LANDING_API_KEY;
   if (!expected) return res.status(503).json({ error: 'LANDING_API_KEY not configured' });
   if (!safeEqual(req.body.key || '', expected)) {
