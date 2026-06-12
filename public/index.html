@@ -1199,6 +1199,8 @@
         </div>
     </main>
 
+    <div id="appToast"></div>
+
     <div id="bulkActionBar" class="fixed bottom-6 left-1/2 -translate-x-1/2 z-[80] hidden items-center gap-3 bg-slate-900 text-white px-5 py-3 rounded-2xl shadow-2xl shadow-slate-900/30">
         <div class="text-sm font-bold">Вибрано: <span id="bulkSelectedCount" class="text-violet-300">0</span></div>
         <div class="w-px h-6 bg-slate-700"></div>
@@ -1470,6 +1472,37 @@
                 { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
             ));
         }
+        // Toast-сповіщення
+        let _toastTimer = null;
+        function showToast(text, ms) {
+            const el = document.getElementById('appToast');
+            if (!el) return;
+            el.textContent = text;
+            el.classList.add('show');
+            clearTimeout(_toastTimer);
+            _toastTimer = setTimeout(() => el.classList.remove('show'), ms || 1500);
+        }
+
+        // Клік по телефону → tel: (мобільний/Skype) + копія в буфер
+        function callPhone(ev, phone) {
+            if (ev && ev.stopPropagation) ev.stopPropagation();
+            const clean = String(phone || '').replace(/[^\d+]/g, '');
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(clean).then(
+                    () => showToast('Скопійовано: ' + clean),
+                    () => showToast('Не вдалося скопіювати')
+                );
+            }
+            // tel: лінк спрацює сам по собі (атрибут href на <a>)
+        }
+
+        function phoneLink(phone, extraClass) {
+            const s = String(phone || '').trim();
+            if (!s) return '';
+            const clean = s.replace(/[^\d+]/g, '');
+            return `<a href="tel:${esc(clean)}" class="phone-call ${extraClass || ''}" onclick="callPhone(event, '${esc(clean)}')" title="Клік: подзвонити та скопіювати"><i class="fa-solid fa-phone"></i><span>${esc(s)}</span></a>`;
+        }
+
         function safeUrl(v) {
             const s = String(v ?? '').trim();
             return /^https?:\/\//i.test(s) ? s : '#';
@@ -1746,7 +1779,7 @@
                     return `
                     <tr onclick="openCustomerOrders('${esc(c.phone)}')" class="hover:bg-slate-50 transition-all cursor-pointer align-middle">
                         <td class="px-6 py-5 font-bold text-slate-800 text-sm">${esc(c.fullName || '—')}</td>
-                        <td class="px-4 py-5 order-phone text-sm font-bold">${esc(c.phone)}</td>
+                        <td class="px-4 py-5 order-phone text-sm font-bold">${phoneLink(c.phone)}</td>
                         <td class="px-4 py-5 text-center text-sm font-black text-slate-700">${total}</td>
                         <td class="px-4 py-5 text-center text-sm font-bold text-emerald-600">${bought}</td>
                         <td class="px-4 py-5 text-center text-sm font-bold text-rose-500">${refused}</td>
@@ -2351,8 +2384,8 @@
                         <td class="px-4 py-5">
                             <div class="font-bold text-slate-800 text-sm leading-tight">${esc(o.fullName)}</div>
                             ${isRepeat
-                                ? `<div class="mt-0.5"><span class="repeat-id order-phone text-xs font-bold" title="${esc(repeatTip)}">${esc(o.phone)}</span></div>`
-                                : `<div class="order-phone text-xs font-bold mt-0.5">${esc(o.phone)}</div>`
+                                ? `<div class="mt-0.5"><span class="repeat-id order-phone text-xs font-bold" title="${esc(repeatTip)}">${phoneLink(o.phone)}</span></div>`
+                                : `<div class="order-phone text-xs font-bold mt-0.5">${phoneLink(o.phone)}</div>`
                             }
                         </td>
                         <td class="px-4 py-5 text-sm text-slate-700 font-medium">${esc(o.city || '—')}</td>
@@ -2559,7 +2592,7 @@
                     <td class="px-3 py-3 text-xs text-slate-600">${esc(r.name || '—')}</td>
                     <td class="px-3 py-3 text-xs">
                         <div class="font-bold text-slate-800 leading-tight">${esc(r.fullName || '—')}</div>
-                        <div class="text-[10px] text-slate-400 font-medium mt-0.5">${esc(r.phone || '')}</div>
+                        <div class="text-[10px] text-slate-400 font-medium mt-0.5">${phoneLink(r.phone || '')}</div>
                     </td>
                     <td class="px-3 py-3 text-[11px] font-mono font-bold text-slate-700 whitespace-nowrap">${esc(r.ttn || '—')}</td>
                     <td class="px-3 py-3 text-[11px] font-bold text-slate-600 whitespace-nowrap">${esc(r.supplier_name || '—')}</td>

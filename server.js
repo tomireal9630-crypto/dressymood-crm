@@ -159,6 +159,10 @@ async function updateDatabaseSchema() {
             ADD COLUMN IF NOT EXISTS stock_id INTEGER;
         `);
 
+        // Уніфікація legacy 'Новий' (укр і) → 'Новый' (рос ы) — щоб збігалось з фільтрами
+        await pool.query(`UPDATE orders SET status = 'Новый' WHERE status = 'Новий'`);
+        await pool.query(`ALTER TABLE orders ALTER COLUMN status SET DEFAULT 'Новый'`);
+
         await pool.query(`
             CREATE TABLE IF NOT EXISTS fb_ad_accounts (
                 id SERIAL PRIMARY KEY,
@@ -483,10 +487,11 @@ app.get('/api/orders/suppliers', checkAuth, async (req, res) => {
 app.get('/api/stats/dashboard', checkAuth, async (req, res) => {
   const { dateFrom, dateTo, status } = req.query;
   try {
+    const dateExpr = `COALESCE(o.original_created_at, o.created_at)`;
     const dateParams = [];
     const dateConds = [];
-    if (dateFrom) { dateParams.push(dateFrom); dateConds.push(`o.created_at >= $${dateParams.length}::date`); }
-    if (dateTo)   { dateParams.push(dateTo);   dateConds.push(`o.created_at < ($${dateParams.length}::date + interval '1 day')`); }
+    if (dateFrom) { dateParams.push(dateFrom); dateConds.push(`${dateExpr} >= $${dateParams.length}::date`); }
+    if (dateTo)   { dateParams.push(dateTo);   dateConds.push(`${dateExpr} < ($${dateParams.length}::date + interval '1 day')`); }
     const dateWhere = dateConds.length ? 'WHERE ' + dateConds.join(' AND ') : '';
 
     const kpiQ = `
@@ -507,12 +512,12 @@ app.get('/api/stats/dashboard', checkAuth, async (req, res) => {
     }
     const byDayWhere = byDayConds.length ? 'WHERE ' + byDayConds.join(' AND ') : '';
     const byDayQ = `
-      SELECT to_char(date_trunc('day', o.created_at), 'YYYY-MM-DD') AS date,
+      SELECT to_char(date_trunc('day', ${dateExpr}), 'YYYY-MM-DD') AS date,
              COUNT(*)::int AS count,
              COALESCE(SUM((SELECT COALESCE(SUM(oi.price * oi.quantity),0) FROM order_items oi WHERE oi.order_id = o.id)), 0)::numeric AS sum
       FROM orders o ${byDayWhere}
-      GROUP BY date_trunc('day', o.created_at)
-      ORDER BY date_trunc('day', o.created_at) DESC`;
+      GROUP BY date_trunc('day', ${dateExpr})
+      ORDER BY date_trunc('day', ${dateExpr}) DESC`;
 
     const [k, d] = await Promise.all([pool.query(kpiQ, dateParams), pool.query(byDayQ, byDayParams)]);
     const kpi = k.rows[0] || {};
