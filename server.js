@@ -869,19 +869,21 @@ app.get('/api/products/:id(\\d+)/economics', checkAuth, async (req, res) => {
     const refusedAfter = s.refused_after || 0;
 
     const approvalRate = totalLeads ? approved / totalLeads : 0;
-    const buyoutRate = approved ? sold / approved : 0;
-    const refusalRate = approved ? refusedAfter / approved : 0;
     const returnCost = Number(settings.return_cost) || 0;
+    // Final buyout rate — рахується лише серед РЕЗОЛЮЦІЙ (Продажа+Отказ/Возврат/Ошибка),
+    // ігнорує "в дорозі" (Доставка/В пути/На почте). Це чесна оцінка майбутнього викупу.
+    // Мінімальний поріг 5 — щоб не довіряти статистиці на дуже малих числах.
+    const RESOLVED_MIN = 5;
+    const resolved = sold + refusedAfter;
+    const useFinal = resolved >= RESOLVED_MIN;
+    const buyoutRate  = useFinal ? sold / resolved        : (approved ? sold / approved : 0);
+    const refusalRate = useFinal ? refusedAfter / resolved : (approved ? refusedAfter / approved : 0);
 
     // На 100 лідів:
     //   approved = 100 × approvalRate
-    //   sold     = approved × buyoutRate
+    //   sold     = approved × buyoutRate          (екстраполяція на ВСІ підтверджені, у т.ч. ті що ще в дорозі)
     //   refused  = approved × refusalRate
-    //   Виручка = sold × price
-    //   COGS    = sold × cost
-    //   Returns = refused × return_cost
-    //   ВаловийПрибуток = виручка − COGS − Returns
-    //   CPL_max = ВаловийПрибуток / 100
+    //   ВаловийПрибуток = sold×(price−cost) − refused×return_cost
     const per100 = {
       approved: 100 * approvalRate,
       sold: 100 * approvalRate * buyoutRate,
@@ -902,9 +904,12 @@ app.get('/api/products/:id(\\d+)/economics', checkAuth, async (req, res) => {
         approved,
         sold,
         refused_after: refusedAfter,
+        in_flight: approved - resolved,
+        resolved,
         approval_pct: Math.round(approvalRate * 1000) / 10,
         buyout_pct: Math.round(buyoutRate * 1000) / 10,
-        refusal_pct: Math.round(refusalRate * 1000) / 10
+        refusal_pct: Math.round(refusalRate * 1000) / 10,
+        is_extrapolated: useFinal
       },
       settings: { return_cost: returnCost },
       cpl: {
@@ -1134,6 +1139,7 @@ app.get('/api/stats/unit-economics', checkAuth, async (req, res) => {
       ORDER BY p.article`;
 
     const r = await pool.query(sql, [lookback]);
+    const RESOLVED_MIN = 5;
     const rows = r.rows.map(row => {
       const sellPrice = Number(row.price) || 0;
       const productCost = Number(row.cost) || 0;
@@ -1141,8 +1147,12 @@ app.get('/api/stats/unit-economics', checkAuth, async (req, res) => {
       const targetRoi = (row.target_roi_pct != null ? Number(row.target_roi_pct) : defaultTargetRoi) / 100;
       const total = row.total_leads;
       const approvalRate = total ? row.approved / total : 0;
-      const buyoutRate = row.approved ? row.sold / row.approved : 0;
-      const refusalRate = row.approved ? row.refused_after / row.approved : 0;
+      // Final buyout: рахуємо лише серед резолюцій (Продажа+Отказ/Возврат/Ошибка),
+      // ігноруємо "в дорозі". Поріг ≥5 щоб не довіряти статистиці на дуже малих числах.
+      const resolved = row.sold + row.refused_after;
+      const useFinal = resolved >= RESOLVED_MIN;
+      const buyoutRate  = useFinal ? row.sold / resolved        : (row.approved ? row.sold / row.approved : 0);
+      const refusalRate = useFinal ? row.refused_after / resolved : (row.approved ? row.refused_after / row.approved : 0);
       const sold100 = 100 * approvalRate * buyoutRate;
       const refused100 = 100 * approvalRate * refusalRate;
       const grossProfit100 = sold100 * sellPrice - sold100 * productCost - refused100 * returnCost;
@@ -1161,6 +1171,8 @@ app.get('/api/stats/unit-economics', checkAuth, async (req, res) => {
         approval_pct: Math.round(approvalRate * 1000) / 10,
         buyout_pct: Math.round(buyoutRate * 1000) / 10,
         refusal_pct: Math.round(refusalRate * 1000) / 10,
+        is_extrapolated: useFinal,
+        in_flight: row.approved - resolved,
         cpl_max: Math.round(cpl_max * 100) / 100,
         cpl_recommended: Math.round(cpl_recommended * 100) / 100,
         has_history: total > 0 && row.approved > 0

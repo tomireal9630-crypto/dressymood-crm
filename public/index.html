@@ -3678,9 +3678,9 @@
                                 <div class="text-[10px] text-slate-400">${h.approved} з ${h.total_leads}</div>
                             </div>
                             <div>
-                                <div class="text-[10px] font-black text-slate-400 uppercase mb-1">% Викупу</div>
+                                <div class="text-[10px] font-black text-slate-400 uppercase mb-1">% Викупу ${h.is_extrapolated ? '<span class="text-[8px] font-black text-violet-500 bg-violet-50 px-1 py-0.5 rounded ml-1" title="Розраховано серед резолюцій (sold/(sold+refused)). Замовлення в дорозі екстраполюються по цьому ж %.">PROJ</span>' : ''}</div>
                                 <div class="text-lg font-black text-slate-700">${h.buyout_pct}%</div>
-                                <div class="text-[10px] text-slate-400">${h.sold} з ${h.approved}</div>
+                                <div class="text-[10px] text-slate-400">${h.sold} з ${h.is_extrapolated ? (h.resolved || (h.sold + h.refused_after)) : h.approved}</div>
                             </div>
                             <div>
                                 <div class="text-[10px] font-black text-slate-400 uppercase mb-1">% Відмов</div>
@@ -3688,6 +3688,7 @@
                                 <div class="text-[10px] text-slate-400">${h.refused_after} відмов на НП</div>
                             </div>
                         </div>
+                        ${h.in_flight > 0 ? `<div class="mt-3 text-[11px] text-slate-500"><i class="fa-solid fa-truck text-amber-500 mr-1"></i>В дорозі: <b>${h.in_flight}</b> заявок (Доставка/В пути/На почте) — їх результат ще не відомий, прогноз робиться на основі історичних викупів</div>` : ''}
                     `}
                 </div>
 
