@@ -503,21 +503,21 @@
                 <div class="flex justify-between items-center mb-8">
                     <div>
                         <h2 class="text-3xl font-black text-slate-800 uppercase italic tracking-tighter">Наявність товарів</h2>
-                        <p class="text-slate-400 font-medium text-sm">Управління залишками на складі (повернення, тощо)</p>
+                        <p class="text-slate-400 font-medium text-sm">Клацай на товар щоб редагувати залишки по кольорах і розмірах</p>
                     </div>
-                    <button onclick="openModal('stockModal')" class="bg-amber-500 text-white px-6 py-3 rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-amber-600 transition-all shadow-lg shadow-amber-200">
-                        <i class="fa-solid fa-plus mr-2"></i> Додати товар на склад
+                    <button onclick="openStockPickProduct()" class="bg-amber-500 text-white px-6 py-3 rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-amber-600 transition-all shadow-lg shadow-amber-200">
+                        <i class="fa-solid fa-plus mr-2"></i> Додати товар
                     </button>
                 </div>
-                
+
                 <div class="bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/40 border border-slate-100 overflow-hidden">
                     <table class="w-full text-left">
                         <thead>
                             <tr class="bg-slate-50/50 border-b border-slate-100">
-                                <th class="px-8 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Артикул / Товар</th>
-                                <th class="px-6 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Колір / Розмір</th>
-                                <th class="px-6 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Кількість (шт)</th>
-                                <th class="px-8 py-6"></th>
+                                <th class="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Артикул / Товар</th>
+                                <th class="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Варіантів</th>
+                                <th class="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Всього шт</th>
+                                <th class="px-8 py-5 w-12"></th>
                             </tr>
                         </thead>
                         <tbody id="stockTable" class="divide-y divide-slate-50"></tbody>
@@ -1344,6 +1344,41 @@
                     <button type="submit" class="w-full bg-indigo-600 text-white py-4 rounded-xl font-black text-sm uppercase tracking-widest hover:bg-indigo-700 transition-all">Зберегти товар</button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- Швидкий вибір товару для додавання у Наявність -->
+    <div id="stockPickModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] hidden items-center justify-center p-6">
+        <div class="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl overflow-hidden">
+            <div class="p-6 border-b border-slate-100 flex justify-between items-center bg-amber-50/50">
+                <h3 class="text-lg font-black text-slate-800 uppercase italic">Оберіть товар</h3>
+                <button onclick="closeModal('stockPickModal')" class="text-slate-400 hover:text-rose-500 transition-colors"><i class="fa-solid fa-xmark text-xl"></i></button>
+            </div>
+            <div class="p-6">
+                <input type="text" id="stockPickSearch" placeholder="Пошук артикулу..." oninput="renderStockPickList()"
+                    class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none font-bold text-sm mb-3">
+                <div id="stockPickList" class="max-h-80 overflow-y-auto space-y-1 custom-scrollbar"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Матриця Наявності (кольори × розміри) -->
+    <div id="stockMatrixModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] hidden items-center justify-center p-6">
+        <div class="bg-white w-full max-w-4xl rounded-[2.5rem] shadow-2xl flex flex-col max-h-[90vh]">
+            <div class="p-6 border-b border-slate-100 flex justify-between items-center bg-amber-50/50 shrink-0">
+                <div>
+                    <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Наявність товару</div>
+                    <h3 id="stockMatrixTitle" class="text-xl font-black text-slate-800 uppercase italic"></h3>
+                </div>
+                <button onclick="closeStockMatrix()" class="text-slate-400 hover:text-rose-500 transition-colors"><i class="fa-solid fa-xmark text-xl"></i></button>
+            </div>
+            <div class="p-8 overflow-auto custom-scrollbar" id="stockMatrixBody">
+                <!-- матриця рендериться через JS -->
+            </div>
+            <div class="p-4 border-t border-slate-100 flex justify-between items-center bg-slate-50/50 shrink-0">
+                <div class="text-xs text-slate-500"><i class="fa-solid fa-circle-info text-amber-500 mr-1"></i>Натисни в клітинку щоб ввести кількість. Зміни зберігаються одразу.</div>
+                <div class="text-sm font-bold text-slate-700">Всього: <span id="stockMatrixTotal" class="text-amber-600 font-black">0</span> шт</div>
+            </div>
         </div>
     </div>
 
@@ -3747,57 +3782,314 @@
         }
 
         // --- ЛОГІКА НАЯВНОСТІ ---
+        // --- НАЯВНІСТЬ: список товарів (агреговано) ---
+        let stockProductsCache = [];
+
         async function loadStockData() {
             try {
-                const prodRes = await fetch('/api/warehouse/products');
+                const [prodRes, stockRes] = await Promise.all([
+                    fetch('/api/warehouse/products'),
+                    fetch('/api/stock')
+                ]);
                 const products = await prodRes.json();
-                document.getElementById('stockProductSelect').innerHTML = `<option value="">-- Оберіть товар --</option>` + 
-                    products.map(p => `<option value="${p.id}">${esc(p.article)} (${esc(p.name)})</option>`).join('');
+                const stock = await stockRes.json();
+                stockProductsCache = products;
 
-                const res = await fetch('/api/stock');
-                const data = await res.json();
+                // Сумуємо по продукту
+                const byProduct = new Map();
+                stock.forEach(s => {
+                    const cur = byProduct.get(s.product_id) || { variants: 0, total: 0 };
+                    cur.variants += 1;
+                    cur.total += Number(s.quantity) || 0;
+                    byProduct.set(s.product_id, cur);
+                });
+
+                // Показуємо лише ті товари у яких є записи в наявності.
+                // (Якщо хочеш бачити ВСІ продукти — змінити фільтр.)
+                const rows = products
+                    .filter(p => byProduct.has(p.id))
+                    .map(p => ({ ...p, ...(byProduct.get(p.id) || { variants: 0, total: 0 }) }))
+                    .sort((a, b) => (a.article || '').localeCompare(b.article || ''));
+
                 const table = document.getElementById('stockTable');
-                if(!data.length) return table.innerHTML = `<tr><td colspan="4" class="p-8 text-center text-slate-400 font-medium">Наявність порожня</td></tr>`;
-                
-                table.innerHTML = data.map(s => `
-                <tr class="hover:bg-slate-50 transition-all group">
-                    <td class="px-8 py-5">
-                        <div class="text-[12px] font-black text-slate-800 uppercase tracking-tighter">${esc(s.article)}</div>
-                        <div class="text-[10px] text-slate-500 font-medium">${esc(s.product_name)}</div>
-                    </td>
-                    <td class="px-6 py-5">
-                        <span class="bg-slate-100 text-slate-700 font-bold px-2 py-1 rounded text-[10px] mr-1">К: ${esc(s.color || '-')}</span>
-                        <span class="bg-slate-100 text-slate-700 font-bold px-2 py-1 rounded text-[10px]">Р: ${esc(s.size || '-')}</span>
-                    </td>
-                    <td class="px-6 py-5">
-                        <input type="number" value="${s.quantity}" min="0" onchange="updateStock(${s.id}, this.value)" 
-                            class="w-20 text-sm font-black bg-slate-50 border border-slate-100 rounded-lg px-3 py-1.5 outline-none focus:border-amber-400">
-                    </td>
-                    <td class="px-8 py-5 text-right">
-                        <button onclick="deleteStock(${s.id})" class="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-rose-500 transition-all p-2 bg-slate-50 rounded-lg"><i class="fa-solid fa-trash-can"></i></button>
-                    </td>
-                </tr>`).join('');
+                if (!rows.length) {
+                    table.innerHTML = `<tr><td colspan="4" class="p-10 text-center text-slate-400 font-medium">Наявність порожня. Натисни <b>Додати товар</b>.</td></tr>`;
+                    return;
+                }
+                table.innerHTML = rows.map(p => `
+                    <tr class="hover:bg-amber-50/40 transition-all cursor-pointer group" onclick="openStockMatrix(${p.id})">
+                        <td class="px-8 py-5">
+                            <div class="text-[13px] font-black text-slate-800 uppercase tracking-tighter">${esc(p.article)}</div>
+                            <div class="text-[10px] text-slate-500 font-medium">${esc(p.name)}</div>
+                        </td>
+                        <td class="px-6 py-5 text-center">
+                            <span class="inline-flex items-center text-[11px] font-black px-3 py-1 rounded-full bg-slate-100 text-slate-600">${p.variants}</span>
+                        </td>
+                        <td class="px-6 py-5 text-center">
+                            <span class="text-base font-black ${p.total > 0 ? 'text-amber-600' : 'text-slate-300'}">${p.total}</span>
+                        </td>
+                        <td class="px-8 py-5 text-right">
+                            <i class="fa-solid fa-arrow-right text-slate-300 group-hover:text-amber-500 transition-all"></i>
+                        </td>
+                    </tr>
+                `).join('');
             } catch (e) { console.error(e); }
         }
 
-        document.getElementById('addStockForm').onsubmit = async (e) => {
-            e.preventDefault();
-            try {
-                const res = await fetch('/api/stock', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(Object.fromEntries(new FormData(e.target))) });
-                const result = await res.json();
-                if (!res.ok) throw new Error(result.error || 'Помилка сервера');
-                closeModal('stockModal'); e.target.reset(); loadStockData();
-            } catch (err) { alert('Помилка: ' + err.message); }
-        };
+        function openStockPickProduct() {
+            document.getElementById('stockPickSearch').value = '';
+            renderStockPickList();
+            openModal('stockPickModal');
+        }
 
-        async function updateStock(id, quantity) {
-            await fetch(`/api/stock/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ quantity }) });
+        function renderStockPickList() {
+            const q = (document.getElementById('stockPickSearch').value || '').toLowerCase().trim();
+            const list = stockProductsCache.filter(p =>
+                !q || (p.article || '').toLowerCase().includes(q) || (p.name || '').toLowerCase().includes(q)
+            );
+            const wrap = document.getElementById('stockPickList');
+            if (!list.length) {
+                wrap.innerHTML = `<div class="text-center text-slate-400 italic text-sm py-6">Нічого не знайдено</div>`;
+                return;
+            }
+            wrap.innerHTML = list.map(p => `
+                <button onclick="closeModal('stockPickModal'); openStockMatrix(${p.id})"
+                    class="w-full text-left px-4 py-3 rounded-xl hover:bg-amber-50 border border-transparent hover:border-amber-200 transition-all flex items-center gap-3">
+                    <div class="flex-1 min-w-0">
+                        <div class="font-black text-slate-800 uppercase text-sm">${esc(p.article)}</div>
+                        <div class="text-[11px] text-slate-500 truncate">${esc(p.name)}</div>
+                    </div>
+                    <i class="fa-solid fa-arrow-right text-slate-300"></i>
+                </button>
+            `).join('');
+        }
+
+        // --- НАЯВНІСТЬ: матриця кольори × розміри ---
+        let stockMatrixProductId = null;
+        let stockMatrixItems = []; // [{id, color, size, quantity}, ...]
+        let stockMatrixColors = []; // унікальні + локально додані
+        let stockMatrixSizes = [];
+        let stockMatrixProduct = null;
+
+        async function openStockMatrix(productId) {
+            stockMatrixProductId = productId;
+            stockMatrixProduct = stockProductsCache.find(p => p.id === productId) || null;
+            document.getElementById('stockMatrixTitle').textContent =
+                stockMatrixProduct ? `${stockMatrixProduct.article} · ${stockMatrixProduct.name}` : 'Товар';
+            const body = document.getElementById('stockMatrixBody');
+            body.innerHTML = `<div class="text-center text-slate-400 py-10">Завантаження…</div>`;
+            openModal('stockMatrixModal');
+            try {
+                const r = await fetch(`/api/stock?product_id=${productId}`);
+                const items = await r.json();
+                stockMatrixItems = Array.isArray(items) ? items : [];
+                stockMatrixColors = [...new Set(stockMatrixItems.map(i => i.color).filter(Boolean))].sort();
+                stockMatrixSizes = [...new Set(stockMatrixItems.map(i => i.size).filter(Boolean))].sort();
+                renderStockMatrix();
+            } catch (e) {
+                body.innerHTML = `<div class="text-center text-rose-500 py-10">Помилка: ${esc(e.message)}</div>`;
+            }
+        }
+
+        function closeStockMatrix() {
+            closeModal('stockMatrixModal');
+            stockMatrixProductId = null;
+            stockMatrixItems = [];
             loadStockData();
         }
 
-        async function deleteStock(id) {
-            await fetch(`/api/stock/${id}`, { method: 'DELETE' });
-            loadStockData();
+        function stockCellLookup(color, size) {
+            return stockMatrixItems.find(i =>
+                (i.color || '').toLowerCase() === color.toLowerCase() &&
+                (i.size || '').toLowerCase() === size.toLowerCase()
+            );
+        }
+
+        function renderStockMatrix() {
+            const body = document.getElementById('stockMatrixBody');
+            const colors = stockMatrixColors;
+            const sizes = stockMatrixSizes;
+            let total = 0;
+            stockMatrixItems.forEach(i => { total += Number(i.quantity) || 0; });
+            document.getElementById('stockMatrixTotal').textContent = total;
+
+            if (!colors.length && !sizes.length) {
+                body.innerHTML = `
+                    <div class="text-center py-10">
+                        <div class="text-slate-400 mb-4 italic">Ще немає жодного варіанту. Додай перший колір і розмір:</div>
+                        <div class="inline-flex gap-2">
+                            <button onclick="addStockColor()" class="px-4 py-2 rounded-lg bg-amber-500 text-white text-xs font-black uppercase tracking-wider hover:bg-amber-600 transition-all"><i class="fa-solid fa-plus mr-1"></i> Додати колір</button>
+                            <button onclick="addStockSize()" class="px-4 py-2 rounded-lg bg-amber-500 text-white text-xs font-black uppercase tracking-wider hover:bg-amber-600 transition-all"><i class="fa-solid fa-plus mr-1"></i> Додати розмір</button>
+                        </div>
+                    </div>`;
+                return;
+            }
+
+            const showColors = colors.length ? colors : [''];
+            const showSizes = sizes.length ? sizes : [''];
+
+            let html = `<table class="w-full border-collapse">
+                <thead>
+                    <tr>
+                        <th class="p-2 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest w-32">Колір \\ Розмір</th>
+                        ${showSizes.map(sz => `
+                            <th class="p-2 text-center text-[11px] font-black text-slate-700 bg-slate-50 border border-slate-100 min-w-[80px]">
+                                <div class="flex items-center justify-between gap-1">
+                                    <span class="flex-1 text-center">${esc(sz || '—')}</span>
+                                    <button onclick="removeStockSize('${esc(sz).replace(/'/g, "\\'")}')" title="Видалити розмір" class="text-slate-300 hover:text-rose-500 text-[10px]"><i class="fa-solid fa-xmark"></i></button>
+                                </div>
+                            </th>`).join('')}
+                        <th class="p-2 w-20">
+                            <button onclick="addStockSize()" class="w-full px-2 py-1.5 rounded text-[10px] font-black uppercase tracking-wider text-amber-600 bg-amber-50 border border-dashed border-amber-300 hover:bg-amber-100 transition-all whitespace-nowrap"><i class="fa-solid fa-plus mr-1"></i>розмір</button>
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>`;
+
+            showColors.forEach(color => {
+                html += `<tr>
+                    <td class="p-2 text-sm font-bold text-slate-700 bg-slate-50 border border-slate-100">
+                        <div class="flex items-center justify-between gap-1">
+                            <span class="flex-1 truncate" title="${esc(color)}">${esc(color || '—')}</span>
+                            <button onclick="removeStockColor('${esc(color).replace(/'/g, "\\'")}')" title="Видалити колір" class="text-slate-300 hover:text-rose-500 text-[10px]"><i class="fa-solid fa-xmark"></i></button>
+                        </div>
+                    </td>`;
+                showSizes.forEach(size => {
+                    const cell = stockCellLookup(color, size);
+                    const qty = cell ? Number(cell.quantity) : '';
+                    const placeholder = '—';
+                    html += `<td class="border border-slate-100 p-0">
+                        <input type="number" min="0" step="1"
+                            value="${qty}" placeholder="${placeholder}"
+                            data-color="${esc(color)}" data-size="${esc(size)}" data-id="${cell ? cell.id : ''}"
+                            onchange="saveStockCell(this)"
+                            class="w-full text-center text-sm font-black px-2 py-3 bg-white outline-none focus:bg-amber-50 ${qty ? 'text-amber-600' : 'text-slate-300'}">
+                    </td>`;
+                });
+                html += `<td></td>`;
+                html += `</tr>`;
+            });
+
+            html += `<tr>
+                <td class="p-2">
+                    <button onclick="addStockColor()" class="w-full px-2 py-1.5 rounded text-[10px] font-black uppercase tracking-wider text-amber-600 bg-amber-50 border border-dashed border-amber-300 hover:bg-amber-100 transition-all whitespace-nowrap"><i class="fa-solid fa-plus mr-1"></i>колір</button>
+                </td>
+                <td colspan="${showSizes.length + 1}"></td>
+            </tr>`;
+
+            html += `</tbody></table>`;
+            body.innerHTML = html;
+        }
+
+        function addStockColor() {
+            const color = prompt('Назва кольору (наприклад: Червоний, Чорний, Шоколад):');
+            if (color === null) return;
+            const trimmed = color.trim();
+            if (!trimmed) return;
+            if (stockMatrixColors.some(c => c.toLowerCase() === trimmed.toLowerCase())) {
+                alert('Такий колір уже є');
+                return;
+            }
+            stockMatrixColors.push(trimmed);
+            stockMatrixColors.sort();
+            renderStockMatrix();
+        }
+
+        function addStockSize() {
+            const size = prompt('Розмір (наприклад: 46-48, 48-50, M, L):');
+            if (size === null) return;
+            const trimmed = size.trim();
+            if (!trimmed) return;
+            if (stockMatrixSizes.some(s => s.toLowerCase() === trimmed.toLowerCase())) {
+                alert('Такий розмір уже є');
+                return;
+            }
+            stockMatrixSizes.push(trimmed);
+            stockMatrixSizes.sort();
+            renderStockMatrix();
+        }
+
+        async function removeStockColor(color) {
+            const affected = stockMatrixItems.filter(i => (i.color || '').toLowerCase() === color.toLowerCase());
+            const totalQty = affected.reduce((s, i) => s + (Number(i.quantity) || 0), 0);
+            if (totalQty > 0) {
+                if (!confirm(`Видалити колір "${color}"? Буде втрачено ${totalQty} шт залишків.`)) return;
+            } else {
+                if (!confirm(`Видалити колір "${color}"?`)) return;
+            }
+            try {
+                await Promise.all(affected.map(i => fetch(`/api/stock/${i.id}`, { method: 'DELETE' })));
+                stockMatrixItems = stockMatrixItems.filter(i => (i.color || '').toLowerCase() !== color.toLowerCase());
+                stockMatrixColors = stockMatrixColors.filter(c => c.toLowerCase() !== color.toLowerCase());
+                renderStockMatrix();
+            } catch (e) { alert('Помилка: ' + e.message); }
+        }
+
+        async function removeStockSize(size) {
+            const affected = stockMatrixItems.filter(i => (i.size || '').toLowerCase() === size.toLowerCase());
+            const totalQty = affected.reduce((s, i) => s + (Number(i.quantity) || 0), 0);
+            if (totalQty > 0) {
+                if (!confirm(`Видалити розмір "${size}"? Буде втрачено ${totalQty} шт залишків.`)) return;
+            } else {
+                if (!confirm(`Видалити розмір "${size}"?`)) return;
+            }
+            try {
+                await Promise.all(affected.map(i => fetch(`/api/stock/${i.id}`, { method: 'DELETE' })));
+                stockMatrixItems = stockMatrixItems.filter(i => (i.size || '').toLowerCase() !== size.toLowerCase());
+                stockMatrixSizes = stockMatrixSizes.filter(s => s.toLowerCase() !== size.toLowerCase());
+                renderStockMatrix();
+            } catch (e) { alert('Помилка: ' + e.message); }
+        }
+
+        async function saveStockCell(input) {
+            const color = input.dataset.color;
+            const size = input.dataset.size;
+            const id = input.dataset.id;
+            const qty = parseInt(input.value);
+            if (input.value === '' || isNaN(qty)) {
+                // Порожнє → нічого не зберігаємо (повертаємо як було)
+                const cell = stockCellLookup(color, size);
+                input.value = cell ? cell.quantity : '';
+                return;
+            }
+            if (qty < 0) { alert('Кількість не може бути від\'ємною'); return; }
+            try {
+                let res;
+                if (id) {
+                    res = await fetch(`/api/stock/${id}`, {
+                        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ quantity: qty })
+                    });
+                } else {
+                    res = await fetch('/api/stock', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            product_id: stockMatrixProductId,
+                            color, size, quantity: qty, mode: 'set'
+                        })
+                    });
+                }
+                const j = await res.json();
+                if (!res.ok) throw new Error(j.error || 'Помилка');
+                // Оновлюємо локальний кеш
+                const existing = stockCellLookup(color, size);
+                if (existing) {
+                    existing.quantity = qty;
+                    if (j.id) existing.id = j.id;
+                } else if (j.id) {
+                    stockMatrixItems.push({ id: j.id, color, size, quantity: qty, product_id: stockMatrixProductId });
+                    input.dataset.id = j.id;
+                }
+                // Підсумок
+                let total = 0;
+                stockMatrixItems.forEach(i => { total += Number(i.quantity) || 0; });
+                document.getElementById('stockMatrixTotal').textContent = total;
+                // Підсвітка
+                input.classList.toggle('text-amber-600', qty > 0);
+                input.classList.toggle('text-slate-300', qty === 0);
+            } catch (e) {
+                alert('Помилка: ' + e.message);
+            }
         }
 
         function openModal(id) { document.getElementById(id).classList.add('modal-active'); }

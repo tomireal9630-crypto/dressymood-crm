@@ -2227,34 +2227,46 @@ app.get('/api/stock/lookup', checkAuth, async (req, res) => {
 
 app.get('/api/stock', checkAuth, async (req, res) => {
     try {
+        const params = [];
+        let where = '';
+        if (req.query.product_id) {
+            params.push(req.query.product_id);
+            where = `WHERE s.product_id = $${params.length}`;
+        }
         const result = await pool.query(`
             SELECT s.*, p.article, p.name as product_name
             FROM stock s
             JOIN products p ON s.product_id = p.id
-            ORDER BY p.article ASC, s.size ASC
-        `);
+            ${where}
+            ORDER BY p.article ASC, s.color ASC, s.size ASC
+        `, params);
         res.json(result.rows);
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// mode=set — встановлює quantity (для матриці). За замовч. mode=add — додає до існуючого (для legacy "Прихід на склад").
 app.post('/api/stock', checkAuth, async (req, res) => {
-    const { product_id, color, size, quantity } = req.body;
+    const { product_id, color, size, quantity, mode } = req.body;
     try {
         const existing = await pool.query(
-            'SELECT id, quantity FROM stock WHERE product_id = $1 AND color ILIKE $2 AND size ILIKE $3', 
+            'SELECT id, quantity FROM stock WHERE product_id = $1 AND color ILIKE $2 AND size ILIKE $3',
             [product_id, (color || '').trim(), (size || '').trim()]
         );
 
+        const qty = parseInt(quantity) || 0;
         if (existing.rows.length > 0) {
-            const newQty = parseInt(existing.rows[0].quantity) + parseInt(quantity);
+            const newQty = mode === 'set'
+                ? qty
+                : (parseInt(existing.rows[0].quantity) + qty);
             await pool.query('UPDATE stock SET quantity = $1 WHERE id = $2', [newQty, existing.rows[0].id]);
+            res.json({ success: true, id: existing.rows[0].id, quantity: newQty });
         } else {
-            await pool.query(
-                'INSERT INTO stock (product_id, color, size, quantity) VALUES ($1, $2, $3, $4)',
-                [product_id, (color || '').trim(), (size || '').trim(), quantity]
+            const ins = await pool.query(
+                'INSERT INTO stock (product_id, color, size, quantity) VALUES ($1, $2, $3, $4) RETURNING id',
+                [product_id, (color || '').trim(), (size || '').trim(), qty]
             );
+            res.json({ success: true, id: ins.rows[0].id, quantity: qty });
         }
-        res.json({ success: true });
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
