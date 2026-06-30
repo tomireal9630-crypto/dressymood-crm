@@ -21,6 +21,14 @@ h1, h2, h3, h4, .heading-font {
 .stats-tab:hover { color: #475569; }
 .stats-tab.active { color: #8b5cf6; border-bottom-color: #8b5cf6; }
 
+/* Перемикач типу транзакції */
+.fin-kind-btn { color: #64748b; background: transparent; transition: all .15s ease; }
+.fin-kind-btn:hover { background: rgba(255,255,255,0.5); }
+.fin-kind-btn.active { background: #fff; color: #0f172a; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+.fin-kind-btn[data-kind="income"].active { color: #059669; }
+.fin-kind-btn[data-kind="expense"].active { color: #e11d48; }
+.fin-kind-btn[data-kind="transfer"].active { color: #7c3aed; }
+
 /* Модальные окна */
 .modal-active { display: flex !important; }
 .modal-active > div { animation: fadeIn 0.2s ease-out; }

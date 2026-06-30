@@ -195,6 +195,73 @@ async function updateDatabaseSchema() {
         await pool.query(`CREATE INDEX IF NOT EXISTS idx_fb_spend_date ON fb_spend_daily(date);`);
         await pool.query(`CREATE INDEX IF NOT EXISTS idx_fb_spend_article ON fb_spend_daily(article);`);
 
+        // === ФІНАНСИ ===
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS finance_accounts (
+                id SERIAL PRIMARY KEY,
+                name VARCHAR(100) NOT NULL,
+                initial_balance NUMERIC DEFAULT 0,
+                color VARCHAR(20) DEFAULT '#8b5cf6',
+                icon VARCHAR(50) DEFAULT 'wallet',
+                is_archived BOOLEAN DEFAULT false,
+                sort_order INTEGER DEFAULT 0,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+        `);
+
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS finance_categories (
+                id SERIAL PRIMARY KEY,
+                name VARCHAR(100) NOT NULL,
+                kind VARCHAR(20) NOT NULL,
+                color VARCHAR(20) DEFAULT '#94a3b8',
+                is_system BOOLEAN DEFAULT false,
+                sort_order INTEGER DEFAULT 0
+            );
+        `);
+
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS finance_transactions (
+                id SERIAL PRIMARY KEY,
+                date DATE NOT NULL,
+                kind VARCHAR(20) NOT NULL,
+                amount NUMERIC NOT NULL,
+                account_id INTEGER REFERENCES finance_accounts(id) ON DELETE CASCADE,
+                to_account_id INTEGER REFERENCES finance_accounts(id) ON DELETE SET NULL,
+                category_id INTEGER REFERENCES finance_categories(id) ON DELETE SET NULL,
+                description TEXT DEFAULT '',
+                source VARCHAR(50) DEFAULT 'manual',
+                source_ref VARCHAR(100) DEFAULT '',
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+        `);
+        await pool.query(`CREATE INDEX IF NOT EXISTS idx_fin_tx_date ON finance_transactions(date);`);
+        await pool.query(`CREATE INDEX IF NOT EXISTS idx_fin_tx_account ON finance_transactions(account_id);`);
+
+        // Seed системних категорій (тільки якщо таблиця порожня)
+        const catCount = await pool.query(`SELECT COUNT(*)::int AS c FROM finance_categories`);
+        if (catCount.rows[0].c === 0) {
+            const seed = [
+                ['Продаж', 'income', '#10b981', true, 1],
+                ['Повернення товару', 'income', '#06b6d4', true, 2],
+                ['Інший дохід', 'income', '#8b5cf6', true, 3],
+                ['Закупка товару', 'expense', '#f97316', true, 1],
+                ['Реклама', 'expense', '#3b82f6', true, 2],
+                ['Повернення на пошті', 'expense', '#f43f5e', true, 3],
+                ['Зарплата', 'expense', '#a855f7', true, 4],
+                ['Послуги (SMS, чеки, домен)', 'expense', '#64748b', true, 5],
+                ['Податки', 'expense', '#dc2626', true, 6],
+                ['Оренда / комуналка', 'expense', '#94a3b8', true, 7],
+                ['Інша витрата', 'expense', '#475569', true, 8]
+            ];
+            for (const [name, kind, color, is_system, sort_order] of seed) {
+                await pool.query(
+                    `INSERT INTO finance_categories (name, kind, color, is_system, sort_order) VALUES ($1,$2,$3,$4,$5)`,
+                    [name, kind, color, is_system, sort_order]
+                );
+            }
+        }
+
         console.log("База даних успішно верифікована.");
     } catch (err) {
         console.error("Помилка автоматичної міграції:", err);
@@ -2283,6 +2350,259 @@ app.delete('/api/stock/:id', checkAuth, async (req, res) => {
         await pool.query('DELETE FROM stock WHERE id = $1', [req.params.id]);
         res.json({ success: true });
     } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ===================== ФІНАНСИ =====================
+
+// --- РАХУНКИ ---
+app.get('/api/finance/accounts', checkAuth, async (req, res) => {
+  try {
+    const r = await pool.query(`SELECT * FROM finance_accounts ORDER BY sort_order, id`);
+    res.json(r.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/finance/accounts', checkAuth, async (req, res) => {
+  const { name, initial_balance, color, icon } = req.body;
+  if (!name) return res.status(400).json({ error: 'Назва обов\'язкова' });
+  try {
+    const r = await pool.query(
+      `INSERT INTO finance_accounts (name, initial_balance, color, icon)
+       VALUES ($1, $2, $3, $4) RETURNING id`,
+      [name.trim(), Number(initial_balance) || 0, color || '#8b5cf6', icon || 'wallet']
+    );
+    res.json({ success: true, id: r.rows[0].id });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.patch('/api/finance/accounts/:id(\\d+)', checkAuth, async (req, res) => {
+  const allowed = ['name', 'initial_balance', 'color', 'icon', 'is_archived', 'sort_order'];
+  const keys = Object.keys(req.body).filter(k => allowed.includes(k));
+  if (!keys.length) return res.status(400).json({ error: 'Нічого оновити' });
+  const setClause = keys.map((k, i) => `${k} = $${i + 1}`).join(', ');
+  const values = keys.map(k => req.body[k]);
+  values.push(req.params.id);
+  try {
+    await pool.query(`UPDATE finance_accounts SET ${setClause} WHERE id = $${values.length}`, values);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/finance/accounts/:id(\\d+)', checkAuth, async (req, res) => {
+  try {
+    await pool.query(`DELETE FROM finance_accounts WHERE id = $1`, [req.params.id]);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// --- КАТЕГОРІЇ ---
+app.get('/api/finance/categories', checkAuth, async (req, res) => {
+  try {
+    const r = await pool.query(`SELECT * FROM finance_categories ORDER BY kind, sort_order, id`);
+    res.json(r.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/finance/categories', checkAuth, async (req, res) => {
+  const { name, kind, color } = req.body;
+  if (!name || !['income', 'expense'].includes(kind)) {
+    return res.status(400).json({ error: 'Невірні дані' });
+  }
+  try {
+    const r = await pool.query(
+      `INSERT INTO finance_categories (name, kind, color) VALUES ($1, $2, $3) RETURNING id`,
+      [name.trim(), kind, color || '#94a3b8']
+    );
+    res.json({ success: true, id: r.rows[0].id });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/finance/categories/:id(\\d+)', checkAuth, async (req, res) => {
+  try {
+    const cat = await pool.query(`SELECT is_system FROM finance_categories WHERE id = $1`, [req.params.id]);
+    if (cat.rows[0] && cat.rows[0].is_system) {
+      return res.status(400).json({ error: 'Системну категорію видалити не можна' });
+    }
+    await pool.query(`DELETE FROM finance_categories WHERE id = $1`, [req.params.id]);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// --- ТРАНЗАКЦІЇ ---
+app.get('/api/finance/transactions', checkAuth, async (req, res) => {
+  try {
+    const params = [];
+    const conds = [];
+    if (req.query.dateFrom) { params.push(req.query.dateFrom); conds.push(`t.date >= $${params.length}::date`); }
+    if (req.query.dateTo)   { params.push(req.query.dateTo);   conds.push(`t.date <= $${params.length}::date`); }
+    if (req.query.account_id)  { params.push(req.query.account_id);  conds.push(`(t.account_id = $${params.length} OR t.to_account_id = $${params.length})`); }
+    if (req.query.category_id) { params.push(req.query.category_id); conds.push(`t.category_id = $${params.length}`); }
+    if (req.query.kind) { params.push(req.query.kind); conds.push(`t.kind = $${params.length}`); }
+    const where = conds.length ? 'WHERE ' + conds.join(' AND ') : '';
+    const r = await pool.query(`
+      SELECT t.*,
+             a.name AS account_name, a.color AS account_color,
+             ta.name AS to_account_name, ta.color AS to_account_color,
+             c.name AS category_name, c.color AS category_color, c.kind AS category_kind
+      FROM finance_transactions t
+      LEFT JOIN finance_accounts a  ON a.id = t.account_id
+      LEFT JOIN finance_accounts ta ON ta.id = t.to_account_id
+      LEFT JOIN finance_categories c ON c.id = t.category_id
+      ${where}
+      ORDER BY t.date DESC, t.id DESC
+      LIMIT 500
+    `, params);
+    res.json(r.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/finance/transactions', checkAuth, async (req, res) => {
+  const { date, kind, amount, account_id, to_account_id, category_id, description, source, source_ref } = req.body;
+  if (!date || !kind || !amount) return res.status(400).json({ error: 'date, kind, amount обов\'язкові' });
+  if (!['income', 'expense', 'transfer'].includes(kind)) return res.status(400).json({ error: 'Невірний kind' });
+  const amt = Number(amount);
+  if (!isFinite(amt) || amt <= 0) return res.status(400).json({ error: 'amount має бути > 0' });
+  if (kind === 'transfer' && (!account_id || !to_account_id || account_id === to_account_id)) {
+    return res.status(400).json({ error: 'Для переказу потрібні різні account_id і to_account_id' });
+  }
+  if (kind !== 'transfer' && !account_id) return res.status(400).json({ error: 'account_id обов\'язковий' });
+  try {
+    const r = await pool.query(
+      `INSERT INTO finance_transactions (date, kind, amount, account_id, to_account_id, category_id, description, source, source_ref)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
+      [date, kind, amt, account_id || null, to_account_id || null, category_id || null, description || '', source || 'manual', source_ref || '']
+    );
+    res.json({ success: true, id: r.rows[0].id });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.patch('/api/finance/transactions/:id(\\d+)', checkAuth, async (req, res) => {
+  const allowed = ['date', 'kind', 'amount', 'account_id', 'to_account_id', 'category_id', 'description'];
+  const keys = Object.keys(req.body).filter(k => allowed.includes(k));
+  if (!keys.length) return res.status(400).json({ error: 'Нічого оновити' });
+  const setClause = keys.map((k, i) => `${k} = $${i + 1}`).join(', ');
+  const values = keys.map(k => req.body[k]);
+  values.push(req.params.id);
+  try {
+    await pool.query(`UPDATE finance_transactions SET ${setClause} WHERE id = $${values.length}`, values);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/finance/transactions/:id(\\d+)', checkAuth, async (req, res) => {
+  try {
+    await pool.query(`DELETE FROM finance_transactions WHERE id = $1`, [req.params.id]);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// --- БАЛАНСИ РАХУНКІВ ---
+app.get('/api/finance/balances', checkAuth, async (req, res) => {
+  try {
+    const r = await pool.query(`
+      SELECT a.id, a.name, a.color, a.icon, a.initial_balance,
+             a.initial_balance
+               + COALESCE((SELECT SUM(amount) FROM finance_transactions WHERE account_id = a.id AND kind = 'income'), 0)
+               - COALESCE((SELECT SUM(amount) FROM finance_transactions WHERE account_id = a.id AND kind = 'expense'), 0)
+               - COALESCE((SELECT SUM(amount) FROM finance_transactions WHERE account_id = a.id AND kind = 'transfer'), 0)
+               + COALESCE((SELECT SUM(amount) FROM finance_transactions WHERE to_account_id = a.id AND kind = 'transfer'), 0)
+               AS balance
+      FROM finance_accounts a
+      WHERE a.is_archived = false
+      ORDER BY a.sort_order, a.id
+    `);
+    const accounts = r.rows.map(a => ({ ...a, balance: Number(a.balance) || 0, initial_balance: Number(a.initial_balance) || 0 }));
+    const total = accounts.reduce((s, a) => s + a.balance, 0);
+
+    // Гроші в дорозі: сума замовлень в статусах "Доставка/В пути/На почте"
+    const inFlightRes = await pool.query(`
+      SELECT COALESCE(SUM(oi.price * oi.quantity), 0)::numeric AS in_flight,
+             COUNT(DISTINCT o.id)::int AS in_flight_count
+      FROM orders o
+      JOIN order_items oi ON oi.order_id = o.id
+      WHERE o.status IN ('Доставка','В пути','На почте')
+    `);
+    res.json({
+      accounts,
+      total,
+      in_flight: Number(inFlightRes.rows[0].in_flight) || 0,
+      in_flight_count: inFlightRes.rows[0].in_flight_count || 0
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// --- ЗВІТ P&L ---
+app.get('/api/finance/pnl', checkAuth, async (req, res) => {
+  const { dateFrom, dateTo, granularity } = req.query;
+  const gran = granularity === 'week' ? 'week' : 'month';
+  try {
+    const params = [];
+    const conds = [];
+    if (dateFrom) { params.push(dateFrom); conds.push(`date >= $${params.length}::date`); }
+    if (dateTo)   { params.push(dateTo);   conds.push(`date <= $${params.length}::date`); }
+    const where = conds.length ? 'WHERE ' + conds.join(' AND ') : '';
+
+    const q = `
+      SELECT to_char(date_trunc('${gran}', t.date), 'YYYY-MM-DD') AS period,
+             COALESCE(c.name, '— Без категорії') AS category,
+             COALESCE(c.kind, t.kind) AS kind,
+             COALESCE(c.color, '#94a3b8') AS color,
+             SUM(t.amount)::numeric AS total
+      FROM finance_transactions t
+      LEFT JOIN finance_categories c ON c.id = t.category_id
+      ${where}
+      ${conds.length ? 'AND' : 'WHERE'} t.kind IN ('income','expense')
+      GROUP BY date_trunc('${gran}', t.date), c.name, c.kind, t.kind, c.color
+      ORDER BY date_trunc('${gran}', t.date) DESC, kind, total DESC
+    `;
+    const r = await pool.query(q, params);
+
+    // Групуємо в зручний формат: { period: { income: [{cat,total}], expense: [{cat,total}], totals: {income, expense, profit} } }
+    const periods = {};
+    for (const row of r.rows) {
+      const p = row.period;
+      if (!periods[p]) periods[p] = { period: p, income: [], expense: [], totals: { income: 0, expense: 0, profit: 0 } };
+      const item = { category: row.category, color: row.color, total: Number(row.total) || 0 };
+      if (row.kind === 'income') {
+        periods[p].income.push(item);
+        periods[p].totals.income += item.total;
+      } else {
+        periods[p].expense.push(item);
+        periods[p].totals.expense += item.total;
+      }
+    }
+    Object.values(periods).forEach(p => { p.totals.profit = p.totals.income - p.totals.expense; });
+    res.json(Object.values(periods).sort((a, b) => b.period.localeCompare(a.period)));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// --- CASH FLOW ---
+app.get('/api/finance/cashflow', checkAuth, async (req, res) => {
+  const { dateFrom, dateTo, granularity } = req.query;
+  const gran = granularity === 'week' ? 'week' : granularity === 'month' ? 'month' : 'day';
+  try {
+    const params = [];
+    const conds = [];
+    if (dateFrom) { params.push(dateFrom); conds.push(`date >= $${params.length}::date`); }
+    if (dateTo)   { params.push(dateTo);   conds.push(`date <= $${params.length}::date`); }
+    const where = conds.length ? 'WHERE ' + conds.join(' AND ') : '';
+    const q = `
+      SELECT to_char(date_trunc('${gran}', date), 'YYYY-MM-DD') AS period,
+             SUM(amount) FILTER (WHERE kind = 'income')::numeric AS income,
+             SUM(amount) FILTER (WHERE kind = 'expense')::numeric AS expense
+      FROM finance_transactions
+      ${where}
+      GROUP BY date_trunc('${gran}', date)
+      ORDER BY date_trunc('${gran}', date)
+    `;
+    const r = await pool.query(q, params);
+    res.json(r.rows.map(row => ({
+      period: row.period,
+      income: Number(row.income) || 0,
+      expense: Number(row.expense) || 0,
+      net: (Number(row.income) || 0) - (Number(row.expense) || 0)
+    })));
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.get('/', checkAuth, (req, res) => {

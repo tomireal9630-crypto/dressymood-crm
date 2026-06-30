@@ -74,8 +74,8 @@
                     <button onclick="switchView('statistics')" id="btn-statistics" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
                         <i class="fa-solid fa-chart-line w-5 text-center"></i> Статистика
                     </button>
-                    <button onclick="switchView('users')" id="btn-users" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
-                        <i class="fa-solid fa-users w-5 text-center"></i> Користувачі
+                    <button onclick="switchView('finance')" id="btn-finance" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
+                        <i class="fa-solid fa-wallet w-5 text-center"></i> Фінанси
                     </button>
                     <button onclick="switchView('settings')" id="btn-settings" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
                         <i class="fa-solid fa-gear w-5 text-center"></i> Налаштування
@@ -1117,6 +1117,158 @@
                 </div>
             </div>
 
+            <div id="view-finance" class="view-content h-full">
+                <div class="flex justify-between items-start mb-6 gap-4 flex-wrap">
+                    <div>
+                        <h2 class="text-3xl font-black text-slate-800 uppercase italic tracking-tighter">Фінанси</h2>
+                        <p class="text-slate-400 font-medium text-sm">Контроль грошей: рахунки, транзакції, прибуток</p>
+                    </div>
+                    <button onclick="openTransactionModal()" class="bg-violet-600 text-white px-6 py-3 rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-violet-700 transition-all shadow-lg shadow-violet-200">
+                        <i class="fa-solid fa-plus mr-2"></i> Транзакція
+                    </button>
+                </div>
+
+                <!-- Топ-картки балансів -->
+                <div id="financeBalancesRow" class="mb-6"></div>
+
+                <!-- Підвкладки -->
+                <div class="flex items-center gap-6 border-b border-slate-200 mb-6">
+                    <button onclick="switchFinanceTab('transactions')" data-fin-tab="transactions" class="stats-tab pb-3 text-sm font-bold transition-all">📋 Транзакції</button>
+                    <button onclick="switchFinanceTab('pnl')" data-fin-tab="pnl" class="stats-tab pb-3 text-sm font-bold transition-all">📊 P&L</button>
+                    <button onclick="switchFinanceTab('cashflow')" data-fin-tab="cashflow" class="stats-tab pb-3 text-sm font-bold transition-all">💸 Cash Flow</button>
+                    <button onclick="switchFinanceTab('settings')" data-fin-tab="settings" class="stats-tab pb-3 text-sm font-bold transition-all">⚙️ Рахунки / Категорії</button>
+                </div>
+
+                <!-- ТРАНЗАКЦІЇ -->
+                <div id="fin-tab-transactions" class="fin-tab-content">
+                    <div class="flex items-end gap-3 flex-wrap bg-white border border-slate-100 rounded-2xl p-3 shadow-sm mb-4">
+                        <div>
+                            <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">З</label>
+                            <input type="date" id="finTxFrom" onchange="loadFinTransactions()" class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
+                        </div>
+                        <div>
+                            <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">По</label>
+                            <input type="date" id="finTxTo" onchange="loadFinTransactions()" class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
+                        </div>
+                        <div>
+                            <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">Рахунок</label>
+                            <select id="finTxAccount" onchange="loadFinTransactions()" class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
+                                <option value="">Всі</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">Категорія</label>
+                            <select id="finTxCategory" onchange="loadFinTransactions()" class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
+                                <option value="">Всі</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">Тип</label>
+                            <select id="finTxKind" onchange="loadFinTransactions()" class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
+                                <option value="">Всі</option>
+                                <option value="income">Доходи</option>
+                                <option value="expense">Витрати</option>
+                                <option value="transfer">Перекази</option>
+                            </select>
+                        </div>
+                        <button onclick="resetFinTxFilters()" class="px-3 py-2 rounded-lg text-xs font-bold bg-rose-50 text-rose-500 hover:bg-rose-100 transition-all">Скинути</button>
+                    </div>
+                    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-x-auto">
+                        <table class="w-full text-left min-w-[800px]">
+                            <thead>
+                                <tr class="bg-slate-50/50 border-b border-slate-100">
+                                    <th class="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Дата</th>
+                                    <th class="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Категорія</th>
+                                    <th class="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Рахунок</th>
+                                    <th class="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Опис</th>
+                                    <th class="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Сума</th>
+                                    <th class="px-4 py-3 w-12"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="finTxTable" class="divide-y divide-slate-50"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- P&L -->
+                <div id="fin-tab-pnl" class="fin-tab-content hidden">
+                    <div class="flex items-end gap-3 flex-wrap bg-white border border-slate-100 rounded-2xl p-3 shadow-sm mb-4">
+                        <div>
+                            <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">З</label>
+                            <input type="date" id="finPnlFrom" onchange="loadFinPnl()" class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
+                        </div>
+                        <div>
+                            <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">По</label>
+                            <input type="date" id="finPnlTo" onchange="loadFinPnl()" class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
+                        </div>
+                        <div>
+                            <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">Деталізація</label>
+                            <select id="finPnlGran" onchange="loadFinPnl()" class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
+                                <option value="month">По місяцях</option>
+                                <option value="week">По тижнях</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div id="finPnlBody" class="space-y-4"></div>
+                </div>
+
+                <!-- CASH FLOW -->
+                <div id="fin-tab-cashflow" class="fin-tab-content hidden">
+                    <div class="flex items-end gap-3 flex-wrap bg-white border border-slate-100 rounded-2xl p-3 shadow-sm mb-4">
+                        <div>
+                            <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">З</label>
+                            <input type="date" id="finCfFrom" onchange="loadFinCashflow()" class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
+                        </div>
+                        <div>
+                            <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">По</label>
+                            <input type="date" id="finCfTo" onchange="loadFinCashflow()" class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
+                        </div>
+                        <div>
+                            <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">Деталізація</label>
+                            <select id="finCfGran" onchange="loadFinCashflow()" class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
+                                <option value="day">По днях</option>
+                                <option value="week">По тижнях</option>
+                                <option value="month">По місяцях</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-x-auto">
+                        <table class="w-full text-left min-w-[600px]">
+                            <thead>
+                                <tr class="bg-slate-50/50 border-b border-slate-100">
+                                    <th class="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Період</th>
+                                    <th class="px-6 py-3 text-[10px] font-black text-emerald-500 uppercase tracking-widest text-right">Прихід</th>
+                                    <th class="px-6 py-3 text-[10px] font-black text-rose-500 uppercase tracking-widest text-right">Витрата</th>
+                                    <th class="px-6 py-3 text-[10px] font-black text-violet-500 uppercase tracking-widest text-right">Чисто</th>
+                                    <th class="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Графік</th>
+                                </tr>
+                            </thead>
+                            <tbody id="finCfTable" class="divide-y divide-slate-50"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- НАЛАШТУВАННЯ: рахунки + категорії -->
+                <div id="fin-tab-settings" class="fin-tab-content hidden">
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+                            <div class="flex justify-between items-center mb-4">
+                                <h3 class="text-sm font-black text-slate-800 uppercase tracking-widest">Рахунки</h3>
+                                <button onclick="openAccountModal()" class="text-violet-600 hover:bg-violet-50 px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider"><i class="fa-solid fa-plus mr-1"></i> Додати</button>
+                            </div>
+                            <div id="finAccountsList" class="space-y-2"></div>
+                        </div>
+                        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+                            <div class="flex justify-between items-center mb-4">
+                                <h3 class="text-sm font-black text-slate-800 uppercase tracking-widest">Категорії</h3>
+                                <button onclick="openCategoryModal()" class="text-violet-600 hover:bg-violet-50 px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider"><i class="fa-solid fa-plus mr-1"></i> Додати</button>
+                            </div>
+                            <div id="finCategoriesList" class="space-y-2"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <div id="view-settings" class="view-content h-full">
                 <div class="mb-8">
                     <h2 class="text-3xl font-black text-slate-800 uppercase italic tracking-tighter">Налаштування</h2>
@@ -1392,6 +1544,114 @@
     </main>
 
     <div id="appToast"></div>
+
+    <!-- Модалка: Транзакція -->
+    <div id="finTxModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] hidden items-center justify-center p-6">
+        <div class="bg-white w-full max-w-xl rounded-[2.5rem] shadow-2xl overflow-hidden">
+            <div class="p-6 border-b border-slate-100 flex justify-between items-center bg-violet-50/50">
+                <h3 id="finTxModalTitle" class="text-lg font-black text-slate-800 uppercase italic">Нова транзакція</h3>
+                <button onclick="closeModal('finTxModal')" class="text-slate-400 hover:text-rose-500"><i class="fa-solid fa-xmark text-xl"></i></button>
+            </div>
+            <form id="finTxForm" class="p-6 space-y-4">
+                <input type="hidden" name="id">
+                <div class="grid grid-cols-3 gap-2 bg-slate-50 p-1 rounded-xl">
+                    <button type="button" data-kind="income" onclick="setTxKind('income')" class="fin-kind-btn py-2 rounded-lg text-xs font-black uppercase tracking-wider">+ Дохід</button>
+                    <button type="button" data-kind="expense" onclick="setTxKind('expense')" class="fin-kind-btn py-2 rounded-lg text-xs font-black uppercase tracking-wider">− Витрата</button>
+                    <button type="button" data-kind="transfer" onclick="setTxKind('transfer')" class="fin-kind-btn py-2 rounded-lg text-xs font-black uppercase tracking-wider">⇄ Переказ</button>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-400 uppercase mb-1">Дата</label>
+                        <input type="date" name="date" required class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none font-bold text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-400 uppercase mb-1">Сума (₴)</label>
+                        <input type="number" name="amount" required step="0.01" min="0" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none font-black text-sm">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-1" id="finTxAccountLabel">Рахунок</label>
+                    <select name="account_id" required class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none font-bold text-sm"></select>
+                </div>
+                <div id="finTxToAccountWrap" class="hidden">
+                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-1">Куди (рахунок)</label>
+                    <select name="to_account_id" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none font-bold text-sm"></select>
+                </div>
+                <div id="finTxCategoryWrap">
+                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-1">Категорія</label>
+                    <select name="category_id" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none font-bold text-sm"></select>
+                </div>
+                <div>
+                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-1">Опис (опц.)</label>
+                    <input type="text" name="description" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none font-bold text-sm">
+                </div>
+                <div class="flex gap-3 pt-2">
+                    <button type="submit" class="flex-1 bg-violet-600 text-white py-3 rounded-xl font-black text-sm uppercase tracking-widest hover:bg-violet-700 transition-all">Зберегти</button>
+                    <button type="button" onclick="closeModal('finTxModal')" class="px-6 py-3 rounded-xl font-bold text-sm text-slate-600 bg-slate-100 hover:bg-slate-200 transition-all">Скасувати</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Модалка: Рахунок -->
+    <div id="finAccModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] hidden items-center justify-center p-6">
+        <div class="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl overflow-hidden">
+            <div class="p-6 border-b border-slate-100 flex justify-between items-center bg-violet-50/50">
+                <h3 id="finAccModalTitle" class="text-lg font-black text-slate-800 uppercase italic">Новий рахунок</h3>
+                <button onclick="closeModal('finAccModal')" class="text-slate-400 hover:text-rose-500"><i class="fa-solid fa-xmark text-xl"></i></button>
+            </div>
+            <form id="finAccForm" class="p-6 space-y-4">
+                <input type="hidden" name="id">
+                <div>
+                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-1">Назва (Mono, Приват, Готівка...)</label>
+                    <input type="text" name="name" required class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none font-bold text-sm">
+                </div>
+                <div>
+                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-1">Початковий баланс (₴)</label>
+                    <input type="number" name="initial_balance" step="0.01" value="0" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none font-black text-sm">
+                </div>
+                <div>
+                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-1">Колір</label>
+                    <input type="color" name="color" value="#8b5cf6" class="w-full h-10 px-1 py-1 bg-slate-50 border border-slate-200 rounded-lg cursor-pointer">
+                </div>
+                <div class="flex gap-3 pt-2">
+                    <button type="submit" class="flex-1 bg-violet-600 text-white py-3 rounded-xl font-black text-sm uppercase tracking-widest hover:bg-violet-700">Зберегти</button>
+                    <button type="button" onclick="closeModal('finAccModal')" class="px-6 py-3 rounded-xl font-bold text-sm text-slate-600 bg-slate-100 hover:bg-slate-200">Скасувати</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Модалка: Категорія -->
+    <div id="finCatModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] hidden items-center justify-center p-6">
+        <div class="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl overflow-hidden">
+            <div class="p-6 border-b border-slate-100 flex justify-between items-center bg-violet-50/50">
+                <h3 class="text-lg font-black text-slate-800 uppercase italic">Нова категорія</h3>
+                <button onclick="closeModal('finCatModal')" class="text-slate-400 hover:text-rose-500"><i class="fa-solid fa-xmark text-xl"></i></button>
+            </div>
+            <form id="finCatForm" class="p-6 space-y-4">
+                <div>
+                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-1">Назва</label>
+                    <input type="text" name="name" required class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none font-bold text-sm">
+                </div>
+                <div>
+                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-1">Тип</label>
+                    <select name="kind" required class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none font-bold text-sm">
+                        <option value="expense">Витрата</option>
+                        <option value="income">Дохід</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-1">Колір</label>
+                    <input type="color" name="color" value="#94a3b8" class="w-full h-10 px-1 py-1 bg-slate-50 border border-slate-200 rounded-lg cursor-pointer">
+                </div>
+                <div class="flex gap-3 pt-2">
+                    <button type="submit" class="flex-1 bg-violet-600 text-white py-3 rounded-xl font-black text-sm uppercase tracking-widest hover:bg-violet-700">Зберегти</button>
+                    <button type="button" onclick="closeModal('finCatModal')" class="px-6 py-3 rounded-xl font-bold text-sm text-slate-600 bg-slate-100 hover:bg-slate-200">Скасувати</button>
+                </div>
+            </form>
+        </div>
+    </div>
 
     <div id="bulkActionBar" class="fixed bottom-6 left-1/2 -translate-x-1/2 z-[80] hidden items-center gap-3 bg-slate-900 text-white px-5 py-3 rounded-2xl shadow-2xl shadow-slate-900/30">
         <div class="text-sm font-bold">Вибрано: <span id="bulkSelectedCount" class="text-violet-300">0</span></div>
@@ -1741,7 +2001,7 @@
             const btn = document.getElementById(`btn-${view}`);
             if (btn) btn.classList.add('active');
 
-            const titles = { 'orders': 'ЗАМОВЛЕННЯ', 'warehouse': 'СКЛАД', 'callbacks': 'НЕ ДОЗВОНИ', 'statistics': 'СТАТИСТИКА', 'dashboard': 'ДАШБОРД' };
+            const titles = { 'orders': 'ЗАМОВЛЕННЯ', 'warehouse': 'СКЛАД', 'callbacks': 'НЕ ДОЗВОНИ', 'statistics': 'СТАТИСТИКА', 'dashboard': 'ДАШБОРД', 'finance': 'ФІНАНСИ' };
             document.getElementById('current-view-title').innerText = titles[view] || view.toUpperCase();
 
             document.querySelectorAll('.view-content').forEach(el => el.classList.remove('active'));
@@ -1754,6 +2014,7 @@
             if (view === 'export') loadExport();
             if (view === 'statistics') switchStatsTab('control');
             if (view === 'dashboard') { if (!dashInit) initDashboard(); else loadDashboard(); }
+            if (view === 'finance') { if (!finInit) initFinance(); else { loadFinBalances(); switchFinanceTab(finCurrentTab); } }
             refreshData();
         }
 
@@ -3659,6 +3920,462 @@
                 card.style.color = '#e11d48';
                 const deficitPerLead = -netProfit / 100;
                 verdict.innerHTML = `<span class="text-rose-600">✗ В мінусі. Втрачаєш ${Math.round(deficitPerLead)} ₴ на кожен лід. Знизь CPL до <b>${Math.round(cplMax)} ₴</b> або менше.</span>`;
+            }
+        }
+
+        // ========== ФІНАНСИ ==========
+        let finAccountsCache = [];
+        let finCategoriesCache = [];
+        let finInit = false;
+        let finCurrentTab = 'transactions';
+
+        function finUah(n) { return Math.round(Number(n) || 0).toLocaleString('uk-UA') + ' ₴'; }
+        function finUahPrecise(n) { return Number(n || 0).toLocaleString('uk-UA') + ' ₴'; }
+
+        async function initFinance() {
+            finInit = true;
+            const iso = d => d.toISOString().slice(0, 10);
+            const now = new Date();
+            const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+            ['finTxFrom', 'finPnlFrom', 'finCfFrom'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el && !el.value) el.value = iso(monthStart);
+            });
+            ['finTxTo', 'finPnlTo', 'finCfTo'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el && !el.value) el.value = iso(now);
+            });
+            await Promise.all([loadFinAccountsAndCats()]);
+            await loadFinBalances();
+            switchFinanceTab(finCurrentTab);
+        }
+
+        async function loadFinAccountsAndCats() {
+            try {
+                const [aRes, cRes] = await Promise.all([
+                    fetch('/api/finance/accounts'),
+                    fetch('/api/finance/categories')
+                ]);
+                finAccountsCache = await aRes.json();
+                finCategoriesCache = await cRes.json();
+                // Поновлюємо селекти у фільтрах
+                const accSel = document.getElementById('finTxAccount');
+                if (accSel) {
+                    const cur = accSel.value;
+                    accSel.innerHTML = `<option value="">Всі</option>` +
+                        finAccountsCache.map(a => `<option value="${a.id}">${esc(a.name)}</option>`).join('');
+                    if (cur) accSel.value = cur;
+                }
+                const catSel = document.getElementById('finTxCategory');
+                if (catSel) {
+                    const cur = catSel.value;
+                    catSel.innerHTML = `<option value="">Всі</option>` +
+                        finCategoriesCache.map(c => `<option value="${c.id}">${esc(c.name)} (${c.kind === 'income' ? 'дохід' : 'витрата'})</option>`).join('');
+                    if (cur) catSel.value = cur;
+                }
+            } catch (e) { /* мовчки */ }
+        }
+
+        async function loadFinBalances() {
+            try {
+                const r = await fetch('/api/finance/balances');
+                const d = await r.json();
+                const wrap = document.getElementById('financeBalancesRow');
+                if (!wrap) return;
+                if (!d.accounts || !d.accounts.length) {
+                    wrap.innerHTML = `<div class="bg-amber-50 border border-amber-200 rounded-2xl p-5 text-sm text-amber-700">
+                        ⚠️ Спершу додай хоча б один рахунок: відкрий вкладку <b>Рахунки / Категорії</b> → "+ Додати".
+                    </div>`;
+                    return;
+                }
+                wrap.innerHTML = `
+                    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+                        ${d.accounts.map(a => `
+                            <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-4">
+                                <div class="text-[10px] font-black uppercase tracking-widest mb-1" style="color:${esc(a.color)}">${esc(a.name)}</div>
+                                <div class="text-xl font-black ${a.balance < 0 ? 'text-rose-600' : 'text-slate-800'}">${finUah(a.balance)}</div>
+                            </div>
+                        `).join('')}
+                        <div class="bg-violet-50 rounded-2xl border-2 border-violet-200 p-4">
+                            <div class="text-[10px] font-black text-violet-500 uppercase tracking-widest mb-1">Всього в касі</div>
+                            <div class="text-xl font-black text-violet-600">${finUah(d.total)}</div>
+                        </div>
+                        <div class="bg-amber-50 rounded-2xl border-2 border-amber-200 p-4">
+                            <div class="text-[10px] font-black text-amber-500 uppercase tracking-widest mb-1">В дорозі (очікувано)</div>
+                            <div class="text-xl font-black text-amber-600">${finUah(d.in_flight)}</div>
+                            <div class="text-[10px] text-amber-500 mt-1">${d.in_flight_count} замовлень</div>
+                        </div>
+                    </div>`;
+            } catch (e) { /* мовчки */ }
+        }
+
+        function switchFinanceTab(tab) {
+            finCurrentTab = tab;
+            document.querySelectorAll('[data-fin-tab]').forEach(b => b.classList.toggle('active', b.dataset.finTab === tab));
+            document.querySelectorAll('.fin-tab-content').forEach(el => el.classList.add('hidden'));
+            const t = document.getElementById('fin-tab-' + tab);
+            if (t) t.classList.remove('hidden');
+            if (tab === 'transactions') loadFinTransactions();
+            if (tab === 'pnl') loadFinPnl();
+            if (tab === 'cashflow') loadFinCashflow();
+            if (tab === 'settings') renderFinAccountsList(), renderFinCategoriesList();
+        }
+
+        async function loadFinTransactions() {
+            const params = new URLSearchParams();
+            const from = (document.getElementById('finTxFrom') || {}).value;
+            const to = (document.getElementById('finTxTo') || {}).value;
+            const acc = (document.getElementById('finTxAccount') || {}).value;
+            const cat = (document.getElementById('finTxCategory') || {}).value;
+            const kind = (document.getElementById('finTxKind') || {}).value;
+            if (from) params.set('dateFrom', from);
+            if (to) params.set('dateTo', to);
+            if (acc) params.set('account_id', acc);
+            if (cat) params.set('category_id', cat);
+            if (kind) params.set('kind', kind);
+            const tbody = document.getElementById('finTxTable');
+            tbody.innerHTML = `<tr><td colspan="6" class="p-6 text-center text-slate-400">Завантаження…</td></tr>`;
+            try {
+                const r = await fetch('/api/finance/transactions?' + params.toString());
+                const rows = await r.json();
+                if (!rows.length) {
+                    tbody.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-slate-400 font-medium">Немає транзакцій за період</td></tr>`;
+                    return;
+                }
+                const fmtDate = d => { const [y, m, day] = d.split('T')[0].split('-'); return `${day}.${m}.${y}`; };
+                tbody.innerHTML = rows.map(t => {
+                    const sign = t.kind === 'income' ? '+' : t.kind === 'expense' ? '−' : '⇄';
+                    const cls = t.kind === 'income' ? 'text-emerald-600' : t.kind === 'expense' ? 'text-rose-600' : 'text-violet-600';
+                    const catName = t.category_name || (t.kind === 'transfer' ? 'Переказ' : '— Без категорії');
+                    const accStr = t.kind === 'transfer'
+                        ? `${esc(t.account_name || '?')} → ${esc(t.to_account_name || '?')}`
+                        : esc(t.account_name || '?');
+                    return `
+                    <tr class="hover:bg-slate-50 transition-all">
+                        <td class="px-4 py-3 text-xs font-bold text-slate-600 whitespace-nowrap">${esc(fmtDate(t.date))}</td>
+                        <td class="px-4 py-3">
+                            <span class="inline-flex items-center gap-1.5 text-xs font-bold text-slate-700">
+                                <span class="w-2 h-2 rounded-full" style="background:${esc(t.category_color || '#94a3b8')}"></span>
+                                ${esc(catName)}
+                            </span>
+                        </td>
+                        <td class="px-4 py-3 text-xs font-bold text-slate-600">${accStr}</td>
+                        <td class="px-4 py-3 text-xs text-slate-500 max-w-[300px] truncate">${esc(t.description || '')}</td>
+                        <td class="px-4 py-3 text-right text-sm font-black ${cls} whitespace-nowrap">${sign} ${finUah(t.amount)}</td>
+                        <td class="px-4 py-3 text-right">
+                            <button onclick="deleteFinTx(${t.id})" title="Видалити" class="text-slate-300 hover:text-rose-500 p-1.5"><i class="fa-solid fa-trash-can text-xs"></i></button>
+                        </td>
+                    </tr>`;
+                }).join('');
+            } catch (e) {
+                tbody.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-rose-500">Помилка: ${esc(e.message)}</td></tr>`;
+            }
+        }
+
+        function resetFinTxFilters() {
+            ['finTxFrom', 'finTxTo', 'finTxAccount', 'finTxCategory', 'finTxKind'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.value = '';
+            });
+            loadFinTransactions();
+        }
+
+        async function deleteFinTx(id) {
+            if (!confirm('Видалити транзакцію? Баланс рахунку перерахується.')) return;
+            try {
+                await fetch(`/api/finance/transactions/${id}`, { method: 'DELETE' });
+                loadFinTransactions();
+                loadFinBalances();
+            } catch (e) { alert('Помилка: ' + e.message); }
+        }
+
+        // --- Модалка транзакції ---
+        function openTransactionModal(tx) {
+            const modal = document.getElementById('finTxModal');
+            const form = document.getElementById('finTxForm');
+            form.reset();
+            document.getElementById('finTxModalTitle').textContent = tx ? 'Редагування' : 'Нова транзакція';
+            form.date.value = (tx && tx.date) || new Date().toISOString().slice(0, 10);
+
+            // Заповнюємо селекти
+            const accOpts = `<option value="">— Оберіть —</option>` + finAccountsCache.map(a => `<option value="${a.id}">${esc(a.name)}</option>`).join('');
+            form.account_id.innerHTML = accOpts;
+            form.to_account_id.innerHTML = accOpts;
+            setTxKind((tx && tx.kind) || 'expense');
+            if (tx) {
+                form.id.value = tx.id || '';
+                form.amount.value = tx.amount || '';
+                form.account_id.value = tx.account_id || '';
+                form.to_account_id.value = tx.to_account_id || '';
+                form.category_id.value = tx.category_id || '';
+                form.description.value = tx.description || '';
+            }
+            openModal('finTxModal');
+        }
+
+        function setTxKind(kind) {
+            document.querySelectorAll('.fin-kind-btn').forEach(b => b.classList.toggle('active', b.dataset.kind === kind));
+            const form = document.getElementById('finTxForm');
+            const isTransfer = kind === 'transfer';
+            document.getElementById('finTxToAccountWrap').classList.toggle('hidden', !isTransfer);
+            document.getElementById('finTxCategoryWrap').classList.toggle('hidden', isTransfer);
+            document.getElementById('finTxAccountLabel').textContent = isTransfer ? 'Звідки (рахунок)' : 'Рахунок';
+            form.dataset.kind = kind;
+            // Категорії — фільтр по типу
+            const cats = finCategoriesCache.filter(c => c.kind === (kind === 'income' ? 'income' : 'expense'));
+            form.category_id.innerHTML = `<option value="">— Без категорії —</option>` +
+                cats.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
+        }
+
+        document.addEventListener('submit', async (e) => {
+            if (e.target && e.target.id === 'finTxForm') {
+                e.preventDefault();
+                const f = e.target;
+                const kind = f.dataset.kind || 'expense';
+                const payload = {
+                    date: f.date.value,
+                    kind,
+                    amount: f.amount.value,
+                    account_id: f.account_id.value || null,
+                    to_account_id: kind === 'transfer' ? (f.to_account_id.value || null) : null,
+                    category_id: kind !== 'transfer' ? (f.category_id.value || null) : null,
+                    description: f.description.value
+                };
+                try {
+                    const id = f.id.value;
+                    const url = id ? `/api/finance/transactions/${id}` : '/api/finance/transactions';
+                    const method = id ? 'PATCH' : 'POST';
+                    const r = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                    const j = await r.json();
+                    if (!r.ok) throw new Error(j.error || 'Помилка');
+                    closeModal('finTxModal');
+                    loadFinTransactions();
+                    loadFinBalances();
+                } catch (err) { alert('Помилка: ' + err.message); }
+            }
+            if (e.target && e.target.id === 'finAccForm') {
+                e.preventDefault();
+                const f = e.target;
+                const payload = {
+                    name: f.name.value, initial_balance: f.initial_balance.value,
+                    color: f.color.value
+                };
+                try {
+                    const id = f.id.value;
+                    const url = id ? `/api/finance/accounts/${id}` : '/api/finance/accounts';
+                    const method = id ? 'PATCH' : 'POST';
+                    const r = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                    const j = await r.json();
+                    if (!r.ok) throw new Error(j.error || 'Помилка');
+                    closeModal('finAccModal');
+                    await loadFinAccountsAndCats();
+                    loadFinBalances();
+                    renderFinAccountsList();
+                } catch (err) { alert('Помилка: ' + err.message); }
+            }
+            if (e.target && e.target.id === 'finCatForm') {
+                e.preventDefault();
+                const f = e.target;
+                const payload = { name: f.name.value, kind: f.kind.value, color: f.color.value };
+                try {
+                    const r = await fetch('/api/finance/categories', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                    const j = await r.json();
+                    if (!r.ok) throw new Error(j.error || 'Помилка');
+                    closeModal('finCatModal');
+                    await loadFinAccountsAndCats();
+                    renderFinCategoriesList();
+                } catch (err) { alert('Помилка: ' + err.message); }
+            }
+        });
+
+        function openAccountModal(acc) {
+            const f = document.getElementById('finAccForm');
+            f.reset();
+            document.getElementById('finAccModalTitle').textContent = acc ? 'Редагування рахунку' : 'Новий рахунок';
+            if (acc) {
+                f.id.value = acc.id;
+                f.name.value = acc.name;
+                f.initial_balance.value = acc.initial_balance;
+                f.color.value = acc.color || '#8b5cf6';
+            }
+            openModal('finAccModal');
+        }
+
+        function openCategoryModal() {
+            document.getElementById('finCatForm').reset();
+            openModal('finCatModal');
+        }
+
+        function renderFinAccountsList() {
+            const wrap = document.getElementById('finAccountsList');
+            if (!wrap) return;
+            if (!finAccountsCache.length) {
+                wrap.innerHTML = `<div class="text-center text-slate-400 italic text-sm py-6">Жодного рахунку. Додай перший — Mono, Приват, Готівка...</div>`;
+                return;
+            }
+            wrap.innerHTML = finAccountsCache.map(a => `
+                <div class="flex items-center gap-3 bg-slate-50 rounded-xl px-4 py-3">
+                    <div class="w-3 h-3 rounded-full" style="background:${esc(a.color)}"></div>
+                    <div class="flex-1">
+                        <div class="font-bold text-slate-800 text-sm">${esc(a.name)}</div>
+                        <div class="text-[10px] text-slate-400">Початковий: ${finUah(a.initial_balance)}</div>
+                    </div>
+                    <button onclick='openAccountModal(${JSON.stringify(a).replace(/'/g, "\\'")})' class="text-slate-400 hover:text-violet-600 p-1.5"><i class="fa-solid fa-pen text-xs"></i></button>
+                    <button onclick="deleteFinAccount(${a.id})" class="text-slate-400 hover:text-rose-500 p-1.5"><i class="fa-solid fa-trash-can text-xs"></i></button>
+                </div>
+            `).join('');
+        }
+
+        async function deleteFinAccount(id) {
+            if (!confirm('Видалити рахунок? Всі його транзакції теж видаляться (cascade).')) return;
+            try {
+                await fetch(`/api/finance/accounts/${id}`, { method: 'DELETE' });
+                await loadFinAccountsAndCats();
+                loadFinBalances();
+                renderFinAccountsList();
+            } catch (e) { alert('Помилка: ' + e.message); }
+        }
+
+        function renderFinCategoriesList() {
+            const wrap = document.getElementById('finCategoriesList');
+            if (!wrap) return;
+            wrap.innerHTML = finCategoriesCache.map(c => `
+                <div class="flex items-center gap-3 bg-slate-50 rounded-xl px-4 py-3">
+                    <div class="w-3 h-3 rounded-full" style="background:${esc(c.color)}"></div>
+                    <div class="flex-1">
+                        <div class="font-bold text-slate-800 text-sm">${esc(c.name)}</div>
+                        <div class="text-[10px] text-slate-400">${c.kind === 'income' ? 'Дохід' : 'Витрата'}${c.is_system ? ' · системна' : ''}</div>
+                    </div>
+                    ${c.is_system ? '' : `<button onclick="deleteFinCategory(${c.id})" class="text-slate-400 hover:text-rose-500 p-1.5"><i class="fa-solid fa-trash-can text-xs"></i></button>`}
+                </div>
+            `).join('');
+        }
+
+        async function deleteFinCategory(id) {
+            if (!confirm('Видалити категорію?')) return;
+            try {
+                const r = await fetch(`/api/finance/categories/${id}`, { method: 'DELETE' });
+                const j = await r.json();
+                if (!r.ok) throw new Error(j.error || 'Помилка');
+                await loadFinAccountsAndCats();
+                renderFinCategoriesList();
+            } catch (e) { alert('Помилка: ' + e.message); }
+        }
+
+        // --- P&L ---
+        async function loadFinPnl() {
+            const from = (document.getElementById('finPnlFrom') || {}).value;
+            const to = (document.getElementById('finPnlTo') || {}).value;
+            const gran = (document.getElementById('finPnlGran') || {}).value || 'month';
+            const params = new URLSearchParams();
+            if (from) params.set('dateFrom', from);
+            if (to) params.set('dateTo', to);
+            params.set('granularity', gran);
+            const body = document.getElementById('finPnlBody');
+            body.innerHTML = `<div class="text-center text-slate-400 py-8">Завантаження…</div>`;
+            try {
+                const r = await fetch('/api/finance/pnl?' + params.toString());
+                const periods = await r.json();
+                if (!periods.length) {
+                    body.innerHTML = `<div class="bg-white rounded-2xl border border-slate-100 p-10 text-center text-slate-400">Немає транзакцій за період</div>`;
+                    return;
+                }
+                const fmtPeriod = (p) => {
+                    if (gran === 'month') {
+                        const [y, m] = p.split('-');
+                        const months = ['Січень','Лютий','Березень','Квітень','Травень','Червень','Липень','Серпень','Вересень','Жовтень','Листопад','Грудень'];
+                        return `${months[parseInt(m) - 1]} ${y}`;
+                    }
+                    const [y, m, d] = p.split('-');
+                    return `Тиждень з ${d}.${m}.${y}`;
+                };
+                body.innerHTML = periods.map(p => {
+                    const allItems = [...p.income.map(i => ({...i, type: 'income'})), ...p.expense.map(i => ({...i, type: 'expense'}))];
+                    return `
+                    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                        <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                            <div class="font-black text-slate-800 uppercase">${esc(fmtPeriod(p.period))}</div>
+                            <div class="flex items-center gap-4 text-sm">
+                                <span class="text-emerald-600 font-black">+${finUah(p.totals.income)}</span>
+                                <span class="text-rose-600 font-black">−${finUah(p.totals.expense)}</span>
+                                <span class="${p.totals.profit >= 0 ? 'text-violet-600' : 'text-rose-600'} font-black text-base">= ${p.totals.profit >= 0 ? '+' : ''}${finUah(p.totals.profit)}</span>
+                            </div>
+                        </div>
+                        <div class="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <div class="text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-2">Доходи</div>
+                                ${p.income.length ? p.income.map(i => `
+                                    <div class="flex justify-between items-center py-1.5 text-sm">
+                                        <span class="flex items-center gap-2">
+                                            <span class="w-2 h-2 rounded-full" style="background:${esc(i.color)}"></span>
+                                            ${esc(i.category)}
+                                        </span>
+                                        <span class="font-bold text-emerald-600">+${finUah(i.total)}</span>
+                                    </div>
+                                `).join('') : '<div class="text-xs text-slate-400 italic">Немає</div>'}
+                            </div>
+                            <div>
+                                <div class="text-[10px] font-black text-rose-500 uppercase tracking-widest mb-2">Витрати</div>
+                                ${p.expense.length ? p.expense.map(i => `
+                                    <div class="flex justify-between items-center py-1.5 text-sm">
+                                        <span class="flex items-center gap-2">
+                                            <span class="w-2 h-2 rounded-full" style="background:${esc(i.color)}"></span>
+                                            ${esc(i.category)}
+                                        </span>
+                                        <span class="font-bold text-rose-600">−${finUah(i.total)}</span>
+                                    </div>
+                                `).join('') : '<div class="text-xs text-slate-400 italic">Немає</div>'}
+                            </div>
+                        </div>
+                    </div>`;
+                }).join('');
+            } catch (e) {
+                body.innerHTML = `<div class="text-center text-rose-500 py-8">Помилка: ${esc(e.message)}</div>`;
+            }
+        }
+
+        // --- Cash Flow ---
+        async function loadFinCashflow() {
+            const from = (document.getElementById('finCfFrom') || {}).value;
+            const to = (document.getElementById('finCfTo') || {}).value;
+            const gran = (document.getElementById('finCfGran') || {}).value || 'day';
+            const params = new URLSearchParams();
+            if (from) params.set('dateFrom', from);
+            if (to) params.set('dateTo', to);
+            params.set('granularity', gran);
+            const tbody = document.getElementById('finCfTable');
+            tbody.innerHTML = `<tr><td colspan="5" class="p-6 text-center text-slate-400">Завантаження…</td></tr>`;
+            try {
+                const r = await fetch('/api/finance/cashflow?' + params.toString());
+                const rows = await r.json();
+                if (!rows.length) {
+                    tbody.innerHTML = `<tr><td colspan="5" class="p-8 text-center text-slate-400 font-medium">Немає даних за період</td></tr>`;
+                    return;
+                }
+                const maxAbs = Math.max(...rows.map(r => Math.max(r.income, r.expense)), 1);
+                const fmtPeriod = p => {
+                    const [y, m, d] = p.split('-');
+                    return gran === 'month' ? `${m}.${y}` : `${d}.${m}.${y}`;
+                };
+                tbody.innerHTML = rows.slice().reverse().map(r => {
+                    const incPct = Math.round(r.income / maxAbs * 100);
+                    const expPct = Math.round(r.expense / maxAbs * 100);
+                    return `
+                    <tr class="hover:bg-slate-50">
+                        <td class="px-6 py-3 text-sm font-bold text-slate-700 whitespace-nowrap">${esc(fmtPeriod(r.period))}</td>
+                        <td class="px-6 py-3 text-right text-sm font-black text-emerald-600">${finUah(r.income)}</td>
+                        <td class="px-6 py-3 text-right text-sm font-black text-rose-600">${finUah(r.expense)}</td>
+                        <td class="px-6 py-3 text-right text-sm font-black ${r.net >= 0 ? 'text-violet-600' : 'text-rose-600'}">${r.net >= 0 ? '+' : ''}${finUah(r.net)}</td>
+                        <td class="px-6 py-3">
+                            <div class="flex flex-col gap-1">
+                                <div class="h-2 bg-emerald-100 rounded-full overflow-hidden"><div class="h-full bg-emerald-500 rounded-full" style="width:${incPct}%"></div></div>
+                                <div class="h-2 bg-rose-100 rounded-full overflow-hidden"><div class="h-full bg-rose-500 rounded-full" style="width:${expPct}%"></div></div>
+                            </div>
+                        </td>
+                    </tr>`;
+                }).join('');
+            } catch (e) {
+                tbody.innerHTML = `<tr><td colspan="5" class="p-8 text-center text-rose-500">Помилка: ${esc(e.message)}</td></tr>`;
             }
         }
 
