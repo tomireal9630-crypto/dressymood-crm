@@ -641,10 +641,202 @@
                 </div>
 
                 <div class="flex items-center gap-6 border-b border-slate-200 mb-6">
+                    <button onclick="switchStatsTab('control')" data-stats-tab="control" class="stats-tab pb-3 text-sm font-bold transition-all">🚦 Світлофор</button>
+                    <button onclick="switchStatsTab('calculator')" data-stats-tab="calculator" class="stats-tab pb-3 text-sm font-bold transition-all">🧮 Калькулятор</button>
                     <button onclick="switchStatsTab('buyout')" data-stats-tab="buyout" class="stats-tab pb-3 text-sm font-bold transition-all">Викуп</button>
                     <button onclick="switchStatsTab('roi')" data-stats-tab="roi" class="stats-tab pb-3 text-sm font-bold transition-all">РОИ</button>
                     <button onclick="switchStatsTab('approval')" data-stats-tab="approval" class="stats-tab pb-3 text-sm font-bold transition-all">Апрув</button>
                     <button onclick="switchStatsTab('summary')" data-stats-tab="summary" class="stats-tab pb-3 text-sm font-bold transition-all">Юніт-економіка</button>
+                </div>
+
+                <!-- 🚦 СВІТЛОФОР: контроль реклами по моделях -->
+                <div id="stats-tab-control" class="stats-tab-content hidden">
+                    <div class="flex items-end gap-3 flex-wrap mb-6">
+                        <div>
+                            <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">Період витрат FB</label>
+                            <select id="ctlPeriod" onchange="loadControlPanel()" class="px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
+                                <option value="1">Сьогодні</option>
+                                <option value="7" selected>Останні 7 днів</option>
+                                <option value="30">Останні 30 днів</option>
+                            </select>
+                        </div>
+                        <button onclick="loadControlPanel()" class="px-5 py-2 rounded-lg text-xs font-black uppercase tracking-wider text-white transition-all" style="background:linear-gradient(135deg,#8b5cf6,#ec4899)">↻ Оновити</button>
+                        <div class="ml-auto text-[11px] text-slate-400 italic flex items-center gap-1">
+                            <i class="fa-solid fa-circle text-emerald-500 text-[8px]"></i>В плюсі
+                            <i class="fa-solid fa-circle text-amber-500 text-[8px] ml-2"></i>На межі
+                            <i class="fa-solid fa-circle text-rose-500 text-[8px] ml-2"></i>В мінусі
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-3 gap-4 mb-6">
+                        <div class="bg-white rounded-2xl border-2 border-emerald-200 p-4">
+                            <div class="text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-1">🟢 В плюсі</div>
+                            <div id="ctlGreenCount" class="text-2xl font-black text-emerald-600">0</div>
+                            <div class="text-[10px] text-slate-400 mt-1">CPL ≤ рекомендований</div>
+                        </div>
+                        <div class="bg-white rounded-2xl border-2 border-amber-200 p-4">
+                            <div class="text-[10px] font-black text-amber-500 uppercase tracking-widest mb-1">🟡 На межі</div>
+                            <div id="ctlYellowCount" class="text-2xl font-black text-amber-600">0</div>
+                            <div class="text-[10px] text-slate-400 mt-1">між рек. і граничним</div>
+                        </div>
+                        <div class="bg-white rounded-2xl border-2 border-rose-200 p-4">
+                            <div class="text-[10px] font-black text-rose-500 uppercase tracking-widest mb-1">🔴 В мінусі</div>
+                            <div id="ctlRedCount" class="text-2xl font-black text-rose-600">0</div>
+                            <div class="text-[10px] text-slate-400 mt-1">CPL > граничного</div>
+                        </div>
+                    </div>
+
+                    <div id="ctlRecommendations" class="hidden bg-rose-50 border border-rose-200 rounded-2xl p-5 mb-6">
+                        <div class="text-xs font-black text-rose-600 uppercase tracking-widest mb-3"><i class="fa-solid fa-triangle-exclamation mr-2"></i>Рекомендації</div>
+                        <div id="ctlRecList" class="space-y-2 text-sm"></div>
+                    </div>
+
+                    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-x-auto">
+                        <table class="w-full text-left text-xs min-w-[900px]">
+                            <thead>
+                                <tr class="bg-slate-50/50 border-b border-slate-100">
+                                    <th class="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Модель</th>
+                                    <th class="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">CPL зараз</th>
+                                    <th class="px-4 py-3 text-[10px] font-black text-emerald-500 uppercase tracking-widest text-right">CPL рек.</th>
+                                    <th class="px-4 py-3 text-[10px] font-black text-rose-500 uppercase tracking-widest text-right">CPL грань</th>
+                                    <th class="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Апрув</th>
+                                    <th class="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Викуп</th>
+                                    <th class="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Витрати</th>
+                                    <th class="px-4 py-3 text-[10px] font-black text-emerald-500 uppercase tracking-widest text-right">Чист.пр.</th>
+                                    <th class="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Сигнал</th>
+                                </tr>
+                            </thead>
+                            <tbody id="ctlTable" class="divide-y divide-slate-50"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- 🧮 КАЛЬКУЛЯТОР Що-якщо -->
+                <div id="stats-tab-calculator" class="stats-tab-content hidden">
+                    <div class="flex items-end gap-3 flex-wrap mb-6">
+                        <div class="flex-1 min-w-[280px]">
+                            <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">Модель</label>
+                            <select id="calcProduct" onchange="loadCalcProduct()" class="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none text-sm font-bold text-slate-700">
+                                <option value="">— Оберіть товар —</option>
+                            </select>
+                        </div>
+                        <button onclick="resetCalcToHistory()" class="px-4 py-2 rounded-lg text-xs font-bold bg-slate-100 text-slate-600 hover:bg-slate-200 transition-all">↺ Скинути до історії</button>
+                    </div>
+
+                    <div id="calcContent" class="hidden">
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            <!-- Параметри -->
+                            <div class="bg-white rounded-2xl border border-slate-100 p-6 shadow-sm">
+                                <div class="text-xs font-black text-slate-400 uppercase tracking-widest mb-5">Параметри (рухай слайдери)</div>
+
+                                <div class="space-y-5">
+                                    <div>
+                                        <div class="flex justify-between items-baseline mb-2">
+                                            <label class="text-xs font-bold text-slate-600">Ціна на сайті</label>
+                                            <span><input type="number" id="calcPrice" oninput="calcRecompute()" class="w-24 text-right text-sm font-black bg-slate-50 border border-slate-100 rounded px-2 py-1 outline-none">  ₴</span>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div class="flex justify-between items-baseline mb-2">
+                                            <label class="text-xs font-bold text-slate-600">Собівартість</label>
+                                            <span><input type="number" id="calcCost" oninput="calcRecompute()" class="w-24 text-right text-sm font-black bg-slate-50 border border-slate-100 rounded px-2 py-1 outline-none">  ₴</span>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div class="flex justify-between items-baseline mb-2">
+                                            <label class="text-xs font-bold text-slate-600">📞 CPL (ціна ліда)</label>
+                                            <span><input type="number" id="calcCpl" oninput="calcSyncCpl(); calcRecompute()" class="w-24 text-right text-sm font-black bg-blue-50 text-blue-600 border border-blue-100 rounded px-2 py-1 outline-none"> ₴</span>
+                                        </div>
+                                        <input type="range" id="calcCplRange" min="0" max="1000" step="5" oninput="calcSyncCplRange(); calcRecompute()" class="w-full accent-blue-500">
+                                    </div>
+                                    <div>
+                                        <div class="flex justify-between items-baseline mb-2">
+                                            <label class="text-xs font-bold text-slate-600">✅ Апрув</label>
+                                            <span><input type="number" id="calcApriv" min="0" max="100" oninput="calcSyncApriv(); calcRecompute()" class="w-20 text-right text-sm font-black bg-emerald-50 text-emerald-600 border border-emerald-100 rounded px-2 py-1 outline-none"> %</span>
+                                        </div>
+                                        <input type="range" id="calcAprivRange" min="0" max="100" step="1" oninput="calcSyncAprivRange(); calcRecompute()" class="w-full accent-emerald-500">
+                                    </div>
+                                    <div>
+                                        <div class="flex justify-between items-baseline mb-2">
+                                            <label class="text-xs font-bold text-slate-600">📦 Викуп</label>
+                                            <span><input type="number" id="calcBuyout" min="0" max="100" oninput="calcSyncBuyout(); calcRecompute()" class="w-20 text-right text-sm font-black bg-violet-50 text-violet-600 border border-violet-100 rounded px-2 py-1 outline-none"> %</span>
+                                        </div>
+                                        <input type="range" id="calcBuyoutRange" min="0" max="100" step="1" oninput="calcSyncBuyoutRange(); calcRecompute()" class="w-full accent-violet-500">
+                                    </div>
+                                    <div>
+                                        <div class="flex justify-between items-baseline mb-2">
+                                            <label class="text-xs font-bold text-slate-600">Витрата на відмову</label>
+                                            <span><input type="number" id="calcReturn" min="0" oninput="calcRecompute()" class="w-20 text-right text-sm font-black bg-slate-50 border border-slate-100 rounded px-2 py-1 outline-none"> ₴</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div id="calcHistoryNote" class="mt-5 pt-4 border-t border-slate-100 text-[11px] text-slate-400"></div>
+                            </div>
+
+                            <!-- Результат -->
+                            <div class="bg-white rounded-2xl border border-slate-100 p-6 shadow-sm">
+                                <div class="text-xs font-black text-slate-400 uppercase tracking-widest mb-5">Результат на 100 лідів</div>
+
+                                <div class="space-y-2 text-sm">
+                                    <div class="flex justify-between">
+                                        <span class="text-slate-500">Витрачено на рекламу</span>
+                                        <span id="calcResSpend" class="font-bold text-blue-600">0 ₴</span>
+                                    </div>
+                                    <div class="flex justify-between">
+                                        <span class="text-slate-500">Підтверджених</span>
+                                        <span id="calcResApproved" class="font-bold text-slate-700">0</span>
+                                    </div>
+                                    <div class="flex justify-between">
+                                        <span class="text-slate-500">Викуплено</span>
+                                        <span id="calcResSold" class="font-bold text-emerald-600">0</span>
+                                    </div>
+                                    <div class="flex justify-between">
+                                        <span class="text-slate-500">Відмов на пошті</span>
+                                        <span id="calcResRefused" class="font-bold text-rose-500">0</span>
+                                    </div>
+                                </div>
+
+                                <div class="border-t border-slate-100 mt-4 pt-4 space-y-2 text-sm">
+                                    <div class="flex justify-between">
+                                        <span class="text-slate-500">Виручка</span>
+                                        <span id="calcResRevenue" class="font-black text-slate-800">0 ₴</span>
+                                    </div>
+                                    <div class="flex justify-between">
+                                        <span class="text-slate-500">Собівартість товару</span>
+                                        <span id="calcResCogs" class="font-bold text-rose-500">−0 ₴</span>
+                                    </div>
+                                    <div class="flex justify-between">
+                                        <span class="text-slate-500">Витрати на повернення</span>
+                                        <span id="calcResReturns" class="font-bold text-rose-500">−0 ₴</span>
+                                    </div>
+                                    <div class="flex justify-between">
+                                        <span class="text-slate-500">Реклама</span>
+                                        <span id="calcResAdSpend" class="font-bold text-rose-500">−0 ₴</span>
+                                    </div>
+                                </div>
+
+                                <div id="calcProfitCard" class="mt-5 rounded-xl p-5 text-center">
+                                    <div class="text-[10px] font-black uppercase tracking-widest mb-1" id="calcProfitLabel">Чистий прибуток</div>
+                                    <div id="calcResNetProfit" class="text-3xl font-black">0 ₴</div>
+                                    <div class="mt-1 text-xs font-bold" id="calcResRoi">ROI: 0%</div>
+                                </div>
+
+                                <div id="calcVerdict" class="mt-4 text-sm font-bold text-center"></div>
+
+                                <div class="mt-5 border-t border-slate-100 pt-4 space-y-1 text-xs text-slate-500">
+                                    <div class="flex justify-between"><span>Граничний CPL (беззбитковість)</span><span id="calcCplMax" class="font-black text-rose-600">0 ₴</span></div>
+                                    <div class="flex justify-between"><span>Рекомендований CPL (ROI 30%)</span><span id="calcCplRec" class="font-black text-emerald-600">0 ₴</span></div>
+                                    <div class="flex justify-between"><span>Маржа</span><span id="calcMargin" class="font-black text-violet-600">0%</span></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="calcEmpty" class="bg-white rounded-2xl border border-slate-100 p-16 text-center text-slate-400">
+                        <i class="fa-solid fa-calculator text-5xl mb-4 text-slate-200"></i>
+                        <div class="font-bold">Оберіть модель щоб почати розрахунок</div>
+                    </div>
                 </div>
 
                 <div id="stats-tab-buyout" class="stats-tab-content">
@@ -1560,7 +1752,7 @@
             if (view === 'settings') { loadNpSettings(); loadSmsSettings(); loadCheckboxSettings(); loadEconSettings(); loadFbAccounts(); }
             if (view === 'regulars') loadRegulars();
             if (view === 'export') loadExport();
-            if (view === 'statistics') switchStatsTab('buyout');
+            if (view === 'statistics') switchStatsTab('control');
             if (view === 'dashboard') { if (!dashInit) initDashboard(); else loadDashboard(); }
             refreshData();
         }
@@ -2853,6 +3045,8 @@
             if (tab === 'approval' && !statsApprovalInit) initApprovalStats();
             if (tab === 'roi' && !statsRoiInit) initRoiStats();
             if (tab === 'summary' && !statsUnitEconInit) initUnitEconomics();
+            if (tab === 'control' && !ctlInit) initControlPanel();
+            if (tab === 'calculator' && !calcInit) initCalculator();
         }
 
         async function initBuyoutStats() {
@@ -3209,6 +3403,263 @@
                     </td>
                 </tr>`;
             }).join('');
+        }
+
+        // ========== 🚦 СВІТЛОФОР ==========
+        let ctlInit = false;
+        async function initControlPanel() { ctlInit = true; await loadControlPanel(); }
+
+        async function loadControlPanel() {
+            const tbody = document.getElementById('ctlTable');
+            if (tbody) tbody.innerHTML = `<tr><td colspan="9" class="p-8 text-center text-slate-400 font-medium">Завантаження…</td></tr>`;
+            const days = Number((document.getElementById('ctlPeriod') || {}).value) || 7;
+            const iso = d => d.toISOString().slice(0, 10);
+            const to = new Date();
+            const from = new Date(); from.setDate(from.getDate() - days + 1);
+            try {
+                const [ueRes, roiRes] = await Promise.all([
+                    fetch('/api/stats/unit-economics'),
+                    fetch(`/api/stats/roi?dateFrom=${iso(from)}&dateTo=${iso(to)}`)
+                ]);
+                const ue = await ueRes.json();
+                const roi = await roiRes.json();
+
+                const roiByArt = {};
+                (roi.byArticle || []).forEach(r => { roiByArt[r.article] = r; });
+
+                // Об'єднуємо: для кожного товару беремо CPL_max і CPL_рек з UE,
+                // фактичний CPL/spend/leads з ROI
+                const rows = (ue.rows || []).map(p => {
+                    const r = roiByArt[p.article] || {};
+                    const actualCpl = r.cpl || 0;
+                    const netProfit = r.net_profit != null ? r.net_profit : 0;
+                    let signal = 'gray';
+                    if (actualCpl > 0 && p.cpl_max > 0) {
+                        if (actualCpl <= p.cpl_recommended) signal = 'green';
+                        else if (actualCpl <= p.cpl_max) signal = 'yellow';
+                        else signal = 'red';
+                    }
+                    return {
+                        ...p,
+                        actualCpl,
+                        adSpend: r.ad_spend || 0,
+                        leads: r.leads || 0,
+                        netProfit,
+                        signal,
+                        hasData: p.has_history && p.cpl_max > 0
+                    };
+                });
+
+                renderControlPanel(rows);
+            } catch (e) {
+                if (tbody) tbody.innerHTML = `<tr><td colspan="9" class="p-8 text-center text-rose-500 font-medium">Помилка: ${esc(e.message)}</td></tr>`;
+            }
+        }
+
+        function renderControlPanel(rows) {
+            const sorted = rows.slice().sort((a, b) => {
+                const order = { red: 0, yellow: 1, green: 2, gray: 3 };
+                return order[a.signal] - order[b.signal];
+            });
+            let green = 0, yellow = 0, red = 0;
+            sorted.forEach(r => {
+                if (r.signal === 'green') green++;
+                else if (r.signal === 'yellow') yellow++;
+                else if (r.signal === 'red') red++;
+            });
+            document.getElementById('ctlGreenCount').textContent = green;
+            document.getElementById('ctlYellowCount').textContent = yellow;
+            document.getElementById('ctlRedCount').textContent = red;
+
+            // Рекомендації (для red і деяких yellow)
+            const recs = [];
+            sorted.filter(r => r.signal === 'red').forEach(r => {
+                const over = Math.round((r.actualCpl - r.cpl_max) / r.cpl_max * 100);
+                recs.push(`🔴 <b>${esc(r.article)}</b> — CPL ${Math.round(r.actualCpl)} ₴ > граничного ${Math.round(r.cpl_max)} ₴ (на ${over}%). Зупини або заміни креатив. Збиток ${Math.round(r.netProfit)} ₴.`);
+            });
+            sorted.filter(r => r.signal === 'yellow').forEach(r => {
+                recs.push(`🟡 <b>${esc(r.article)}</b> — CPL ${Math.round(r.actualCpl)} ₴ між рек. (${Math.round(r.cpl_recommended)}) і граничним (${Math.round(r.cpl_max)}). Знизь ставку або підніми апрув/викуп.`);
+            });
+            const recEl = document.getElementById('ctlRecommendations');
+            const recListEl = document.getElementById('ctlRecList');
+            if (recs.length) {
+                recListEl.innerHTML = recs.slice(0, 8).map(s => `<div>${s}</div>`).join('');
+                recEl.classList.remove('hidden');
+            } else {
+                recEl.classList.add('hidden');
+            }
+
+            const tbody = document.getElementById('ctlTable');
+            if (!sorted.length) {
+                tbody.innerHTML = `<tr><td colspan="9" class="p-8 text-center text-slate-400 font-medium">Немає моделей з історією</td></tr>`;
+                return;
+            }
+            const uah = n => Number(n || 0).toLocaleString('uk-UA') + ' ₴';
+            const sigCls = {
+                green: 'bg-emerald-50 text-emerald-600',
+                yellow: 'bg-amber-50 text-amber-600',
+                red: 'bg-rose-50 text-rose-600',
+                gray: 'bg-slate-100 text-slate-400'
+            };
+            const sigText = { green: '🟢 В плюсі', yellow: '🟡 На межі', red: '🔴 В мінусі', gray: '— нема даних' };
+            tbody.innerHTML = sorted.map(r => `
+                <tr class="hover:bg-slate-50 transition-all ${!r.hasData ? 'opacity-50' : ''}">
+                    <td class="px-4 py-3">
+                        <div class="font-black text-slate-800 uppercase text-sm">${esc(r.article)}</div>
+                        <div class="text-[10px] text-slate-400">${esc(r.name || '')}</div>
+                    </td>
+                    <td class="px-4 py-3 text-right font-black ${r.actualCpl > 0 ? 'text-slate-800' : 'text-slate-300'}">${r.actualCpl > 0 ? Math.round(r.actualCpl) + ' ₴' : '—'}</td>
+                    <td class="px-4 py-3 text-right font-black text-emerald-600">${r.cpl_recommended > 0 ? uah(r.cpl_recommended) : '—'}</td>
+                    <td class="px-4 py-3 text-right font-black text-rose-600">${r.cpl_max > 0 ? uah(r.cpl_max) : '—'}</td>
+                    <td class="px-4 py-3 text-center text-xs font-bold text-slate-700">${r.has_history ? r.approval_pct + '%' : '—'}</td>
+                    <td class="px-4 py-3 text-center text-xs font-bold text-slate-700">${r.has_history ? r.buyout_pct + '%' : '—'}</td>
+                    <td class="px-4 py-3 text-right font-bold text-blue-500">${r.adSpend > 0 ? uah(r.adSpend) : '—'}</td>
+                    <td class="px-4 py-3 text-right font-black ${r.netProfit > 0 ? 'text-emerald-600' : r.netProfit < 0 ? 'text-rose-600' : 'text-slate-400'}">${r.adSpend > 0 ? uah(r.netProfit) : '—'}</td>
+                    <td class="px-4 py-3 text-center"><span class="inline-flex items-center text-[10px] font-black px-2.5 py-1 rounded-full ${sigCls[r.signal]}">${sigText[r.signal]}</span></td>
+                </tr>
+            `).join('');
+        }
+
+        // ========== 🧮 КАЛЬКУЛЯТОР ==========
+        let calcInit = false;
+        let calcCurrentProduct = null;     // дані з API economics
+        let calcSettings = { return_cost: 110, target_roi_pct: 30 };
+
+        async function initCalculator() {
+            calcInit = true;
+            try {
+                const [prodRes, settRes] = await Promise.all([
+                    fetch('/api/warehouse/products'),
+                    fetch('/api/settings/economics')
+                ]);
+                const prods = await prodRes.json();
+                const sett = await settRes.json();
+                calcSettings = { ...calcSettings, ...sett };
+                const sel = document.getElementById('calcProduct');
+                sel.innerHTML = `<option value="">— Оберіть товар —</option>` +
+                    (prods || []).map(p => `<option value="${p.id}">${esc(p.article)} — ${esc(p.name)}</option>`).join('');
+            } catch (e) { /* мовчки */ }
+        }
+
+        async function loadCalcProduct() {
+            const id = document.getElementById('calcProduct').value;
+            if (!id) {
+                document.getElementById('calcContent').classList.add('hidden');
+                document.getElementById('calcEmpty').classList.remove('hidden');
+                return;
+            }
+            try {
+                const r = await fetch(`/api/products/${id}/economics`);
+                const d = await r.json();
+                if (!r.ok) throw new Error(d.error || 'Помилка');
+                calcCurrentProduct = d;
+                resetCalcToHistory();
+                document.getElementById('calcEmpty').classList.add('hidden');
+                document.getElementById('calcContent').classList.remove('hidden');
+            } catch (e) { alert('Помилка: ' + e.message); }
+        }
+
+        function resetCalcToHistory() {
+            if (!calcCurrentProduct) return;
+            const p = calcCurrentProduct.product;
+            const h = calcCurrentProduct.history;
+            const c = calcCurrentProduct.cpl;
+            document.getElementById('calcPrice').value = p.price || 0;
+            document.getElementById('calcCost').value = p.cost || 0;
+            // CPL за замовч. — рекомендований (можна змінювати)
+            const cplStart = Math.round(c.recommended > 0 ? c.recommended : (p.price ? p.price * 0.1 : 100));
+            document.getElementById('calcCpl').value = cplStart;
+            document.getElementById('calcCplRange').max = Math.max(1000, cplStart * 3);
+            document.getElementById('calcCplRange').value = cplStart;
+            const apriv = h.approval_pct || 0;
+            const buyout = h.buyout_pct || 0;
+            document.getElementById('calcApriv').value = apriv;
+            document.getElementById('calcAprivRange').value = apriv;
+            document.getElementById('calcBuyout').value = buyout;
+            document.getElementById('calcBuyoutRange').value = buyout;
+            document.getElementById('calcReturn').value = calcSettings.return_cost || 110;
+
+            const note = h.total_leads > 0
+                ? `📊 Історія (за ${h.lookback_days || 30} днів): ${h.total_leads} заявок, апрув ${h.approval_pct}%, викуп ${h.buyout_pct}%${h.in_flight > 0 ? `, ${h.in_flight} в дорозі` : ''}.`
+                : `⚠ Ще немає історії по цьому товару — використано дефолтні значення.`;
+            document.getElementById('calcHistoryNote').textContent = note;
+
+            calcRecompute();
+        }
+
+        function calcSyncCpl() { document.getElementById('calcCplRange').value = document.getElementById('calcCpl').value; }
+        function calcSyncCplRange() { document.getElementById('calcCpl').value = document.getElementById('calcCplRange').value; }
+        function calcSyncApriv() {
+            const v = Math.max(0, Math.min(100, Number(document.getElementById('calcApriv').value) || 0));
+            document.getElementById('calcApriv').value = v;
+            document.getElementById('calcAprivRange').value = v;
+        }
+        function calcSyncAprivRange() { document.getElementById('calcApriv').value = document.getElementById('calcAprivRange').value; }
+        function calcSyncBuyout() {
+            const v = Math.max(0, Math.min(100, Number(document.getElementById('calcBuyout').value) || 0));
+            document.getElementById('calcBuyout').value = v;
+            document.getElementById('calcBuyoutRange').value = v;
+        }
+        function calcSyncBuyoutRange() { document.getElementById('calcBuyout').value = document.getElementById('calcBuyoutRange').value; }
+
+        function calcRecompute() {
+            const price = Number(document.getElementById('calcPrice').value) || 0;
+            const cost = Number(document.getElementById('calcCost').value) || 0;
+            const cpl = Number(document.getElementById('calcCpl').value) || 0;
+            const apriv = Math.max(0, Math.min(100, Number(document.getElementById('calcApriv').value) || 0)) / 100;
+            const buyout = Math.max(0, Math.min(100, Number(document.getElementById('calcBuyout').value) || 0)) / 100;
+            const retCost = Number(document.getElementById('calcReturn').value) || 0;
+            const targetRoi = ((calcCurrentProduct && calcCurrentProduct.product.target_roi_pct) || calcSettings.target_roi_pct || 30) / 100;
+
+            // На 100 лідів:
+            const approved = 100 * apriv;
+            const sold = approved * buyout;
+            const refused = approved * (1 - buyout);
+
+            const adSpend = 100 * cpl;
+            const revenue = sold * price;
+            const cogs = sold * cost;
+            const returns = refused * retCost;
+            const netProfit = revenue - cogs - returns - adSpend;
+            const roi = adSpend > 0 ? netProfit / adSpend * 100 : 0;
+            const margin = revenue > 0 ? (revenue - cogs - returns) / revenue * 100 : 0;
+
+            // CPL_max і Рек для поточних параметрів
+            const grossPer100 = revenue - cogs - returns;
+            const cplMax = grossPer100 / 100;
+            const cplRec = cplMax / (1 + targetRoi);
+
+            const uah = n => Math.round(Number(n) || 0).toLocaleString('uk-UA') + ' ₴';
+            document.getElementById('calcResSpend').textContent = uah(adSpend);
+            document.getElementById('calcResApproved').textContent = Math.round(approved);
+            document.getElementById('calcResSold').textContent = sold.toFixed(1);
+            document.getElementById('calcResRefused').textContent = refused.toFixed(1);
+            document.getElementById('calcResRevenue').textContent = uah(revenue);
+            document.getElementById('calcResCogs').textContent = '−' + uah(cogs);
+            document.getElementById('calcResReturns').textContent = '−' + uah(returns);
+            document.getElementById('calcResAdSpend').textContent = '−' + uah(adSpend);
+            document.getElementById('calcResNetProfit').textContent = (netProfit >= 0 ? '+' : '') + uah(netProfit);
+            document.getElementById('calcResRoi').textContent = `ROI: ${Math.round(roi)}%`;
+            document.getElementById('calcCplMax').textContent = uah(cplMax);
+            document.getElementById('calcCplRec').textContent = uah(cplRec);
+            document.getElementById('calcMargin').textContent = Math.round(margin) + '%';
+
+            const card = document.getElementById('calcProfitCard');
+            const verdict = document.getElementById('calcVerdict');
+            if (netProfit > 0 && roi >= targetRoi * 100) {
+                card.style.background = '#ecfdf5';
+                card.style.color = '#059669';
+                verdict.innerHTML = `<span class="text-emerald-600">✓ Прибутково. ROI вищий за цільові ${Math.round(targetRoi * 100)}%.</span>`;
+            } else if (netProfit > 0) {
+                card.style.background = '#fef3c7';
+                card.style.color = '#d97706';
+                verdict.innerHTML = `<span class="text-amber-600">⚠ В плюсі, але ROI нижчий за цільовий. Знизь CPL до <b>${Math.round(cplRec)} ₴</b> або підніми апрув/викуп.</span>`;
+            } else {
+                card.style.background = '#fef2f2';
+                card.style.color = '#e11d48';
+                const deficitPerLead = -netProfit / 100;
+                verdict.innerHTML = `<span class="text-rose-600">✗ В мінусі. Втрачаєш ${Math.round(deficitPerLead)} ₴ на кожен лід. Знизь CPL до <b>${Math.round(cplMax)} ₴</b> або менше.</span>`;
+            }
         }
 
         let editingOrderId = null;
