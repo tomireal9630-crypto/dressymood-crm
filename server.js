@@ -9,7 +9,10 @@ const crypto = require('crypto');
 const app = express();
 const isProduction = process.env.NODE_ENV === 'production';
 if (isProduction) app.set('trust proxy', 1);
-const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
+// SSL: увімкнуто для зовнішніх provider'ів (Supabase/Render/AWS). Для внутрішньої Docker-мережі (Coolify/локально) — вимкнено.
+const _dbUrl = process.env.DATABASE_URL || '';
+const _useSsl = /supabase|render\.com|amazonaws|neon\.tech/i.test(_dbUrl) || process.env.PGSSL === 'true';
+const pool = new Pool({ connectionString: _dbUrl, ssl: _useSsl ? { rejectUnauthorized: false } : false });
 
 // --- АВТОМАТИЧНЕ ОНОВЛЕННЯ БАЗИ ДАНИХ (СТАБІЛЬНЕ) ---
 async function updateDatabaseSchema() {
