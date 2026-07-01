@@ -13,6 +13,10 @@ if (isProduction) app.set('trust proxy', 1);
 const _dbUrl = process.env.DATABASE_URL || '';
 const _useSsl = /supabase|render\.com|amazonaws|neon\.tech/i.test(_dbUrl) || process.env.PGSSL === 'true';
 const pool = new Pool({ connectionString: _dbUrl, ssl: _useSsl ? { rejectUnauthorized: false } : false });
+// Київський час для всіх SQL-запитів (NOW(), CURRENT_DATE, date_trunc — все в Europe/Kyiv)
+pool.on('connect', (client) => {
+  client.query("SET TIMEZONE TO 'Europe/Kyiv'").catch(err => console.error('SET TIMEZONE error:', err.message));
+});
 
 // --- АВТОМАТИЧНЕ ОНОВЛЕННЯ БАЗИ ДАНИХ (СТАБІЛЬНЕ) ---
 async function updateDatabaseSchema() {
