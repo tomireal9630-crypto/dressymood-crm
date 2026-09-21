@@ -206,6 +206,9 @@ async function updateDatabaseSchema() {
         // Сума по article не змінюється (adset'и складаються в кампанію). Керування — по кампанії й по групі.
         await pool.query(`ALTER TABLE fb_spend_daily ADD COLUMN IF NOT EXISTS adset_id VARCHAR(64);`);
         await pool.query(`ALTER TABLE fb_spend_daily ADD COLUMN IF NOT EXISTS adset_name TEXT DEFAULT '';`);
+        // spend зберігається у РОДНІЙ валюті кабінету; currency+fx_rate для конвертації в грн у статистиці/фінансах
+        await pool.query(`ALTER TABLE fb_spend_daily ADD COLUMN IF NOT EXISTS currency VARCHAR(8) DEFAULT 'UAH';`);
+        await pool.query(`ALTER TABLE fb_spend_daily ADD COLUMN IF NOT EXISTS fx_rate NUMERIC DEFAULT 1;`);
         await pool.query(`ALTER TABLE fb_spend_daily DROP CONSTRAINT IF EXISTS fb_spend_daily_ad_account_id_date_campaign_id_key;`).catch(()=>{});
         await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_fb_spend_adset ON fb_spend_daily(ad_account_id, date, adset_id);`).catch(()=>{});
 
@@ -720,16 +723,16 @@ app.get('/api/stats/roi', checkAuth, async (req, res) => {
     const spendWhere = spendConds.length ? 'WHERE ' + spendConds.join(' AND ') : '';
     const spendTotalQ = `
       SELECT
-        COALESCE(SUM(spend), 0)::numeric AS spend,
+        COALESCE(SUM(spend * COALESCE(fx_rate,1)), 0)::numeric AS spend,
         COALESCE(SUM(leads), 0)::int AS leads
       FROM fb_spend_daily ${spendWhere}`;
     const spendByArtQ = `
-      SELECT article, SUM(spend)::numeric AS spend, SUM(leads)::int AS leads
+      SELECT article, SUM(spend * COALESCE(fx_rate,1))::numeric AS spend, SUM(leads)::int AS leads
       FROM fb_spend_daily ${spendWhere}
       ${spendConds.length ? 'AND' : 'WHERE'} article IS NOT NULL AND article <> ''
       GROUP BY article`;
     const spendUnmappedQ = `
-      SELECT COALESCE(SUM(spend), 0)::numeric AS spend, COALESCE(SUM(leads), 0)::int AS leads
+      SELECT COALESCE(SUM(spend * COALESCE(fx_rate,1)), 0)::numeric AS spend, COALESCE(SUM(leads), 0)::int AS leads
       FROM fb_spend_daily ${spendWhere}
       ${spendConds.length ? 'AND' : 'WHERE'} (article IS NULL OR article = '')`;
 
@@ -1119,15 +1122,15 @@ async function syncFbAccount(account, daysBack) {
   const settings = await getEconomicsSettings();
   const pattern = settings.campaign_regex || '\\[([^\\]]+)\\]';
   const cleanId = String(account.fb_account_id).replace(/^act_/, '');
-  // Валюта кабінету → курс у грн (FB віддає витрати у валюті кабінету)
-  let fxRate = 1;
+  // Валюта кабінету + курс у грн (spend зберігаємо в РОДНІЙ валюті, конвертуємо пізніше)
+  let fxRate = 1, currency = 'UAH';
   try {
     const meta = await fbGet(`https://graph.facebook.com/${FB_API_VERSION}/act_${cleanId}?fields=currency&access_token=${encodeURIComponent(account.access_token)}`);
-    const cur = (meta.currency || 'UAH').toUpperCase();
-    if (cur === 'USD') fxRate = Number(settings.fx_usd) || 41;
-    else if (cur === 'EUR') fxRate = Number(settings.fx_eur) || 45;
-    else fxRate = 1; // UAH або інша — без конвертації
-  } catch (e) { fxRate = 1; }
+    currency = (meta.currency || 'UAH').toUpperCase();
+    if (currency === 'USD') fxRate = Number(settings.fx_usd) || 41;
+    else if (currency === 'EUR') fxRate = Number(settings.fx_eur) || 45;
+    else fxRate = 1; // UAH або інша — 1:1
+  } catch (e) { fxRate = 1; currency = 'UAH'; }
   const since = new Date(); since.setDate(since.getDate() - (daysBack || 7));
   const until = new Date();
   const iso = d => d.toISOString().slice(0, 10);
@@ -1154,13 +1157,13 @@ async function syncFbAccount(account, daysBack) {
       const adsetName = r.adset_name || '';
       // Артикул шукаємо в назві кампанії, а якщо там нема — у назві групи
       const article = extractArticleFromCampaign(campaignName, pattern) || extractArticleFromCampaign(adsetName, pattern);
-      const spend = (Number(r.spend) || 0) * fxRate; // у грн
+      const spend = Number(r.spend) || 0; // у родній валюті кабінету
       const impressions = Number(r.impressions) || 0;
       const clicks = Number(r.clicks) || 0;
       const leads = getLeadCountFromActions(r.actions);
       await pool.query(`
-        INSERT INTO fb_spend_daily (ad_account_id, date, campaign_id, campaign_name, adset_id, adset_name, article, spend, impressions, clicks, leads, last_synced_at)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11, NOW())
+        INSERT INTO fb_spend_daily (ad_account_id, date, campaign_id, campaign_name, adset_id, adset_name, article, spend, impressions, clicks, leads, currency, fx_rate, last_synced_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13, NOW())
         ON CONFLICT (ad_account_id, date, adset_id) DO UPDATE SET
           campaign_id = EXCLUDED.campaign_id,
           campaign_name = EXCLUDED.campaign_name,
@@ -1170,8 +1173,10 @@ async function syncFbAccount(account, daysBack) {
           impressions = EXCLUDED.impressions,
           clicks = EXCLUDED.clicks,
           leads = EXCLUDED.leads,
+          currency = EXCLUDED.currency,
+          fx_rate = EXCLUDED.fx_rate,
           last_synced_at = NOW()
-      `, [account.id, date, campaignId, campaignName, adsetId, adsetName, article, spend, impressions, clicks, leads]);
+      `, [account.id, date, campaignId, campaignName, adsetId, adsetName, article, spend, impressions, clicks, leads, currency, fxRate]);
       inserted++;
     }
     url = (j.paging && j.paging.next) ? j.paging.next : null;
@@ -1378,7 +1383,8 @@ app.get('/api/fb/control', checkAuth, async (req, res) => {
       SELECT ad_account_id, campaign_id, MAX(campaign_name) campaign_name,
              adset_id, MAX(adset_name) adset_name, MAX(article) article,
              SUM(spend)::numeric spend, SUM(leads)::int leads,
-             SUM(impressions)::bigint impressions, SUM(clicks)::bigint clicks
+             SUM(impressions)::bigint impressions, SUM(clicks)::bigint clicks,
+             MAX(currency) currency, MAX(fx_rate)::numeric fx_rate
       FROM fb_spend_daily ${where}
       GROUP BY ad_account_id, campaign_id, adset_id
       ORDER BY article NULLS LAST, campaign_id, spend DESC`, sp);
@@ -1396,11 +1402,12 @@ app.get('/api/fb/control', checkAuth, async (req, res) => {
     const { map: roiMap, returnCost } = await articleRoiMap(dateFrom, dateTo);
     const cplMap = await articleCplMap(dateFrom, dateTo);
 
-    // Будуємо ієрархію article → campaign → adset
+    // Будуємо ієрархію article → campaign → adset.
+    // spend показуємо в РОДНІЙ валюті кабінету; для ROI рахуємо грн (spend*fx).
     const arts = {};
     for (const r of agg.rows) {
       const artKey = r.article || '— без артикула';
-      const A = arts[artKey] = arts[artKey] || { article: artKey, spend: 0, leads: 0, campaigns: {} };
+      const A = arts[artKey] = arts[artKey] || { article: artKey, spend: 0, spendUah: 0, leads: 0, currencies: new Set(), fx: 1, campaigns: {} };
       const cst = (statusByAcc[r.ad_account_id] || {});
       const cId = r.campaign_id;
       const C = A.campaigns[cId] = A.campaigns[cId] || {
@@ -1411,37 +1418,56 @@ app.get('/api/fb/control', checkAuth, async (req, res) => {
       };
       const sp2 = Number(r.spend) || 0, ld = Number(r.leads) || 0;
       const imp = Number(r.impressions) || 0, clk = Number(r.clicks) || 0;
+      const fx = Number(r.fx_rate) || 1;
+      A.currencies.add(r.currency || 'UAH'); A.fx = fx;
       C.adsets.push({
         adset_id: r.adset_id, adset_name: r.adset_name, ad_account_id: r.ad_account_id,
         status: (cst.adsets && cst.adsets[r.adset_id] && cst.adsets[r.adset_id].status) || 'UNKNOWN',
         spend: sp2, leads: ld, impressions: imp, clicks: clk,
         cpl: ld ? sp2 / ld : 0, ctr: imp ? clk / imp * 100 : 0
       });
-      C.spend += sp2; C.leads += ld; A.spend += sp2; A.leads += ld;
+      C.spend += sp2; C.leads += ld;
+      A.spend += sp2; A.spendUah += sp2 * fx; A.leads += ld;
     }
 
     const out = Object.values(arts).map(A => {
+      const mixed = A.currencies.size > 1;
+      const currency = mixed ? 'UAH' : ([...A.currencies][0] || 'UAH');
+      const fx = mixed ? 1 : A.fx;               // курс валюти кабінету → грн
+      const conv = mixed ? A.fx : 1;             // якщо змішано — показуємо в грн (native*fx)
+      // spend/CPL для показу: рідна валюта (або грн якщо змішано)
+      const dispSpend = mixed ? A.spendUah : A.spend;
       const ro = roiMap[A.article];
       let roi = null, revenue = 0, netHint = 0;
       if (ro) {
-        revenue = ro.revenue;
-        const net = ro.revenue - ro.cost - A.spend - ro.refused * returnCost;
-        roi = A.spend ? net / A.spend * 100 : null;
+        revenue = ro.revenue; // грн
+        const net = ro.revenue - ro.cost - A.spendUah - ro.refused * returnCost; // усе в грн
+        roi = A.spendUah ? net / A.spendUah * 100 : null;
         netHint = net;
       }
       const econ = cplMap[A.article] || null;
+      // пороги в грн → у валюту показу (ділимо на курс)
+      const toDisp = v => (v == null ? null : (mixed ? v : v / (fx || 1)));
       return {
-        article: A.article, spend: A.spend, leads: A.leads,
-        cpl: A.leads ? A.spend / A.leads : 0,
+        article: A.article, currency,
+        spend: dispSpend, leads: A.leads,
+        cpl: A.leads ? dispSpend / A.leads : 0,
         revenue, roi, net: netHint,
-        cpl_max: econ ? econ.cpl_max : null,
-        cpl_recommended: econ ? econ.cpl_recommended : null,
+        cpl_max: toDisp(econ ? econ.cpl_max : null),
+        cpl_recommended: toDisp(econ ? econ.cpl_recommended : null),
         cpl_provisional: econ ? !!econ.provisional : false,
-        campaigns: Object.values(A.campaigns).map(C => ({
-          ...C, cpl: C.leads ? C.spend / C.leads : 0
-        }))
+        campaigns: Object.values(A.campaigns).map(C => {
+          const cSpend = mixed ? C.spend * conv : C.spend;
+          return {
+            ...C, spend: cSpend, cpl: C.leads ? cSpend / C.leads : 0,
+            adsets: C.adsets.map(G => {
+              const gSpend = mixed ? G.spend * conv : G.spend;
+              return { ...G, spend: gSpend, cpl: G.leads ? gSpend / G.leads : 0 };
+            })
+          };
+        })
       };
-    }).sort((a, b) => b.spend - a.spend);
+    }).sort((a, b) => (b.spend * (b.currency === 'UAH' ? 1 : 100)) - (a.spend * (a.currency === 'UAH' ? 1 : 100)));
 
     res.json({ articles: out, errors: Object.entries(statusByAcc).filter(([,v]) => v.error).map(([id,v]) => ({ account_id: +id, error: v.error })) });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -2882,7 +2908,7 @@ async function computedFinanceStreams(dateFrom, dateTo, gran) {
   if (dateFrom) { fp.push(dateFrom); fConds.push(`date >= $${fp.length}::date`); }
   if (dateTo)   { fp.push(dateTo);   fConds.push(`date < ($${fp.length}::date + interval '1 day')`); }
   const adsQ = `
-    SELECT to_char(date_trunc('${gran}', date), 'YYYY-MM-DD') AS period, COALESCE(SUM(spend),0)::numeric AS spend
+    SELECT to_char(date_trunc('${gran}', date), 'YYYY-MM-DD') AS period, COALESCE(SUM(spend * COALESCE(fx_rate,1)),0)::numeric AS spend
     FROM fb_spend_daily ${fConds.length ? 'WHERE ' + fConds.join(' AND ') : ''}
     GROUP BY 1`;
 

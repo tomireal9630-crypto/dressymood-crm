@@ -4832,6 +4832,12 @@
         }
         function fbUah(n) { return Math.round(Number(n) || 0).toLocaleString('uk-UA') + ' ₴'; }
         function fbUah2(n) { return (Number(n) || 0).toLocaleString('uk-UA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₴'; }
+        function fbCurSym(cur) { return cur === 'USD' ? '$' : cur === 'EUR' ? '€' : '₴'; }
+        function fbMoney(n, cur, dec) {
+            const s = fbCurSym(cur || 'UAH');
+            const v = (Number(n) || 0).toLocaleString('uk-UA', { minimumFractionDigits: dec || 0, maximumFractionDigits: dec || 0 });
+            return s === '₴' ? v + ' ₴' : s + v;
+        }
         function fbStatusBadge(s) {
             const map = { ACTIVE: ['✅', 'text-emerald-600 bg-emerald-50'], PAUSED: ['⏸', 'text-slate-500 bg-slate-100'] };
             const m = map[s] || ['⚠️', 'text-amber-600 bg-amber-50'];
@@ -4917,20 +4923,21 @@
                 else if (C.cpl <= A.cpl_max) cHold++;
                 else { cOff++; spendRisk += C.spend; }
             }));
+            const riskCur = (articles[0] && articles[0].currency) || 'UAH';
             const summary = `
                 <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
                     <div class="bg-white rounded-2xl border border-slate-100 p-4"><div class="text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-1">🟢 Масштабувати</div><div class="text-2xl font-black text-slate-800">${cScale}</div><div class="text-[10px] text-slate-400 font-medium">CPL у цілі</div></div>
                     <div class="bg-white rounded-2xl border border-slate-100 p-4"><div class="text-[10px] font-black text-amber-500 uppercase tracking-widest mb-1">🟡 Тримати</div><div class="text-2xl font-black text-slate-800">${cHold}</div><div class="text-[10px] text-slate-400 font-medium">в плюсі, нижче цілі</div></div>
                     <div class="bg-white rounded-2xl border border-slate-100 p-4"><div class="text-[10px] font-black text-rose-500 uppercase tracking-widest mb-1">🔴 Вимкнути</div><div class="text-2xl font-black text-slate-800">${cOff}</div><div class="text-[10px] text-slate-400 font-medium">CPL вище беззбитку</div></div>
-                    <div class="bg-rose-50 rounded-2xl border border-rose-100 p-4"><div class="text-[10px] font-black text-rose-500 uppercase tracking-widest mb-1">Злив під ризиком</div><div class="text-2xl font-black text-rose-600">${fbUah(spendRisk)}</div><div class="text-[10px] text-rose-400 font-medium">трата 🔴-кампаній</div></div>
+                    <div class="bg-rose-50 rounded-2xl border border-rose-100 p-4"><div class="text-[10px] font-black text-rose-500 uppercase tracking-widest mb-1">Злив під ризиком</div><div class="text-2xl font-black text-rose-600">${fbMoney(spendRisk, riskCur, 0)}</div><div class="text-[10px] text-rose-400 font-medium">трата 🔴-кампаній</div></div>
                 </div>
-                <div class="text-[11px] text-slate-400 font-medium mb-4">Вердикт кампанії — за її CPL проти порогів моделі (🟢 ≤ рекоменд. · 🟡 ≤ беззбитк. · 🔴 вище). Судимо лише де ≥ ${FB_MIN_LEADS} лідів.</div>`;
+                <div class="text-[11px] text-slate-400 font-medium mb-4">Суми — у валюті кабінету (як у Ads Manager). У Статистиці й Фінансах перераховуються в грн за курсом (Налаштування → Економіка). Вердикт — за CPL проти порогів моделі (🟢 ≤ рекоменд. · 🟡 ≤ беззбитк. · 🔴 вище), судимо лише де ≥ ${FB_MIN_LEADS} лідів.</div>`;
             body.innerHTML = errBar + summary + articles.map(A => {
                 const roiTxt = A.roi == null ? '<span class="text-slate-400">ROI —</span>'
                     : `<span class="${A.roi >= 0 ? 'text-violet-600' : 'text-rose-600'}">ROI ${Math.round(A.roi)}%</span>`;
                 const roiBad = A.roi != null && A.roi < 0;
                 const target = A.cpl_recommended != null
-                    ? `<span title="Рекомендований / граничний CPL моделі">ціль CPL <b class="text-emerald-600">≤${fbUah(A.cpl_recommended)}</b> <span class="text-slate-300">/ беззб. ${fbUah(A.cpl_max)}</span>${A.cpl_provisional ? ' <span class="text-[9px] font-black text-sky-500 bg-sky-50 px-1.5 py-0.5 rounded">орієнтир</span>' : ''}</span>` : '';
+                    ? `<span title="Рекомендований / граничний CPL моделі">ціль CPL <b class="text-emerald-600">≤${fbMoney(A.cpl_recommended, A.currency, 2)}</b> <span class="text-slate-300">/ беззб. ${fbMoney(A.cpl_max, A.currency, 2)}</span>${A.cpl_provisional ? ' <span class="text-[9px] font-black text-sky-500 bg-sky-50 px-1.5 py-0.5 rounded">орієнтир</span>' : ''}</span>` : '';
                 return `
                 <div class="bg-white rounded-2xl shadow-sm border ${roiBad ? 'border-rose-200' : 'border-slate-100'} mb-4 overflow-hidden">
                     <div class="px-5 py-4 flex items-center justify-between gap-3 flex-wrap ${roiBad ? 'bg-rose-50/50' : 'bg-slate-50/50'} border-b border-slate-100">
@@ -4938,9 +4945,9 @@
                             <span class="text-sm font-black">${roiTxt}</span>${fbModelVerdict(A)}</div>
                         <div class="flex items-center gap-4 text-xs font-bold text-slate-500 flex-wrap">
                             ${target}
-                            <span>Σтрата <b class="text-slate-700">${fbUah(A.spend)}</b></span>
+                            <span>Σтрата <b class="text-slate-700">${fbMoney(A.spend, A.currency, 0)}</b></span>
                             <span>Σліди <b class="text-slate-700">${A.leads}</b></span>
-                            <span>CPL <b class="${fbCplClass(A.cpl, A.cpl_recommended, A.cpl_max)}">${fbUah2(A.cpl)}</b></span>
+                            <span>CPL <b class="${fbCplClass(A.cpl, A.cpl_recommended, A.cpl_max)}">${fbMoney(A.cpl, A.currency, 2)}</b></span>
                             <button onclick='fbPauseArticle(${JSON.stringify(A.campaigns).replace(/'/g, "&#39;")})' class="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase bg-rose-500 text-white hover:bg-rose-600 transition-all">⏸ Пауза всіх</button>
                         </div>
                     </div>
@@ -4955,8 +4962,8 @@
                                     </div>
                                     <div class="flex items-center gap-3 text-[11px] font-bold text-slate-500 shrink-0">
                                         ${C.status === 'ACTIVE' ? fbCampVerdict(C.cpl, A.cpl_recommended, A.cpl_max, C.leads, A.cpl_provisional) : ''}
-                                        <span>${fbUah(C.spend)}</span><span>${C.leads} лід.</span>
-                                        <span class="${fbCplClass(C.cpl, A.cpl_recommended, A.cpl_max)}">CPL ${fbUah2(C.cpl)}</span>
+                                        <span>${fbMoney(C.spend, A.currency, 0)}</span><span>${C.leads} лід.</span>
+                                        <span class="${fbCplClass(C.cpl, A.cpl_recommended, A.cpl_max)}">CPL ${fbMoney(C.cpl, A.currency, 2)}</span>
                                         ${fbActionBtn('campaign', C.campaign_id, C.ad_account_id, C.status)}
                                     </div>
                                 </div>
@@ -4968,8 +4975,8 @@
                                                 <span class="text-xs font-medium text-slate-600 truncate">${esc(G.adset_name || G.adset_id)}</span>
                                             </div>
                                             <div class="flex items-center gap-3 text-[11px] font-bold text-slate-400 shrink-0">
-                                                <span>${fbUah(G.spend)}</span><span>${G.leads} лід.</span>
-                                                <span class="${fbCplClass(G.cpl, A.cpl_recommended, A.cpl_max)}">CPL ${fbUah2(G.cpl)}</span><span>CTR ${G.ctr.toFixed(1)}%</span>
+                                                <span>${fbMoney(G.spend, A.currency, 0)}</span><span>${G.leads} лід.</span>
+                                                <span class="${fbCplClass(G.cpl, A.cpl_recommended, A.cpl_max)}">CPL ${fbMoney(G.cpl, A.currency, 2)}</span><span>CTR ${G.ctr.toFixed(1)}%</span>
                                                 ${fbActionBtn('adset', G.adset_id, G.ad_account_id, G.status)}
                                             </div>
                                         </div>`).join('')}
