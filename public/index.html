@@ -1650,12 +1650,17 @@
             </div>
 
             <div id="view-fbcontrol" class="view-content h-full">
-                <div class="flex justify-between items-start mb-6 gap-4 flex-wrap">
-                    <div>
-                        <h2 class="text-3xl font-black text-slate-800 uppercase italic tracking-tighter">Керування рекламою</h2>
-                        <p class="text-slate-400 font-medium text-sm">Кампанії та групи по моделях · ROI · пауза/увімкнення</p>
-                    </div>
-                    <div class="flex items-end gap-3 flex-wrap">
+                <div class="mb-4">
+                    <h2 class="text-3xl font-black text-slate-800 uppercase italic tracking-tighter">Керування рекламою</h2>
+                    <p class="text-slate-400 font-medium text-sm">Кампанії по моделях · ROI · автоправила</p>
+                </div>
+                <div class="flex items-center gap-6 border-b border-slate-200 mb-6">
+                    <button onclick="switchFbSec('campaigns')" data-fbsec="campaigns" class="stats-tab pb-3 text-sm font-bold transition-all">📊 Кампанії</button>
+                    <button onclick="switchFbSec('rules')" data-fbsec="rules" class="stats-tab pb-3 text-sm font-bold transition-all">🤖 Автоправила</button>
+                </div>
+
+                <div id="fbSec-campaigns" class="fbsec-content">
+                    <div class="flex items-end gap-3 flex-wrap mb-5">
                         <div>
                             <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">З</label>
                             <input type="date" id="fbCtlFrom" class="px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
@@ -1672,13 +1677,89 @@
                         </div>
                         <button onclick="loadFbControl()" class="px-5 py-2 rounded-lg text-xs font-black uppercase tracking-wider text-white transition-all" style="background:linear-gradient(135deg,#8b5cf6,#ec4899)">Показати</button>
                     </div>
+                    <div id="fbCtlBody"><div class="text-center text-slate-400 py-10">Завантаження…</div></div>
                 </div>
-                <div id="fbCtlBody"><div class="text-center text-slate-400 py-10">Завантаження…</div></div>
+
+                <div id="fbSec-rules" class="fbsec-content hidden">
+                    <div id="fbRulesBody"><div class="text-center text-slate-400 py-10">Завантаження…</div></div>
+                </div>
             </div>
         </div>
     </main>
 
     <div id="appToast"></div>
+
+    <!-- Модалка: Автоправило -->
+    <div id="fbRuleModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] hidden items-center justify-center p-6">
+        <div class="bg-white w-full max-w-lg rounded-[2.5rem] shadow-2xl overflow-hidden">
+            <div class="p-6 border-b border-slate-100 flex justify-between items-center bg-violet-50/50">
+                <h3 class="text-lg font-black text-slate-800 uppercase italic">Автоправило</h3>
+                <button onclick="closeFbRuleModal()" class="text-slate-400 hover:text-rose-500"><i class="fa-solid fa-xmark text-xl"></i></button>
+            </div>
+            <div class="p-6 space-y-4">
+                <input type="hidden" id="ruleId">
+                <div>
+                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-1">Назва</label>
+                    <input type="text" id="ruleName" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none font-bold text-sm">
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-400 uppercase mb-1">Область</label>
+                        <select id="ruleScope" onchange="fbRuleScopeHint()" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none font-bold text-sm">
+                            <option value="adset">Група (adset)</option>
+                            <option value="campaign">Кампанія</option>
+                            <option value="article">Модель (артикул)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-400 uppercase mb-1">Метрика</label>
+                        <select id="ruleMetric" onchange="fbRuleScopeHint()" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none font-bold text-sm">
+                            <option value="cpl">CPL вище порогу</option>
+                            <option value="spend_no_sales">Трата без продажів</option>
+                            <option value="roi">ROI моделі нижче</option>
+                        </select>
+                    </div>
+                </div>
+                <div id="ruleParamHint" class="text-[11px] text-slate-400 font-medium -mt-2"></div>
+                <div class="grid grid-cols-3 gap-3">
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-400 uppercase mb-1" id="ruleParamLabel">Поріг</label>
+                        <input type="number" id="ruleParam" step="0.1" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none font-black text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-400 uppercase mb-1">Вікно (днів)</label>
+                        <input type="number" id="ruleWindow" min="1" value="7" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none font-black text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-400 uppercase mb-1">Кулдаун (год)</label>
+                        <input type="number" id="ruleCooldown" min="1" value="24" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none font-black text-sm">
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-400 uppercase mb-1">Мін. лідів</label>
+                        <input type="number" id="ruleMinLeads" min="0" value="5" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none font-black text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-400 uppercase mb-1">Мін. трата (₴)</label>
+                        <input type="number" id="ruleMinSpend" min="0" value="0" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none font-black text-sm">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-1">Режим</label>
+                    <div class="grid grid-cols-2 gap-2 bg-slate-50 p-1 rounded-xl">
+                        <button type="button" onclick="setRuleMode('dry')" id="ruleModeDry" class="rule-mode-btn py-2 rounded-lg text-xs font-black uppercase">Чернетка (dry-run)</button>
+                        <button type="button" onclick="setRuleMode('live')" id="ruleModeLive" class="rule-mode-btn py-2 rounded-lg text-xs font-black uppercase">Бойовий</button>
+                    </div>
+                    <div class="text-[11px] text-slate-400 font-medium mt-1">Чернетка — тільки пише в лог «поставив би паузу». Бойовий — реально ставить на паузу у FB.</div>
+                </div>
+                <div class="flex gap-3 pt-2">
+                    <button type="button" onclick="saveFbRule()" class="flex-1 bg-violet-600 text-white py-3 rounded-xl font-black text-sm uppercase tracking-widest hover:bg-violet-700 transition-all">Зберегти</button>
+                    <button type="button" onclick="closeFbRuleModal()" class="px-6 py-3 rounded-xl font-bold text-sm text-slate-600 bg-slate-100 hover:bg-slate-200 transition-all">Скасувати</button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- Модалка: Транзакція -->
     <div id="finTxModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] hidden items-center justify-center p-6">
@@ -4828,6 +4909,7 @@
             const f = document.getElementById('fbCtlFrom'), t = document.getElementById('fbCtlTo');
             if (f && !f.value) f.value = iso(from);
             if (t && !t.value) t.value = iso(now);
+            switchFbSec('campaigns');
             loadFbControl();
         }
         function fbUah(n) { return Math.round(Number(n) || 0).toLocaleString('uk-UA') + ' ₴'; }
@@ -5020,6 +5102,178 @@
             }
             alert(`Пауза: ${ok} ок, ${fail} помилок`);
             loadFbControl();
+        }
+
+        // ===== АВТОПРАВИЛА =====
+        function switchFbSec(sec) {
+            document.querySelectorAll('[data-fbsec]').forEach(b => b.classList.toggle('active', b.dataset.fbsec === sec));
+            document.querySelectorAll('.fbsec-content').forEach(el => el.classList.add('hidden'));
+            const t = document.getElementById('fbSec-' + sec);
+            if (t) t.classList.remove('hidden');
+            if (sec === 'campaigns') { if (!fbCtlData) loadFbControl(); }
+            if (sec === 'rules') loadFbRules();
+        }
+        const FB_RULE_META = {
+            cpl: { label: 'Множник граничного CPL', hint: 'Пауза, якщо CPL сутності > граничний_CPL × множник (1.0 = рівно граничний, 1.1 = +10%).', def: 1 },
+            spend_no_sales: { label: 'Множник трати', hint: 'Пауза, якщо витрачено ≥ граничний_CPL × множник, а продажів по моделі 0.', def: 3 },
+            roi: { label: 'Поріг ROI, %', hint: 'Пауза всіх кампаній моделі, якщо її ROI за вікно < цього %.', def: 0 }
+        };
+        function fbRuleScopeHint() {
+            const metric = document.getElementById('ruleMetric').value;
+            const m = FB_RULE_META[metric] || FB_RULE_META.cpl;
+            document.getElementById('ruleParamLabel').textContent = m.label;
+            document.getElementById('ruleParamHint').textContent = m.hint;
+            // roi = тільки article; синхронізуємо область
+            if (metric === 'roi') document.getElementById('ruleScope').value = 'article';
+        }
+        let fbRuleMode = 'dry';
+        function setRuleMode(mode) {
+            fbRuleMode = mode;
+            document.getElementById('ruleModeDry').style.cssText = mode === 'dry' ? 'background:#8b5cf6;color:#fff' : 'background:#fff;color:#64748b';
+            document.getElementById('ruleModeLive').style.cssText = mode === 'live' ? 'background:#e11d48;color:#fff' : 'background:#fff;color:#64748b';
+        }
+        function openFbRuleModal(rule) {
+            const m = document.getElementById('fbRuleModal');
+            document.getElementById('ruleId').value = rule ? rule.id : '';
+            document.getElementById('ruleName').value = rule ? rule.name : '';
+            document.getElementById('ruleScope').value = rule ? rule.scope : 'adset';
+            document.getElementById('ruleMetric').value = rule ? rule.metric : 'cpl';
+            document.getElementById('ruleParam').value = rule ? rule.param : FB_RULE_META.cpl.def;
+            document.getElementById('ruleWindow').value = rule ? rule.window_days : 7;
+            document.getElementById('ruleCooldown').value = rule ? rule.cooldown_hours : 24;
+            document.getElementById('ruleMinLeads').value = rule ? rule.min_leads : 5;
+            document.getElementById('ruleMinSpend').value = rule ? rule.min_spend : 0;
+            setRuleMode(rule ? rule.mode : 'dry');
+            fbRuleScopeHint();
+            m.classList.remove('hidden'); m.classList.add('flex');
+        }
+        function closeFbRuleModal() { const m = document.getElementById('fbRuleModal'); m.classList.add('hidden'); m.classList.remove('flex'); }
+        async function saveFbRule() {
+            const id = document.getElementById('ruleId').value;
+            const payload = {
+                name: document.getElementById('ruleName').value.trim(),
+                scope: document.getElementById('ruleScope').value,
+                metric: document.getElementById('ruleMetric').value,
+                param: Number(document.getElementById('ruleParam').value) || 0,
+                window_days: Number(document.getElementById('ruleWindow').value) || 7,
+                cooldown_hours: Number(document.getElementById('ruleCooldown').value) || 24,
+                min_leads: Number(document.getElementById('ruleMinLeads').value) || 0,
+                min_spend: Number(document.getElementById('ruleMinSpend').value) || 0,
+                mode: fbRuleMode
+            };
+            if (!payload.name) { alert('Вкажи назву'); return; }
+            try {
+                const url = id ? `/api/fb/rules/${id}` : '/api/fb/rules';
+                const r = await fetch(url, { method: id ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                const d = await r.json(); if (!r.ok) throw new Error(d.error || 'Помилка');
+                closeFbRuleModal(); loadFbRules();
+            } catch (e) { alert('Помилка: ' + e.message); }
+        }
+        async function fbRulePreset(kind) {
+            const presets = {
+                cpl:  { name: 'Тримай CPL', scope: 'adset', metric: 'cpl', param: 1.0, window_days: 7, min_leads: 5, min_spend: 0, cooldown_hours: 24, mode: 'dry' },
+                kill: { name: 'Стоп трата без продажів', scope: 'adset', metric: 'spend_no_sales', param: 3, window_days: 7, min_leads: 0, min_spend: 0, cooldown_hours: 24, mode: 'dry' },
+                roi:  { name: 'Стоп збитковим моделям', scope: 'article', metric: 'roi', param: 0, window_days: 14, min_leads: 0, min_spend: 0, cooldown_hours: 24, mode: 'dry' }
+            };
+            const p = presets[kind]; if (!p) return;
+            try {
+                const r = await fetch('/api/fb/rules', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(p) });
+                const d = await r.json(); if (!r.ok) throw new Error(d.error || 'Помилка');
+                loadFbRules();
+            } catch (e) { alert('Помилка: ' + e.message); }
+        }
+        async function fbRuleDelete(id) {
+            if (!confirm('Видалити правило?')) return;
+            try { await fetch(`/api/fb/rules/${id}`, { method: 'DELETE' }); loadFbRules(); } catch (e) { alert(e.message); }
+        }
+        async function fbRulePatch(id, field, value) {
+            try { await fetch(`/api/fb/rules/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ [field]: value }) }); loadFbRules(); }
+            catch (e) { alert(e.message); }
+        }
+        async function fbRuleToggleGlobal(on) {
+            try { await fetch('/api/fb/rules/toggle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ on }) }); loadFbRules(); }
+            catch (e) { alert(e.message); }
+        }
+        async function fbRuleRun() {
+            const btn = document.getElementById('fbRuleRunBtn');
+            if (btn) { btn.disabled = true; btn.textContent = 'Прогін…'; }
+            try {
+                const r = await fetch('/api/fb/rules/run', { method: 'POST' });
+                const d = await r.json(); if (!r.ok) throw new Error(d.error || 'Помилка');
+                const acts = d.actions || [];
+                alert(`Прогнано правил: ${d.rulesRun}. Дій: ${acts.length}.` + (acts.length ? '\n\n' + acts.slice(0, 15).map(a => `• [${a.result}] ${a.rule}: ${a.entity || a.article} — ${a.reason}`).join('\n') : '\n\nНічого не спрацювало.'));
+                loadFbRules();
+            } catch (e) { alert('Помилка: ' + e.message); }
+            finally { if (btn) { btn.disabled = false; btn.textContent = '▶ Прогнати зараз'; } }
+        }
+        async function loadFbRules() {
+            const body = document.getElementById('fbRulesBody');
+            body.innerHTML = `<div class="text-center text-slate-400 py-10">Завантаження…</div>`;
+            try {
+                const [rR, lR] = await Promise.all([fetch('/api/fb/rules'), fetch('/api/fb/rules/log')]);
+                const data = await rR.json(); const log = await lR.json();
+                const globalOn = data.globalOn;
+                const rules = data.rules || [];
+                const scopeTxt = { adset: 'група', campaign: 'кампанія', article: 'модель' };
+                const metricTxt = {
+                    cpl: r => `CPL > граничний ×${r.param}`,
+                    spend_no_sales: r => `трата ≥ ×${r.param} граничного без продажів`,
+                    roi: r => `ROI моделі < ${r.param}%`
+                };
+                const rulesHtml = rules.length ? rules.map(r => `
+                    <div class="flex items-center justify-between gap-3 p-3 rounded-xl border ${r.is_active ? 'border-slate-100' : 'border-slate-100 opacity-50'} bg-white">
+                        <div class="min-w-0">
+                            <div class="text-sm font-bold text-slate-700 truncate">${esc(r.name)}
+                                <span class="text-[10px] font-black px-1.5 py-0.5 rounded ml-1 ${r.mode === 'live' ? 'text-rose-700 bg-rose-50' : 'text-slate-500 bg-slate-100'}">${r.mode === 'live' ? '🔴 БОЙОВИЙ' : '⬜ dry-run'}</span></div>
+                            <div class="text-[11px] text-slate-400 font-medium">${scopeTxt[r.scope] || r.scope} · ${(metricTxt[r.metric] || (()=>r.metric))(r)} · вікно ${r.window_days}д · кулдаун ${r.cooldown_hours}г · ≥${r.min_leads} лідів</div>
+                        </div>
+                        <div class="flex items-center gap-1.5 shrink-0">
+                            <button onclick="fbRulePatch(${r.id},'mode','${r.mode === 'live' ? 'dry' : 'live'}')" title="Перемкнути режим" class="text-[10px] font-black px-2 py-1 rounded-lg ${r.mode === 'live' ? 'bg-slate-100 text-slate-600' : 'bg-rose-50 text-rose-600'} hover:opacity-80">${r.mode === 'live' ? '→ dry' : '→ бойовий'}</button>
+                            <button onclick="fbRulePatch(${r.id},'is_active',${!r.is_active})" title="${r.is_active ? 'Вимкнути' : 'Увімкнути'}" class="text-slate-400 hover:text-amber-500 p-1"><i class="fa-solid fa-power-off text-xs"></i></button>
+                            <button onclick='openFbRuleModal(${JSON.stringify(r).replace(/'/g,"&#39;")})' class="text-slate-400 hover:text-violet-600 p-1"><i class="fa-solid fa-pen text-xs"></i></button>
+                            <button onclick="fbRuleDelete(${r.id})" class="text-slate-300 hover:text-rose-500 p-1"><i class="fa-solid fa-trash-can text-xs"></i></button>
+                        </div>
+                    </div>`).join('') : `<div class="text-xs text-slate-400 italic py-2">Правил ще нема. Додай пресети нижче або своє.</div>`;
+
+                const logHtml = (log && log.length) ? log.slice(0, 60).map(x => {
+                    const dt = new Date(x.created_at).toLocaleString('uk-UA');
+                    const rc = x.result === 'done' ? 'text-rose-600' : x.result === 'error' ? 'text-amber-600' : 'text-slate-500';
+                    const rl = x.result === 'done' ? '⏸ поставлено паузу' : x.result === 'error' ? '⚠ помилка' : '👁 було б паузу (dry)';
+                    return `<div class="flex items-start justify-between gap-3 py-2 border-b border-slate-50 text-xs">
+                        <div class="min-w-0"><span class="font-bold text-slate-700">${esc(x.rule_name)}</span>
+                            <span class="text-slate-400"> · ${esc(x.entity_name || x.article || '')}</span>
+                            <div class="text-[11px] text-slate-400">${esc(x.message || '')}</div></div>
+                        <div class="text-right shrink-0"><div class="font-black ${rc}">${rl}</div><div class="text-[10px] text-slate-300">${dt}</div></div>
+                    </div>`;
+                }).join('') : `<div class="text-xs text-slate-400 italic py-2">Лог порожній.</div>`;
+
+                body.innerHTML = `
+                    <div class="bg-white rounded-2xl border ${globalOn ? 'border-slate-100' : 'border-amber-200 bg-amber-50/40'} p-4 mb-4 flex items-center justify-between gap-3 flex-wrap">
+                        <div class="text-sm font-bold ${globalOn ? 'text-slate-700' : 'text-amber-700'}">Глобальний вимикач: ${globalOn ? '🟢 правила працюють' : '⏸ всі правила вимкнено'}</div>
+                        <div class="flex items-center gap-2">
+                            <button onclick="fbRuleToggleGlobal(${!globalOn})" class="px-3 py-1.5 rounded-lg text-xs font-black uppercase ${globalOn ? 'bg-amber-500 text-white' : 'bg-emerald-500 text-white'} hover:opacity-90">${globalOn ? 'Вимкнути всі' : 'Увімкнути'}</button>
+                            <button id="fbRuleRunBtn" onclick="fbRuleRun()" class="px-3 py-1.5 rounded-lg text-xs font-black uppercase bg-violet-600 text-white hover:bg-violet-700">▶ Прогнати зараз</button>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2 flex-wrap mb-4">
+                        <span class="text-[11px] font-black text-slate-400 uppercase">Пресети:</span>
+                        <button onclick="fbRulePreset('cpl')" class="px-3 py-1.5 rounded-lg text-xs font-bold bg-blue-50 text-blue-600 hover:bg-blue-100">+ Тримай CPL</button>
+                        <button onclick="fbRulePreset('roi')" class="px-3 py-1.5 rounded-lg text-xs font-bold bg-rose-50 text-rose-600 hover:bg-rose-100">+ Стоп збитковим</button>
+                        <button onclick="fbRulePreset('kill')" class="px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-50 text-amber-600 hover:bg-amber-100">+ Трата без продажів</button>
+                        <button onclick="openFbRuleModal()" class="px-3 py-1.5 rounded-lg text-xs font-black bg-violet-600 text-white hover:bg-violet-700 ml-auto"><i class="fa-solid fa-plus mr-1"></i> Своє правило</button>
+                    </div>
+                    <div class="bg-white rounded-2xl border border-slate-100 p-4 mb-4">
+                        <div class="text-xs font-black text-slate-400 uppercase tracking-widest mb-3">Правила</div>
+                        <div class="space-y-2">${rulesHtml}</div>
+                    </div>
+                    <div class="bg-white rounded-2xl border border-slate-100 p-4">
+                        <div class="text-xs font-black text-slate-400 uppercase tracking-widest mb-3">Журнал спрацювань</div>
+                        <div>${logHtml}</div>
+                    </div>
+                    <div class="text-[11px] text-slate-400 font-medium mt-3">Порада: тримай правила в <b>dry-run</b> тиждень — дивись у журналі що спрацювало б. Якщо рішення правильні — перемикай на бойовий. Бойовий потребує токена з <b>ads_management</b>.</div>`;
+            } catch (e) {
+                body.innerHTML = `<div class="text-center text-rose-500 py-10">Помилка: ${esc(e.message)}</div>`;
+            }
         }
 
         let editingOrderId = null;

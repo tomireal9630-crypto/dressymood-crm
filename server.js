@@ -214,6 +214,48 @@ async function updateDatabaseSchema() {
         await pool.query(`ALTER TABLE fb_spend_daily DROP CONSTRAINT IF EXISTS fb_spend_daily_ad_account_id_date_campaign_id_key;`).catch(()=>{});
         await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_fb_spend_adset ON fb_spend_daily(ad_account_id, date, adset_id);`).catch(()=>{});
 
+        // === АВТОПРАВИЛА РЕКЛАМИ ===
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS fb_rules (
+                id SERIAL PRIMARY KEY,
+                name VARCHAR(150) NOT NULL,
+                scope VARCHAR(16) NOT NULL DEFAULT 'adset',      -- adset | campaign | article
+                metric VARCHAR(24) NOT NULL DEFAULT 'cpl',        -- cpl | roi | spend_no_sales
+                window_days SMALLINT DEFAULT 7,
+                param NUMERIC DEFAULT 1,                          -- множник граничного CPL / поріг ROI% / множник для kill
+                action VARCHAR(16) DEFAULT 'pause',               -- pause
+                min_leads INTEGER DEFAULT 5,
+                min_spend NUMERIC DEFAULT 0,                      -- у грн
+                cooldown_hours INTEGER DEFAULT 24,
+                mode VARCHAR(8) DEFAULT 'dry',                    -- dry | live
+                is_active BOOLEAN DEFAULT true,
+                last_run_at TIMESTAMP WITH TIME ZONE,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+        `);
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS fb_rule_log (
+                id SERIAL PRIMARY KEY,
+                rule_id INTEGER REFERENCES fb_rules(id) ON DELETE SET NULL,
+                rule_name VARCHAR(150) DEFAULT '',
+                level VARCHAR(16) DEFAULT '',
+                entity_id VARCHAR(64) DEFAULT '',
+                entity_name TEXT DEFAULT '',
+                article VARCHAR(255) DEFAULT '',
+                ad_account_id INTEGER,
+                metric_value NUMERIC,
+                threshold NUMERIC,
+                action VARCHAR(16) DEFAULT '',
+                mode VARCHAR(8) DEFAULT '',
+                result VARCHAR(16) DEFAULT '',                    -- would | done | error
+                message TEXT DEFAULT '',
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+        `);
+        await pool.query(`CREATE INDEX IF NOT EXISTS idx_fb_rule_log_created ON fb_rule_log(created_at DESC);`);
+        // Глобальний вимикач автоправил
+        await pool.query(`INSERT INTO app_settings (key, value) VALUES ('fb_rules_enabled', 'true'::jsonb) ON CONFLICT (key) DO NOTHING;`);
+
         // === ФІНАНСИ ===
         await pool.query(`
             CREATE TABLE IF NOT EXISTS finance_accounts (
@@ -1508,6 +1550,213 @@ app.post('/api/fb/entity/:level(campaign|adset)/:id/status', checkAuth, async (r
     res.json({ success: true, level, id, status });
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
+
+// ===== АВТОПРАВИЛА РЕКЛАМИ =====
+
+// Пауза сутності у FB (повертає {ok, error})
+async function fbPauseEntity(entityId, adAccountId, status) {
+  const acc = (await pool.query(`SELECT access_token FROM fb_ad_accounts WHERE id=$1`, [adAccountId])).rows[0];
+  if (!acc) return { ok: false, error: 'Кабінет не знайдено' };
+  try {
+    const resp = await fetch(`https://graph.facebook.com/${FB_API_VERSION}/${entityId}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status, access_token: acc.access_token })
+    });
+    const j = await resp.json();
+    if (!resp.ok || j.error) return { ok: false, error: (j.error && j.error.message) || ('HTTP ' + resp.status) };
+    return { ok: true };
+  } catch (e) { return { ok: false, error: e.message }; }
+}
+
+// Продажі по артикулах за вікно (для правил spend_no_sales / roi)
+async function articleSalesWindow(df, dt) {
+  const lead = `COALESCE(o.original_created_at, o.created_at)`;
+  const p = [], c = [`o.status='Продажа'`];
+  if (df) { p.push(df); c.push(`${lead} >= $${p.length}::date`); }
+  if (dt) { p.push(dt); c.push(`${lead} < ($${p.length}::date + interval '1 day')`); }
+  const r = await pool.query(`
+    SELECT oi.article,
+           COUNT(DISTINCT o.id)::int sold,
+           COALESCE(SUM(oi.price*oi.quantity),0)::numeric revenue,
+           COALESCE(SUM(COALESCE((SELECT MAX(cost) FROM products p WHERE p.article=oi.article),0)*oi.quantity),0)::numeric cost
+    FROM orders o JOIN order_items oi ON oi.order_id=o.id
+    WHERE ${c.join(' AND ')} AND oi.article IS NOT NULL AND oi.article <> ''
+    GROUP BY oi.article`, p);
+  const map = {};
+  r.rows.forEach(x => { map[x.article] = { sold: x.sold, revenue: +x.revenue, cost: +x.cost }; });
+  return map;
+}
+
+async function logRuleAction(o) {
+  await pool.query(`
+    INSERT INTO fb_rule_log (rule_id, rule_name, level, entity_id, entity_name, article, ad_account_id, metric_value, threshold, action, mode, result, message)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+    [o.rule_id, o.rule_name, o.level, o.entity_id, o.entity_name, o.article || '', o.ad_account_id || null,
+     o.metric_value, o.threshold, o.action, o.mode, o.result, o.message || '']);
+}
+
+// Оцінка й застосування всіх активних правил
+async function evaluateFbRules() {
+  const gs = (await pool.query(`SELECT value FROM app_settings WHERE key='fb_rules_enabled'`)).rows[0];
+  const globalOn = gs ? (gs.value === true || gs.value === 'true') : true;
+  const settings = await getEconomicsSettings();
+  const fxUsd = Number(settings.fx_usd) || 41, fxEur = Number(settings.fx_eur) || 45;
+  const grnSpend = `spend * CASE currency WHEN 'USD' THEN ${fxUsd} WHEN 'EUR' THEN ${fxEur} ELSE 1 END`;
+  const returnCost = Number(settings.return_cost) || 0;
+  const rules = (await pool.query(`SELECT * FROM fb_rules WHERE is_active=true`)).rows;
+  const out = [];
+
+  for (const rule of rules) {
+    const to = new Date(); const from = new Date(); from.setDate(from.getDate() - (rule.window_days || 7));
+    const iso = d => d.toLocaleDateString('sv-SE');
+    const df = iso(from), dt = iso(to);
+    const cplMap = await articleCplMap(df, dt);
+    const salesMap = await articleSalesWindow(df, dt);
+
+    async function cooled(entityId) {
+      const r = await pool.query(`SELECT 1 FROM fb_rule_log WHERE rule_id=$1 AND entity_id=$2 AND result IN ('would','done') AND created_at > now() - ($3 * interval '1 hour') LIMIT 1`,
+        [rule.id, entityId, rule.cooldown_hours || 24]);
+      return r.rows.length > 0;
+    }
+    async function act(level, entity_id, entity_name, article, ad_account_id, mv, thr, reason) {
+      if (await cooled(entity_id)) return;
+      const doLive = rule.mode === 'live' && globalOn;
+      let result = 'would', message = reason;
+      if (doLive) {
+        const r = await fbPauseEntity(entity_id, ad_account_id, 'PAUSED');
+        result = r.ok ? 'done' : 'error';
+        if (!r.ok) message = reason + ' | FB: ' + r.error;
+      }
+      await logRuleAction({ rule_id: rule.id, rule_name: rule.name, level, entity_id, entity_name, article, ad_account_id, metric_value: mv, threshold: thr, action: 'pause', mode: rule.mode, result, message });
+      out.push({ rule: rule.name, level, entity: entity_name, article, result, mv, thr, reason });
+    }
+
+    if (rule.scope === 'article') {
+      // ROI по артикулу → пауза всіх кампаній артикула
+      const spendRows = await pool.query(`
+        SELECT article, campaign_id, MAX(campaign_name) campaign_name, MAX(ad_account_id) ad_account_id,
+               SUM(${grnSpend})::numeric spend, SUM(leads)::int leads
+        FROM fb_spend_daily WHERE date>=$1 AND date<=$2 AND article IS NOT NULL AND article <> ''
+        GROUP BY article, campaign_id`, [df, dt]);
+      const byArt = {};
+      spendRows.rows.forEach(r => {
+        const A = byArt[r.article] = byArt[r.article] || { spend: 0, campaigns: [] };
+        A.spend += Number(r.spend) || 0;
+        A.campaigns.push(r);
+      });
+      for (const [article, A] of Object.entries(byArt)) {
+        const s = salesMap[article] || { sold: 0, revenue: 0, cost: 0 };
+        if (A.spend < Number(rule.min_spend)) continue;
+        const refCost = 0; // спрощено: повернення тут не рахуємо (беремо валовий − реклама)
+        const net = s.revenue - s.cost - A.spend - refCost;
+        const roi = A.spend ? net / A.spend * 100 : null;
+        if (roi == null) continue;
+        const thr = Number(rule.param) || 0;
+        if (roi < thr) {
+          for (const c of A.campaigns) {
+            await act('campaign', c.campaign_id, c.campaign_name, article, c.ad_account_id, Math.round(roi * 10) / 10, thr,
+              `ROI моделі ${Math.round(roi)}% < ${thr}% за ${rule.window_days} дн`);
+          }
+        }
+      }
+    } else {
+      // adset | campaign: метрики по сутності
+      const idCol = rule.scope === 'adset' ? 'adset_id' : 'campaign_id';
+      const nameCol = rule.scope === 'adset' ? 'adset_name' : 'campaign_name';
+      const rows = await pool.query(`
+        SELECT ${idCol} entity_id, MAX(${nameCol}) entity_name, MAX(article) article, MAX(ad_account_id) ad_account_id,
+               SUM(${grnSpend})::numeric spend, SUM(leads)::int leads
+        FROM fb_spend_daily WHERE date>=$1 AND date<=$2
+        GROUP BY ${idCol}`, [df, dt]);
+      for (const e of rows.rows) {
+        if (!e.entity_id) continue;
+        const spend = Number(e.spend) || 0, leads = Number(e.leads) || 0;
+        if (spend < Number(rule.min_spend)) continue;
+        const econ = e.article ? cplMap[e.article] : null;
+        if (!econ) continue; // без економіки моделі порогів нема
+        if (rule.metric === 'cpl') {
+          if (leads < (rule.min_leads || 5)) continue;
+          const cpl = leads ? spend / leads : 0;
+          const thr = econ.cpl_max * (Number(rule.param) || 1);
+          if (cpl > thr) await act(rule.scope, e.entity_id, e.entity_name, e.article, e.ad_account_id, Math.round(cpl * 100) / 100, Math.round(thr * 100) / 100,
+            `CPL ${Math.round(cpl)}₴ > поріг ${Math.round(thr)}₴ (×${rule.param} граничного)`);
+        } else if (rule.metric === 'spend_no_sales') {
+          const s = salesMap[e.article] || { sold: 0 };
+          const thr = econ.cpl_max * (Number(rule.param) || 3);
+          if (s.sold === 0 && spend >= thr) await act(rule.scope, e.entity_id, e.entity_name, e.article, e.ad_account_id, Math.round(spend), Math.round(thr),
+            `Трата ${Math.round(spend)}₴ ≥ ${Math.round(thr)}₴ без жодного продажу`);
+        }
+      }
+    }
+    await pool.query(`UPDATE fb_rules SET last_run_at=now() WHERE id=$1`, [rule.id]);
+  }
+  return { globalOn, rulesRun: rules.length, actions: out };
+}
+
+// CRUD правил
+app.get('/api/fb/rules', checkAuth, async (req, res) => {
+  try {
+    const gs = (await pool.query(`SELECT value FROM app_settings WHERE key='fb_rules_enabled'`)).rows[0];
+    const globalOn = gs ? (gs.value === true || gs.value === 'true') : true;
+    const rules = (await pool.query(`SELECT * FROM fb_rules ORDER BY is_active DESC, id`)).rows;
+    res.json({ globalOn, rules });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/fb/rules', checkAuth, async (req, res) => {
+  const b = req.body || {};
+  if (!b.name) return res.status(400).json({ error: 'Назва обовʼязкова' });
+  try {
+    const r = await pool.query(`
+      INSERT INTO fb_rules (name, scope, metric, window_days, param, action, min_leads, min_spend, cooldown_hours, mode, is_active)
+      VALUES ($1,$2,$3,$4,$5,'pause',$6,$7,$8,$9,$10) RETURNING id`,
+      [b.name, b.scope || 'adset', b.metric || 'cpl', Number(b.window_days) || 7, Number(b.param) || 1,
+       Number(b.min_leads) || 5, Number(b.min_spend) || 0, Number(b.cooldown_hours) || 24, b.mode === 'live' ? 'live' : 'dry', b.is_active !== false]);
+    res.json({ success: true, id: r.rows[0].id });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.patch('/api/fb/rules/:id(\\d+)', checkAuth, async (req, res) => {
+  const allowed = ['name', 'scope', 'metric', 'window_days', 'param', 'min_leads', 'min_spend', 'cooldown_hours', 'mode', 'is_active'];
+  const keys = Object.keys(req.body).filter(k => allowed.includes(k));
+  if (!keys.length) return res.status(400).json({ error: 'Нічого оновити' });
+  const set = keys.map((k, i) => `${k} = $${i + 1}`).join(', ');
+  const vals = keys.map(k => req.body[k]); vals.push(req.params.id);
+  try { await pool.query(`UPDATE fb_rules SET ${set} WHERE id=$${vals.length}`, vals); res.json({ success: true }); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/fb/rules/:id(\\d+)', checkAuth, async (req, res) => {
+  try { await pool.query(`DELETE FROM fb_rules WHERE id=$1`, [req.params.id]); res.json({ success: true }); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Глобальний вимикач
+app.post('/api/fb/rules/toggle', checkAuth, async (req, res) => {
+  const on = !!(req.body && req.body.on);
+  try {
+    await pool.query(`INSERT INTO app_settings (key, value) VALUES ('fb_rules_enabled', $1::jsonb) ON CONFLICT (key) DO UPDATE SET value=$1::jsonb`, [JSON.stringify(on)]);
+    res.json({ success: true, globalOn: on });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Ручний прогін
+app.post('/api/fb/rules/run', checkAuth, async (req, res) => {
+  try { res.json({ success: true, ...(await evaluateFbRules()) }); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Лог
+app.get('/api/fb/rules/log', checkAuth, async (req, res) => {
+  try {
+    const r = await pool.query(`SELECT * FROM fb_rule_log ORDER BY created_at DESC LIMIT 200`);
+    res.json(r.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Cron: автоправила кожні 2 години (перший — через 3 хв після старту)
+setTimeout(() => { evaluateFbRules().catch(e => console.error('[FB rules init]', e.message)); }, 3 * 60 * 1000);
+setInterval(() => { evaluateFbRules().catch(e => console.error('[FB rules cron]', e.message)); }, 2 * 60 * 60 * 1000);
 
 // Cron: щогодинна синхронізація. Перший виклик через хв після старту.
 setTimeout(() => { syncAllFbAccounts(7).catch(e => console.error('[FB sync init]', e.message)); }, 60 * 1000);
