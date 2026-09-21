@@ -1011,7 +1011,7 @@ app.get('/api/products/:id(\\d+)/economics', checkAuth, async (req, res) => {
 });
 
 // ===================== FACEBOOK ADS INTEGRATION =====================
-const FB_API_VERSION = 'v19.0';
+const FB_API_VERSION = 'v25.0';
 
 function extractArticleFromCampaign(campaignName, pattern) {
   if (!campaignName) return null;
