@@ -611,10 +611,10 @@ app.get('/api/stats/dashboard', checkAuth, async (req, res) => {
   try {
     const dateExpr = `COALESCE(o.original_created_at, o.created_at)`;
     const dateParams = [];
-    const dateConds = [];
+    const dateConds = [`o.status <> '✗✗✗'`]; // не рахуємо видалені замовлення
     if (dateFrom) { dateParams.push(dateFrom); dateConds.push(`${dateExpr} >= $${dateParams.length}::date`); }
     if (dateTo)   { dateParams.push(dateTo);   dateConds.push(`${dateExpr} < ($${dateParams.length}::date + interval '1 day')`); }
-    const dateWhere = dateConds.length ? 'WHERE ' + dateConds.join(' AND ') : '';
+    const dateWhere = 'WHERE ' + dateConds.join(' AND ');
 
     // "Прийняті" — узгоджено з Апрувом: всі статуси, де менеджер додзвонився і клієнт підтвердив
     const kpiQ = `
