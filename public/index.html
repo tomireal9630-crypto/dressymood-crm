@@ -1519,6 +1519,18 @@
                                     class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-bold text-sm">
                                 <div class="text-[10px] text-slate-400 font-medium mt-1">Замінюється реальним, коли набереться ≥5 резолюцій</div>
                             </div>
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">SMS на підтверджене замовлення (шт)</label>
+                                <input type="number" step="1" min="0" name="sms_count" placeholder="3"
+                                    class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-bold text-sm">
+                                <div class="text-[10px] text-slate-400 font-medium mt-1">Враховується у ROI, юніт-економіці й вердиктах реклами</div>
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Ціна однієї SMS (₴)</label>
+                                <input type="number" step="0.01" min="0" name="sms_price" placeholder="0.90"
+                                    class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-bold text-sm">
+                                <div class="text-[10px] text-slate-400 font-medium mt-1">Постійні витрати (хостинг тощо) беруться з вкладки Фінанси → Постійні витрати</div>
+                            </div>
                             <div class="col-span-2">
                                 <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Шаблон артикулу в назві FB-кампанії</label>
                                 <input type="text" name="campaign_regex" placeholder="\[([^\]]+)\]"
@@ -2613,6 +2625,8 @@
                 f.campaign_regex.value = s.campaign_regex ?? '';
                 if (f.new_approval_pct) f.new_approval_pct.value = s.new_approval_pct ?? '';
                 if (f.new_buyout_pct) f.new_buyout_pct.value = s.new_buyout_pct ?? '';
+                if (f.sms_count) f.sms_count.value = s.sms_count ?? '';
+                if (f.sms_price) f.sms_price.value = s.sms_price ?? '';
             } catch (e) { /* мовчки */ }
         }
 
@@ -2633,7 +2647,9 @@
                     settlement_days: f.settlement_days.value,
                     campaign_regex: f.campaign_regex.value,
                     new_approval_pct: f.new_approval_pct ? f.new_approval_pct.value : '',
-                    new_buyout_pct: f.new_buyout_pct ? f.new_buyout_pct.value : ''
+                    new_buyout_pct: f.new_buyout_pct ? f.new_buyout_pct.value : '',
+                    sms_count: f.sms_count ? f.sms_count.value : '',
+                    sms_price: f.sms_price ? f.sms_price.value : ''
                 };
                 try {
                     const r = await fetch('/api/settings/economics', {
@@ -4010,6 +4026,8 @@
             document.getElementById('calcBuyoutRange').value = buyout;
             document.getElementById('calcReturn').value = calcSettings.return_cost || 110;
             document.getElementById('calcFixed').value = Math.round(calcRecurringSum);
+            if (calcSettings.sms_count != null) document.getElementById('calcSmsCount').value = calcSettings.sms_count;
+            if (calcSettings.sms_price != null) document.getElementById('calcSmsPrice').value = calcSettings.sms_price;
             document.getElementById('calcHistoryNote').innerHTML =
                 `🆕 <b>Планування до запуску.</b> Впиши ціну й закупку, постав очікувані апрув/викуп — калькулятор покаже <b>рекомендований CPL</b> під ціль ROI. Апрув/викуп за замовч. — орієнтир з налаштувань (${apriv}% / ${buyout}%).`;
             calcRecompute();
@@ -4035,6 +4053,8 @@
             document.getElementById('calcBuyoutRange').value = buyout;
             document.getElementById('calcReturn').value = calcSettings.return_cost || 110;
             document.getElementById('calcFixed').value = Math.round(calcRecurringSum);
+            if (calcSettings.sms_count != null) document.getElementById('calcSmsCount').value = calcSettings.sms_count;
+            if (calcSettings.sms_price != null) document.getElementById('calcSmsPrice').value = calcSettings.sms_price;
 
             const note = h.total_leads > 0
                 ? `📊 Історія (за ${h.lookback_days || 30} днів): ${h.total_leads} заявок, апрув ${h.approval_pct}%, викуп ${h.buyout_pct}%${h.in_flight > 0 ? `, ${h.in_flight} в дорозі` : ''}.`

@@ -733,15 +733,28 @@ app.get('/api/stats/roi', checkAuth, async (req, res) => {
       FROM fb_spend_daily ${spendWhere}
       ${spendConds.length ? 'AND' : 'WHERE'} (article IS NULL OR article = '')`;
 
-    const [t, a, refT, refA, spT, spA, spU] = await Promise.all([
+    // Підтверджені (approved) — для SMS-витрат
+    const APPROVED_SET = `('В работе','Доставка','В пути','На почте','Продажа','Отказ','Возврат','Ошибка в ТТН','Переадресация')`;
+    const appParams = [];
+    const appConds = [`o.status IN ${APPROVED_SET}`];
+    if (dateFrom) { appParams.push(dateFrom); appConds.push(`${dateExpr} >= $${appParams.length}::date`); }
+    if (dateTo)   { appParams.push(dateTo);   appConds.push(`${dateExpr} < ($${appParams.length}::date + interval '1 day')`); }
+    const appWhere = 'WHERE ' + appConds.join(' AND ');
+    const appByArtQ = `SELECT oi.article, COUNT(DISTINCT o.id)::int AS approved FROM orders o JOIN order_items oi ON oi.order_id=o.id ${appWhere} AND oi.article IS NOT NULL AND oi.article <> '' GROUP BY oi.article`;
+    const appTotalQ = `SELECT COUNT(DISTINCT o.id)::int AS approved FROM orders o ${appWhere}`;
+
+    const [t, a, refT, refA, spT, spA, spU, appT, appA] = await Promise.all([
       pool.query(totalsQ, soldParams),
       pool.query(byArtQ, soldParams),
       pool.query(refusedTotalQ, refusedParams),
       pool.query(refusedByArtQ, refusedParams),
       pool.query(spendTotalQ, spendParams),
       pool.query(spendByArtQ, spendParams),
-      pool.query(spendUnmappedQ, spendParams)
+      pool.query(spendUnmappedQ, spendParams),
+      pool.query(appTotalQ, appParams),
+      pool.query(appByArtQ, appParams)
     ]);
+    const { smsCost, overheadPerSale } = await overheadContext(dateFrom, dateTo);
 
     const tr = t.rows[0] || {};
     const revenue = Number(tr.revenue) || 0;
@@ -751,7 +764,12 @@ app.get('/api/stats/roi', checkAuth, async (req, res) => {
     const leadsTotal = Number(spT.rows[0].leads) || 0;
     const refusedTotal = Number(refT.rows[0].refused) || 0;
     const returnsCost = refusedTotal * returnCost;
-    const netProfit = grossProfit - adSpend - returnsCost;
+    const approvedTotal = Number(appT.rows[0].approved) || 0;
+    const smsTotal = approvedTotal * smsCost;
+    const overheadTotal = (Number(tr.orders) || 0) * overheadPerSale;
+    const netProfit = grossProfit - adSpend - returnsCost - smsTotal - overheadTotal;
+    const approvedMap = {};
+    appA.rows.forEach(r => { approvedMap[r.article] = Number(r.approved) || 0; });
     const roas = adSpend ? revenue / adSpend : 0;
     const roi = adSpend ? netProfit / adSpend * 100 : 0;
     const cpl = leadsTotal ? adSpend / leadsTotal : 0;
@@ -780,7 +798,9 @@ app.get('/api/stats/roi', checkAuth, async (req, res) => {
       const ret = refused * returnCost;
       const sp = (spendMap[article] && spendMap[article].spend) || 0;
       const ld = (spendMap[article] && spendMap[article].leads) || 0;
-      const net = gross - sp - ret;
+      const smsC = (approvedMap[article] || 0) * smsCost;
+      const ovhC = (Number(r.orders) || 0) * overheadPerSale;
+      const net = gross - sp - ret - smsC - ovhC;
       return {
         article,
         orders: Number(r.orders) || 0,
@@ -792,6 +812,8 @@ app.get('/api/stats/roi', checkAuth, async (req, res) => {
         leads: ld,
         refused,
         returns_cost: ret,
+        sms_cost: smsC,
+        overhead_cost: ovhC,
         net_profit: net,
         roas: sp ? rev / sp : 0,
         roi: sp ? net / sp * 100 : 0,
@@ -812,6 +834,8 @@ app.get('/api/stats/roi', checkAuth, async (req, res) => {
         leads: leadsTotal,
         refused: refusedTotal,
         returns_cost: returnsCost,
+        sms_cost: smsTotal,
+        overhead_cost: overheadTotal,
         net_profit: netProfit,
         roas,
         roi,
@@ -890,12 +914,37 @@ const ECONOMICS_DEFAULTS = {
   target_roi_pct: 30,
   campaign_regex: '\\[([^\\]]+)\\]',
   new_approval_pct: 70, // орієнтир для новинок без історії
-  new_buyout_pct: 60
+  new_buyout_pct: 60,
+  sms_count: 3,   // скільки SMS на підтверджене замовлення
+  sms_price: 0    // ціна однієї SMS, ₴
 };
 
 async function getEconomicsSettings() {
   const r = await pool.query(`SELECT value FROM app_settings WHERE key = 'economics'`);
   return { ...ECONOMICS_DEFAULTS, ...(r.rows.length ? r.rows[0].value : {}) };
+}
+
+// Змінні витрати бізнесу: SMS на підтверджене + накладні (постійні витрати) на замовлення.
+// Накладні розкидаються на ФАКТИЧНІ продажі періоду (варіант A).
+async function overheadContext(dateFrom, dateTo) {
+  const s = await getEconomicsSettings();
+  const smsCost = (Number(s.sms_count) || 0) * (Number(s.sms_price) || 0); // ₴ на підтверджене замовлення
+  const fx = await pool.query(`SELECT COALESCE(SUM(amount),0)::numeric s FROM finance_recurring WHERE is_active = true`);
+  const fixedMonthly = Number(fx.rows[0].s) || 0;
+  let days = 30;
+  if (dateFrom && dateTo) {
+    const dd = Math.round((new Date(dateTo) - new Date(dateFrom)) / 86400000) + 1;
+    if (isFinite(dd) && dd > 0) days = dd;
+  }
+  const periodFixed = fixedMonthly * days / 30;
+  const lead = `COALESCE(o.original_created_at, o.created_at)`;
+  const p = [], c = [`o.status = 'Продажа'`];
+  if (dateFrom) { p.push(dateFrom); c.push(`${lead} >= $${p.length}::date`); }
+  if (dateTo)   { p.push(dateTo);   c.push(`${lead} < ($${p.length}::date + interval '1 day')`); }
+  const ts = await pool.query(`SELECT COUNT(DISTINCT o.id)::int n FROM orders o WHERE ${c.join(' AND ')}`, p);
+  const totalSold = ts.rows[0].n || 0;
+  const overheadPerSale = totalSold > 0 ? periodFixed / totalSold : 0;
+  return { smsCost, overheadPerSale, fixedMonthly, periodFixed, totalSold };
 }
 
 app.get('/api/settings/economics', checkAuth, async (req, res) => {
@@ -904,7 +953,7 @@ app.get('/api/settings/economics', checkAuth, async (req, res) => {
 });
 
 app.post('/api/settings/economics', checkAuth, async (req, res) => {
-  const allowed = ['return_cost', 'lookback_days', 'settlement_days', 'target_roi_pct', 'campaign_regex', 'new_approval_pct', 'new_buyout_pct'];
+  const allowed = ['return_cost', 'lookback_days', 'settlement_days', 'target_roi_pct', 'campaign_regex', 'new_approval_pct', 'new_buyout_pct', 'sms_count', 'sms_price'];
   const current = await getEconomicsSettings();
   const next = { ...current };
   for (const k of allowed) {
@@ -987,10 +1036,14 @@ app.get('/api/products/:id(\\d+)/economics', checkAuth, async (req, res) => {
       sold: 100 * approvalRate * buyoutRate,
       refused: 100 * approvalRate * refusalRate
     };
+    const _to2 = new Date(); const _from2 = new Date(); _from2.setDate(_from2.getDate() - lookback);
+    const { smsCost: _sms, overheadPerSale: _ovh } = await overheadContext(_from2.toLocaleDateString('sv-SE'), _to2.toLocaleDateString('sv-SE'));
     const revenue = per100.sold * sellPrice;
     const cogs = per100.sold * productCost;
     const returns = per100.refused * returnCost;
-    const grossProfit = revenue - cogs - returns;
+    const smsCost100 = per100.approved * _sms;
+    const overhead100 = per100.sold * _ovh;
+    const grossProfit = revenue - cogs - returns - smsCost100 - overhead100;
     const cpl_max = grossProfit / 100;
     const cpl_recommended = cpl_max / (1 + targetRoi);
 
@@ -1268,6 +1321,7 @@ async function articleCplMap(dateFrom, dateTo) {
     GROUP BY l.article`, p);
   const newApproval = Math.max(0, Math.min(100, Number(settings.new_approval_pct))) / 100 || 0.7;
   const newBuyout = Math.max(0, Math.min(100, Number(settings.new_buyout_pct))) / 100 || 0.6;
+  const { smsCost, overheadPerSale } = await overheadContext(dateFrom, dateTo);
   const map = {};
   for (const row of r.rows) {
     const price = Number(row.price) || 0, cost = Number(row.cost) || 0;
@@ -1288,8 +1342,10 @@ async function articleCplMap(dateFrom, dateTo) {
       refusalRate = 1 - newBuyout;
       provisional = true;
     }
+    const approved100 = 100 * approvalRate;
     const sold100 = 100 * approvalRate * buyoutRate, refused100 = 100 * approvalRate * refusalRate;
-    const cplMax = (sold100 * price - sold100 * cost - refused100 * returnCost) / 100;
+    // Валовий на 100 лідів = продажі×(ціна−собів.) − відмови×відмова − підтв.×SMS − продажі×накладні
+    const cplMax = (sold100 * price - sold100 * cost - refused100 * returnCost - approved100 * smsCost - sold100 * overheadPerSale) / 100;
     map[row.article] = { cpl_max: cplMax, cpl_recommended: cplMax / (1 + targetRoi), provisional, has_history: reliable };
   }
   return map;
@@ -1448,6 +1504,10 @@ app.get('/api/stats/unit-economics', checkAuth, async (req, res) => {
       ORDER BY p.article`;
 
     const r = await pool.query(sql, [lookback]);
+    // Змінні витрати (SMS на підтверджене + накладні на продаж) за вікно lookback
+    const _to = new Date(); const _from = new Date(); _from.setDate(_from.getDate() - lookback);
+    const iso = d => d.toLocaleDateString('sv-SE');
+    const { smsCost, overheadPerSale } = await overheadContext(iso(_from), iso(_to));
     const RESOLVED_MIN = 5;
     const rows = r.rows.map(row => {
       const sellPrice = Number(row.price) || 0;
@@ -1462,9 +1522,10 @@ app.get('/api/stats/unit-economics', checkAuth, async (req, res) => {
       const useFinal = resolved >= RESOLVED_MIN;
       const buyoutRate  = useFinal ? row.sold / resolved        : (row.approved ? row.sold / row.approved : 0);
       const refusalRate = useFinal ? row.refused_after / resolved : (row.approved ? row.refused_after / row.approved : 0);
+      const approved100 = 100 * approvalRate;
       const sold100 = 100 * approvalRate * buyoutRate;
       const refused100 = 100 * approvalRate * refusalRate;
-      const grossProfit100 = sold100 * sellPrice - sold100 * productCost - refused100 * returnCost;
+      const grossProfit100 = sold100 * sellPrice - sold100 * productCost - refused100 * returnCost - approved100 * smsCost - sold100 * overheadPerSale;
       const cpl_max = grossProfit100 / 100;
       const cpl_recommended = cpl_max / (1 + targetRoi);
 
