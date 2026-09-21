@@ -3929,6 +3929,7 @@
                 calcSettings = { ...calcSettings, ...sett };
                 const sel = document.getElementById('calcProduct');
                 sel.innerHTML = `<option value="">— Оберіть товар —</option>` +
+                    `<option value="__new__">➕ Нова модель (вручну, до запуску)</option>` +
                     (prods || []).map(p => `<option value="${p.id}">${esc(p.article)} — ${esc(p.name)}</option>`).join('');
             } catch (e) { /* мовчки */ }
         }
@@ -3940,6 +3941,13 @@
                 document.getElementById('calcEmpty').classList.remove('hidden');
                 return;
             }
+            if (id === '__new__') {
+                calcCurrentProduct = null;
+                document.getElementById('calcEmpty').classList.add('hidden');
+                document.getElementById('calcContent').classList.remove('hidden');
+                resetCalcNew();
+                return;
+            }
             try {
                 const r = await fetch(`/api/products/${id}/economics`);
                 const d = await r.json();
@@ -3949,6 +3957,26 @@
                 document.getElementById('calcEmpty').classList.add('hidden');
                 document.getElementById('calcContent').classList.remove('hidden');
             } catch (e) { alert('Помилка: ' + e.message); }
+        }
+
+        // Планування нової моделі до запуску: припущені показники з налаштувань
+        function resetCalcNew() {
+            const apriv = calcSettings.new_approval_pct != null ? calcSettings.new_approval_pct : 70;
+            const buyout = calcSettings.new_buyout_pct != null ? calcSettings.new_buyout_pct : 60;
+            document.getElementById('calcPrice').value = 0;
+            document.getElementById('calcCost').value = 0;
+            const cplStart = 100;
+            document.getElementById('calcCpl').value = cplStart;
+            document.getElementById('calcCplRange').max = 1000;
+            document.getElementById('calcCplRange').value = cplStart;
+            document.getElementById('calcApriv').value = apriv;
+            document.getElementById('calcAprivRange').value = apriv;
+            document.getElementById('calcBuyout').value = buyout;
+            document.getElementById('calcBuyoutRange').value = buyout;
+            document.getElementById('calcReturn').value = calcSettings.return_cost || 110;
+            document.getElementById('calcHistoryNote').innerHTML =
+                `🆕 <b>Планування до запуску.</b> Впиши ціну й закупку, постав очікувані апрув/викуп — калькулятор покаже <b>рекомендований CPL</b> під ціль ROI. Апрув/викуп за замовч. — орієнтир з налаштувань (${apriv}% / ${buyout}%).`;
+            calcRecompute();
         }
 
         function resetCalcToHistory() {
