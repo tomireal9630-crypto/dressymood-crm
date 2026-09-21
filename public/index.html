@@ -2767,12 +2767,12 @@
             try {
                 const r = await fetch('/api/fb/sync', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ days: 90 })
+                    body: JSON.stringify({ days: 365 })
                 });
                 const j = await r.json();
                 if (!r.ok) throw new Error(j.error || 'Помилка');
                 loadFbAccounts();
-                let msg = `✓ Синхронізовано за ${j.days || 90} днів: ${j.total || 0} рядків з ${j.accounts || 0} кабінетів.`;
+                let msg = `✓ Синхронізовано за ${j.days || 365} днів: ${j.total || 0} рядків з ${j.accounts || 0} кабінетів.`;
                 if (j.total === 0) msg += `\n\nПорожньо — можливо, за цей період не було витрат, або кампанії старіші. Дані тягнуться лише там, де була відкрутка.`;
                 if (j.errors && j.errors.length) msg += `\n\n⚠️ Помилки: ` + j.errors.map(e => `${e.account}: ${e.error}`).join('; ');
                 alert(msg);
