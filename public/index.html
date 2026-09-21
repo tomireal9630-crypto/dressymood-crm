@@ -775,6 +775,16 @@
                                             <span><input type="number" id="calcReturn" min="0" oninput="calcRecompute()" class="w-20 text-right text-sm font-black bg-slate-50 border border-slate-100 rounded px-2 py-1 outline-none"> ₴</span>
                                         </div>
                                     </div>
+                                    <div>
+                                        <div class="flex justify-between items-baseline mb-1">
+                                            <label class="text-xs font-bold text-slate-600" title="SMS шлються підтвердженому замовленню">💬 SMS на підтверджене</label>
+                                            <span><input type="number" id="calcSmsCount" min="0" value="3" oninput="calcRecompute()" class="w-16 text-right text-sm font-black bg-slate-50 border border-slate-100 rounded px-2 py-1 outline-none"> шт</span>
+                                        </div>
+                                        <div class="flex justify-between items-baseline">
+                                            <label class="text-xs font-bold text-slate-600">Ціна SMS</label>
+                                            <span><input type="number" id="calcSmsPrice" min="0" step="0.01" oninput="calcRecompute()" class="w-20 text-right text-sm font-black bg-slate-50 border border-slate-100 rounded px-2 py-1 outline-none"> ₴</span>
+                                        </div>
+                                    </div>
                                     <div class="pt-3 border-t border-slate-100">
                                         <div class="flex justify-between items-baseline mb-2">
                                             <label class="text-xs font-bold text-slate-600" title="Хостинг, тариф, підписки — сума активних постійних витрат">🏢 Постійні витрати / міс</label>
@@ -826,6 +836,10 @@
                                     <div class="flex justify-between">
                                         <span class="text-slate-500">Витрати на повернення</span>
                                         <span id="calcResReturns" class="font-bold text-rose-500">−0 ₴</span>
+                                    </div>
+                                    <div class="flex justify-between">
+                                        <span class="text-slate-500">SMS (підтвердженим)</span>
+                                        <span id="calcResSms" class="font-bold text-rose-500">−0 ₴</span>
                                     </div>
                                     <div class="flex justify-between">
                                         <span class="text-slate-500">Накладні (постійні)</span>
@@ -4066,17 +4080,23 @@
             const overheadEl = document.getElementById('calcOverheadPer');
             if (overheadEl) overheadEl.textContent = Math.round(overheadPerSale).toLocaleString('uk-UA') + ' ₴';
 
+            // SMS — на підтверджене (approved) замовлення: кількість × ціна
+            const smsCount = Number(document.getElementById('calcSmsCount').value) || 0;
+            const smsPrice = Number(document.getElementById('calcSmsPrice').value) || 0;
+            const smsPerApproved = smsCount * smsPrice;
+
             const adSpend = 100 * cpl;
             const revenue = sold * price;
             const cogs = sold * cost;
             const returns = refused * retCost;
+            const smsCost = approved * smsPerApproved; // SMS шлються всім підтвердженим
             const overhead = sold * overheadPerSale; // накладні на 100 лідів
-            const netProfit = revenue - cogs - returns - overhead - adSpend;
+            const netProfit = revenue - cogs - returns - smsCost - overhead - adSpend;
             const roi = adSpend > 0 ? netProfit / adSpend * 100 : 0;
-            const margin = revenue > 0 ? (revenue - cogs - returns - overhead) / revenue * 100 : 0;
+            const margin = revenue > 0 ? (revenue - cogs - returns - smsCost - overhead) / revenue * 100 : 0;
 
-            // CPL_max і Рек з урахуванням накладних
-            const grossPer100 = revenue - cogs - returns - overhead;
+            // CPL_max і Рек з урахуванням усіх змінних витрат
+            const grossPer100 = revenue - cogs - returns - smsCost - overhead;
             const cplMax = grossPer100 / 100;
             const cplRec = cplMax / (1 + targetRoi);
 
@@ -4088,6 +4108,7 @@
             document.getElementById('calcResRevenue').textContent = uah(revenue);
             document.getElementById('calcResCogs').textContent = '−' + uah(cogs);
             document.getElementById('calcResReturns').textContent = '−' + uah(returns);
+            document.getElementById('calcResSms').textContent = '−' + uah(smsCost);
             document.getElementById('calcResOverhead').textContent = '−' + uah(overhead);
             document.getElementById('calcResAdSpend').textContent = '−' + uah(adSpend);
             document.getElementById('calcResNetProfit').textContent = (netProfit >= 0 ? '+' : '') + uah(netProfit);
