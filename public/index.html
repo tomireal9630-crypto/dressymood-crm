@@ -1478,6 +1478,18 @@
                                     class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-bold text-sm">
                                 <div class="text-[10px] text-slate-400 font-medium mt-1">Через скільки днів вважати, що замовлення точно завершилось</div>
                             </div>
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Орієнтир: очікуваний апрув новинок (%)</label>
+                                <input type="number" step="1" min="0" max="100" name="new_approval_pct" placeholder="70"
+                                    class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-bold text-sm">
+                                <div class="text-[10px] text-slate-400 font-medium mt-1">Поки нема історії — по цьому рахується орієнтир CPL</div>
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Орієнтир: очікуваний викуп новинок (%)</label>
+                                <input type="number" step="1" min="0" max="100" name="new_buyout_pct" placeholder="60"
+                                    class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-bold text-sm">
+                                <div class="text-[10px] text-slate-400 font-medium mt-1">Замінюється реальним, коли набереться ≥5 резолюцій</div>
+                            </div>
                             <div class="col-span-2">
                                 <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Шаблон артикулу в назві FB-кампанії</label>
                                 <input type="text" name="campaign_regex" placeholder="\[([^\]]+)\]"
@@ -2570,6 +2582,8 @@
                 f.lookback_days.value = s.lookback_days ?? '';
                 f.settlement_days.value = s.settlement_days ?? '';
                 f.campaign_regex.value = s.campaign_regex ?? '';
+                if (f.new_approval_pct) f.new_approval_pct.value = s.new_approval_pct ?? '';
+                if (f.new_buyout_pct) f.new_buyout_pct.value = s.new_buyout_pct ?? '';
             } catch (e) { /* мовчки */ }
         }
 
@@ -2588,7 +2602,9 @@
                     target_roi_pct: f.target_roi_pct.value,
                     lookback_days: f.lookback_days.value,
                     settlement_days: f.settlement_days.value,
-                    campaign_regex: f.campaign_regex.value
+                    campaign_regex: f.campaign_regex.value,
+                    new_approval_pct: f.new_approval_pct ? f.new_approval_pct.value : '',
+                    new_buyout_pct: f.new_buyout_pct ? f.new_buyout_pct.value : ''
                 };
                 try {
                     const r = await fetch('/api/settings/economics', {
@@ -4711,13 +4727,14 @@
         const FB_MIN_LEADS = 5; // менше — статистика ненадійна, не судимо
         function fbBadge(txt, cls) { return `<span class="text-[10px] font-black px-2 py-0.5 rounded ${cls} whitespace-nowrap">${txt}</span>`; }
         // Вердикт кампанії/групи за її CPL відносно порогів моделі
-        function fbCampVerdict(cpl, rec, max, leads) {
+        function fbCampVerdict(cpl, rec, max, leads, prov) {
             if (rec == null || max == null) return fbBadge('⚪ нема економіки', 'text-slate-500 bg-slate-100');
             if ((leads || 0) < FB_MIN_LEADS) return fbBadge('⚪ мало даних', 'text-slate-500 bg-slate-100');
             if (!cpl) return fbBadge('⚪ —', 'text-slate-500 bg-slate-100');
-            if (cpl <= rec) return fbBadge('🟢 Масштабувати', 'text-emerald-700 bg-emerald-50');
-            if (cpl <= max) return fbBadge('🟡 Тримати', 'text-amber-700 bg-amber-50');
-            return fbBadge('🔴 Вимкнути', 'text-rose-700 bg-rose-50');
+            const tag = prov ? ' ~орієнтир' : '';
+            if (cpl <= rec) return fbBadge('🟢 Масштабувати' + tag, 'text-emerald-700 bg-emerald-50');
+            if (cpl <= max) return fbBadge('🟡 Тримати' + tag, 'text-amber-700 bg-amber-50');
+            return fbBadge('🔴 Вимкнути' + tag, 'text-rose-700 bg-rose-50');
         }
         // Вердикт моделі за ROI (ціль виводимо з відношення беззбитк./рекоменд. CPL)
         function fbModelVerdict(A) {
@@ -4792,7 +4809,7 @@
                     : `<span class="${A.roi >= 0 ? 'text-violet-600' : 'text-rose-600'}">ROI ${Math.round(A.roi)}%</span>`;
                 const roiBad = A.roi != null && A.roi < 0;
                 const target = A.cpl_recommended != null
-                    ? `<span title="Рекомендований / граничний CPL моделі">ціль CPL <b class="text-emerald-600">≤${fbUah(A.cpl_recommended)}</b> <span class="text-slate-300">/ беззб. ${fbUah(A.cpl_max)}</span></span>` : '';
+                    ? `<span title="Рекомендований / граничний CPL моделі">ціль CPL <b class="text-emerald-600">≤${fbUah(A.cpl_recommended)}</b> <span class="text-slate-300">/ беззб. ${fbUah(A.cpl_max)}</span>${A.cpl_provisional ? ' <span class="text-[9px] font-black text-sky-500 bg-sky-50 px-1.5 py-0.5 rounded">орієнтир</span>' : ''}</span>` : '';
                 return `
                 <div class="bg-white rounded-2xl shadow-sm border ${roiBad ? 'border-rose-200' : 'border-slate-100'} mb-4 overflow-hidden">
                     <div class="px-5 py-4 flex items-center justify-between gap-3 flex-wrap ${roiBad ? 'bg-rose-50/50' : 'bg-slate-50/50'} border-b border-slate-100">
@@ -4816,7 +4833,7 @@
                                         <span class="text-[9px] font-black text-violet-500 bg-violet-50 px-1.5 py-0.5 rounded whitespace-nowrap">${esc(C.ad_account_name)}</span>
                                     </div>
                                     <div class="flex items-center gap-3 text-[11px] font-bold text-slate-500 shrink-0">
-                                        ${C.status === 'ACTIVE' ? fbCampVerdict(C.cpl, A.cpl_recommended, A.cpl_max, C.leads) : ''}
+                                        ${C.status === 'ACTIVE' ? fbCampVerdict(C.cpl, A.cpl_recommended, A.cpl_max, C.leads, A.cpl_provisional) : ''}
                                         <span>${fbUah(C.spend)}</span><span>${C.leads} лід.</span>
                                         <span class="${fbCplClass(C.cpl, A.cpl_recommended, A.cpl_max)}">CPL ${fbUah(C.cpl)}</span>
                                         ${fbActionBtn('campaign', C.campaign_id, C.ad_account_id, C.status)}

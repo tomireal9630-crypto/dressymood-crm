@@ -888,7 +888,9 @@ const ECONOMICS_DEFAULTS = {
   lookback_days: 30,
   settlement_days: 14,
   target_roi_pct: 30,
-  campaign_regex: '\\[([^\\]]+)\\]'
+  campaign_regex: '\\[([^\\]]+)\\]',
+  new_approval_pct: 70, // орієнтир для новинок без історії
+  new_buyout_pct: 60
 };
 
 async function getEconomicsSettings() {
@@ -902,7 +904,7 @@ app.get('/api/settings/economics', checkAuth, async (req, res) => {
 });
 
 app.post('/api/settings/economics', checkAuth, async (req, res) => {
-  const allowed = ['return_cost', 'lookback_days', 'settlement_days', 'target_roi_pct', 'campaign_regex'];
+  const allowed = ['return_cost', 'lookback_days', 'settlement_days', 'target_roi_pct', 'campaign_regex', 'new_approval_pct', 'new_buyout_pct'];
   const current = await getEconomicsSettings();
   const next = { ...current };
   for (const k of allowed) {
@@ -1264,18 +1266,31 @@ async function articleCplMap(dateFrom, dateTo) {
            MAX(pr.price)::numeric price, MAX(pr.cost)::numeric cost, MAX(pr.target_roi_pct) target_roi
     FROM leads l LEFT JOIN products pr ON pr.article = l.article
     GROUP BY l.article`, p);
+  const newApproval = Math.max(0, Math.min(100, Number(settings.new_approval_pct))) / 100 || 0.7;
+  const newBuyout = Math.max(0, Math.min(100, Number(settings.new_buyout_pct))) / 100 || 0.6;
   const map = {};
   for (const row of r.rows) {
     const price = Number(row.price) || 0, cost = Number(row.cost) || 0;
     if (!price) { map[row.article] = null; continue; }
     const targetRoi = (row.target_roi != null ? Number(row.target_roi) : defTargetRoi) / 100;
-    const total = row.total_leads, approvalRate = total ? row.approved / total : 0;
-    const resolved = row.sold + row.refused_after, useFinal = resolved >= 5;
-    const buyoutRate = useFinal ? row.sold / resolved : (row.approved ? row.sold / row.approved : 0);
-    const refusalRate = useFinal ? row.refused_after / resolved : (row.approved ? row.refused_after / row.approved : 0);
+    const resolved = row.sold + row.refused_after;
+    // Надійна історія — коли є ≥5 резолюцій. Інакше — орієнтир по припущених апрув/викуп.
+    const reliable = resolved >= 5 && row.approved > 0;
+    let approvalRate, buyoutRate, refusalRate, provisional;
+    if (reliable) {
+      approvalRate = row.total_leads ? row.approved / row.total_leads : 0;
+      buyoutRate = row.sold / resolved;
+      refusalRate = row.refused_after / resolved;
+      provisional = false;
+    } else {
+      approvalRate = newApproval;
+      buyoutRate = newBuyout;
+      refusalRate = 1 - newBuyout;
+      provisional = true;
+    }
     const sold100 = 100 * approvalRate * buyoutRate, refused100 = 100 * approvalRate * refusalRate;
     const cplMax = (sold100 * price - sold100 * cost - refused100 * returnCost) / 100;
-    map[row.article] = { cpl_max: cplMax, cpl_recommended: cplMax / (1 + targetRoi), has_history: total > 0 && row.approved > 0 };
+    map[row.article] = { cpl_max: cplMax, cpl_recommended: cplMax / (1 + targetRoi), provisional, has_history: reliable };
   }
   return map;
 }
@@ -1350,6 +1365,7 @@ app.get('/api/fb/control', checkAuth, async (req, res) => {
         revenue, roi, net: netHint,
         cpl_max: econ ? econ.cpl_max : null,
         cpl_recommended: econ ? econ.cpl_recommended : null,
+        cpl_provisional: econ ? !!econ.provisional : false,
         campaigns: Object.values(A.campaigns).map(C => ({
           ...C, cpl: C.leads ? C.spend / C.leads : 0
         }))
