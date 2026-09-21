@@ -1531,6 +1531,18 @@
                                     class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-bold text-sm">
                                 <div class="text-[10px] text-slate-400 font-medium mt-1">Постійні витрати (хостинг тощо) беруться з вкладки Фінанси → Постійні витрати</div>
                             </div>
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Курс USD → грн</label>
+                                <input type="number" step="0.01" min="0" name="fx_usd" placeholder="41"
+                                    class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-bold text-sm">
+                                <div class="text-[10px] text-slate-400 font-medium mt-1">Витрати FB-кабінетів у $ конвертуються в грн по цьому курсу</div>
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Курс EUR → грн</label>
+                                <input type="number" step="0.01" min="0" name="fx_eur" placeholder="45"
+                                    class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-bold text-sm">
+                                <div class="text-[10px] text-slate-400 font-medium mt-1">Для кабінетів у євро</div>
+                            </div>
                             <div class="col-span-2">
                                 <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Шаблон артикулу в назві FB-кампанії</label>
                                 <input type="text" name="campaign_regex" placeholder="\[([^\]]+)\]"
@@ -2627,6 +2639,8 @@
                 if (f.new_buyout_pct) f.new_buyout_pct.value = s.new_buyout_pct ?? '';
                 if (f.sms_count) f.sms_count.value = s.sms_count ?? '';
                 if (f.sms_price) f.sms_price.value = s.sms_price ?? '';
+                if (f.fx_usd) f.fx_usd.value = s.fx_usd ?? '';
+                if (f.fx_eur) f.fx_eur.value = s.fx_eur ?? '';
             } catch (e) { /* мовчки */ }
         }
 
@@ -2649,7 +2663,9 @@
                     new_approval_pct: f.new_approval_pct ? f.new_approval_pct.value : '',
                     new_buyout_pct: f.new_buyout_pct ? f.new_buyout_pct.value : '',
                     sms_count: f.sms_count ? f.sms_count.value : '',
-                    sms_price: f.sms_price ? f.sms_price.value : ''
+                    sms_price: f.sms_price ? f.sms_price.value : '',
+                    fx_usd: f.fx_usd ? f.fx_usd.value : '',
+                    fx_eur: f.fx_eur ? f.fx_eur.value : ''
                 };
                 try {
                     const r = await fetch('/api/settings/economics', {

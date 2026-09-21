@@ -916,7 +916,9 @@ const ECONOMICS_DEFAULTS = {
   new_approval_pct: 70, // орієнтир для новинок без історії
   new_buyout_pct: 60,
   sms_count: 3,   // скільки SMS на підтверджене замовлення
-  sms_price: 0    // ціна однієї SMS, ₴
+  sms_price: 0,   // ціна однієї SMS, ₴
+  fx_usd: 41,     // курс USD→UAH для конвертації витрат FB
+  fx_eur: 45      // курс EUR→UAH
 };
 
 async function getEconomicsSettings() {
@@ -953,7 +955,7 @@ app.get('/api/settings/economics', checkAuth, async (req, res) => {
 });
 
 app.post('/api/settings/economics', checkAuth, async (req, res) => {
-  const allowed = ['return_cost', 'lookback_days', 'settlement_days', 'target_roi_pct', 'campaign_regex', 'new_approval_pct', 'new_buyout_pct', 'sms_count', 'sms_price'];
+  const allowed = ['return_cost', 'lookback_days', 'settlement_days', 'target_roi_pct', 'campaign_regex', 'new_approval_pct', 'new_buyout_pct', 'sms_count', 'sms_price', 'fx_usd', 'fx_eur'];
   const current = await getEconomicsSettings();
   const next = { ...current };
   for (const k of allowed) {
@@ -1117,6 +1119,15 @@ async function syncFbAccount(account, daysBack) {
   const settings = await getEconomicsSettings();
   const pattern = settings.campaign_regex || '\\[([^\\]]+)\\]';
   const cleanId = String(account.fb_account_id).replace(/^act_/, '');
+  // Валюта кабінету → курс у грн (FB віддає витрати у валюті кабінету)
+  let fxRate = 1;
+  try {
+    const meta = await fbGet(`https://graph.facebook.com/${FB_API_VERSION}/act_${cleanId}?fields=currency&access_token=${encodeURIComponent(account.access_token)}`);
+    const cur = (meta.currency || 'UAH').toUpperCase();
+    if (cur === 'USD') fxRate = Number(settings.fx_usd) || 41;
+    else if (cur === 'EUR') fxRate = Number(settings.fx_eur) || 45;
+    else fxRate = 1; // UAH або інша — без конвертації
+  } catch (e) { fxRate = 1; }
   const since = new Date(); since.setDate(since.getDate() - (daysBack || 7));
   const until = new Date();
   const iso = d => d.toISOString().slice(0, 10);
@@ -1143,7 +1154,7 @@ async function syncFbAccount(account, daysBack) {
       const adsetName = r.adset_name || '';
       // Артикул шукаємо в назві кампанії, а якщо там нема — у назві групи
       const article = extractArticleFromCampaign(campaignName, pattern) || extractArticleFromCampaign(adsetName, pattern);
-      const spend = Number(r.spend) || 0;
+      const spend = (Number(r.spend) || 0) * fxRate; // у грн
       const impressions = Number(r.impressions) || 0;
       const clicks = Number(r.clicks) || 0;
       const leads = getLeadCountFromActions(r.actions);
