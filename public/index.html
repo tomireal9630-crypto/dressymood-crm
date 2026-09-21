@@ -826,7 +826,7 @@
 
                                 <div class="mt-5 border-t border-slate-100 pt-4 space-y-1 text-xs text-slate-500">
                                     <div class="flex justify-between"><span>Граничний CPL (беззбитковість)</span><span id="calcCplMax" class="font-black text-rose-600">0 ₴</span></div>
-                                    <div class="flex justify-between"><span>Рекомендований CPL (ROI 30%)</span><span id="calcCplRec" class="font-black text-emerald-600">0 ₴</span></div>
+                                    <div class="flex justify-between"><span>Рекомендований CPL (ROI <span id="calcCplRecTarget">30</span>%)</span><span id="calcCplRec" class="font-black text-emerald-600">0 ₴</span></div>
                                     <div class="flex justify-between"><span>Маржа</span><span id="calcMargin" class="font-black text-violet-600">0%</span></div>
                                 </div>
                             </div>
@@ -3977,6 +3977,7 @@
             document.getElementById('calcResRoi').textContent = `ROI: ${Math.round(roi)}%`;
             document.getElementById('calcCplMax').textContent = uah(cplMax);
             document.getElementById('calcCplRec').textContent = uah(cplRec);
+            document.getElementById('calcCplRecTarget').textContent = Math.round(targetRoi * 100);
             document.getElementById('calcMargin').textContent = Math.round(margin) + '%';
 
             const card = document.getElementById('calcProfitCard');
