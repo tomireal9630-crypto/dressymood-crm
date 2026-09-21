@@ -4708,6 +4708,25 @@
             if (cpl <= max) return 'text-amber-600';
             return 'text-rose-600';
         }
+        const FB_MIN_LEADS = 5; // менше — статистика ненадійна, не судимо
+        function fbBadge(txt, cls) { return `<span class="text-[10px] font-black px-2 py-0.5 rounded ${cls} whitespace-nowrap">${txt}</span>`; }
+        // Вердикт кампанії/групи за її CPL відносно порогів моделі
+        function fbCampVerdict(cpl, rec, max, leads) {
+            if (rec == null || max == null) return fbBadge('⚪ нема економіки', 'text-slate-500 bg-slate-100');
+            if ((leads || 0) < FB_MIN_LEADS) return fbBadge('⚪ мало даних', 'text-slate-500 bg-slate-100');
+            if (!cpl) return fbBadge('⚪ —', 'text-slate-500 bg-slate-100');
+            if (cpl <= rec) return fbBadge('🟢 Масштабувати', 'text-emerald-700 bg-emerald-50');
+            if (cpl <= max) return fbBadge('🟡 Тримати', 'text-amber-700 bg-amber-50');
+            return fbBadge('🔴 Вимкнути', 'text-rose-700 bg-rose-50');
+        }
+        // Вердикт моделі за ROI (ціль виводимо з відношення беззбитк./рекоменд. CPL)
+        function fbModelVerdict(A) {
+            if (A.roi == null) return fbBadge('⚪ нема продажів', 'text-slate-500 bg-slate-100');
+            const target = (A.cpl_recommended && A.cpl_max) ? (A.cpl_max / A.cpl_recommended - 1) * 100 : 30;
+            if (A.roi >= target) return fbBadge('🟢 Ціль досягнута', 'text-emerald-700 bg-emerald-50');
+            if (A.roi >= 0) return fbBadge('🟡 В плюсі, нижче цілі', 'text-amber-700 bg-amber-50');
+            return fbBadge('🔴 Збиткова — підріж/вимкни', 'text-rose-700 bg-rose-50');
+        }
         async function loadFbControl() {
             const from = (document.getElementById('fbCtlFrom') || {}).value || '';
             const to = (document.getElementById('fbCtlTo') || {}).value || '';
@@ -4751,7 +4770,24 @@
             }
             const errBar = (d.errors && d.errors.length)
                 ? `<div class="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4 text-xs text-amber-700 font-bold">⚠️ Не вдалось отримати статуси деяких кабінетів: ${d.errors.map(e => esc(e.error)).join('; ')}</div>` : '';
-            body.innerHTML = errBar + articles.map(A => {
+            // Зведення: рахуємо активні кампанії по вердиктах
+            let cScale = 0, cHold = 0, cOff = 0, spendRisk = 0;
+            articles.forEach(A => A.campaigns.forEach(C => {
+                if (C.status === 'PAUSED') return;
+                if (A.cpl_recommended == null || (C.leads || 0) < FB_MIN_LEADS || !C.cpl) return;
+                if (C.cpl <= A.cpl_recommended) cScale++;
+                else if (C.cpl <= A.cpl_max) cHold++;
+                else { cOff++; spendRisk += C.spend; }
+            }));
+            const summary = `
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+                    <div class="bg-white rounded-2xl border border-slate-100 p-4"><div class="text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-1">🟢 Масштабувати</div><div class="text-2xl font-black text-slate-800">${cScale}</div><div class="text-[10px] text-slate-400 font-medium">CPL у цілі</div></div>
+                    <div class="bg-white rounded-2xl border border-slate-100 p-4"><div class="text-[10px] font-black text-amber-500 uppercase tracking-widest mb-1">🟡 Тримати</div><div class="text-2xl font-black text-slate-800">${cHold}</div><div class="text-[10px] text-slate-400 font-medium">в плюсі, нижче цілі</div></div>
+                    <div class="bg-white rounded-2xl border border-slate-100 p-4"><div class="text-[10px] font-black text-rose-500 uppercase tracking-widest mb-1">🔴 Вимкнути</div><div class="text-2xl font-black text-slate-800">${cOff}</div><div class="text-[10px] text-slate-400 font-medium">CPL вище беззбитку</div></div>
+                    <div class="bg-rose-50 rounded-2xl border border-rose-100 p-4"><div class="text-[10px] font-black text-rose-500 uppercase tracking-widest mb-1">Злив під ризиком</div><div class="text-2xl font-black text-rose-600">${fbUah(spendRisk)}</div><div class="text-[10px] text-rose-400 font-medium">трата 🔴-кампаній</div></div>
+                </div>
+                <div class="text-[11px] text-slate-400 font-medium mb-4">Вердикт кампанії — за її CPL проти порогів моделі (🟢 ≤ рекоменд. · 🟡 ≤ беззбитк. · 🔴 вище). Судимо лише де ≥ ${FB_MIN_LEADS} лідів.</div>`;
+            body.innerHTML = errBar + summary + articles.map(A => {
                 const roiTxt = A.roi == null ? '<span class="text-slate-400">ROI —</span>'
                     : `<span class="${A.roi >= 0 ? 'text-violet-600' : 'text-rose-600'}">ROI ${Math.round(A.roi)}%</span>`;
                 const roiBad = A.roi != null && A.roi < 0;
@@ -4760,8 +4796,8 @@
                 return `
                 <div class="bg-white rounded-2xl shadow-sm border ${roiBad ? 'border-rose-200' : 'border-slate-100'} mb-4 overflow-hidden">
                     <div class="px-5 py-4 flex items-center justify-between gap-3 flex-wrap ${roiBad ? 'bg-rose-50/50' : 'bg-slate-50/50'} border-b border-slate-100">
-                        <div class="font-black text-slate-800 uppercase">${esc(A.article)}
-                            <span class="ml-3 text-sm font-black">${roiTxt}</span></div>
+                        <div class="font-black text-slate-800 uppercase flex items-center gap-3 flex-wrap">${esc(A.article)}
+                            <span class="text-sm font-black">${roiTxt}</span>${fbModelVerdict(A)}</div>
                         <div class="flex items-center gap-4 text-xs font-bold text-slate-500 flex-wrap">
                             ${target}
                             <span>Σтрата <b class="text-slate-700">${fbUah(A.spend)}</b></span>
@@ -4780,6 +4816,7 @@
                                         <span class="text-[9px] font-black text-violet-500 bg-violet-50 px-1.5 py-0.5 rounded whitespace-nowrap">${esc(C.ad_account_name)}</span>
                                     </div>
                                     <div class="flex items-center gap-3 text-[11px] font-bold text-slate-500 shrink-0">
+                                        ${C.status === 'ACTIVE' ? fbCampVerdict(C.cpl, A.cpl_recommended, A.cpl_max, C.leads) : ''}
                                         <span>${fbUah(C.spend)}</span><span>${C.leads} лід.</span>
                                         <span class="${fbCplClass(C.cpl, A.cpl_recommended, A.cpl_max)}">CPL ${fbUah(C.cpl)}</span>
                                         ${fbActionBtn('campaign', C.campaign_id, C.ad_account_id, C.status)}
