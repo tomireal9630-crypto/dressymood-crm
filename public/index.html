@@ -922,7 +922,7 @@
                         </div>
                         <button onclick="loadRoiStats()" class="px-5 py-2 rounded-lg text-xs font-black uppercase tracking-wider text-white transition-all"
                             style="background:linear-gradient(135deg,#8b5cf6,#ec4899)">Показати</button>
-                        <div class="ml-auto text-[11px] font-bold text-slate-400 italic flex items-center gap-2">
+                        <div id="roiFbHint" class="ml-auto text-[11px] font-bold text-slate-400 italic flex items-center gap-2">
                             <i class="fa-brands fa-facebook text-blue-400"></i>
                             Реклама — з'явиться після інтеграції з FB Ads
                         </div>
@@ -3599,6 +3599,8 @@
             document.getElementById('roiKpiOrders').textContent = int(t.orders);
             document.getElementById('roiKpiUnits').textContent = int(t.units);
             document.getElementById('roiKpiSpend').textContent = uah(t.ad_spend);
+            const fbHint = document.getElementById('roiFbHint');
+            if (fbHint) fbHint.style.display = (Number(t.ad_spend) || 0) > 0 ? 'none' : '';
             document.getElementById('roiKpiLeads').textContent = int(t.leads);
             document.getElementById('roiKpiRoas').textContent = (Number(t.roas || 0)).toFixed(2) + '×';
             document.getElementById('roiKpiCpl').textContent = Math.round(t.cpl || 0);
