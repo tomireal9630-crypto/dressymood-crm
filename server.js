@@ -1170,16 +1170,20 @@ async function syncFbAccount(account, daysBack) {
 
 async function syncAllFbAccounts(daysBack) {
   const r = await pool.query(`SELECT * FROM fb_ad_accounts WHERE is_active = true`);
+  let total = 0; const errors = [];
   for (const acc of r.rows) {
     try {
       const n = await syncFbAccount(acc, daysBack);
+      total += n;
       await pool.query(`UPDATE fb_ad_accounts SET last_sync_at = NOW(), last_sync_error = '' WHERE id = $1`, [acc.id]);
       console.log(`[FB sync] ${acc.name}: ${n} rows`);
     } catch (err) {
       console.error(`[FB sync] ${acc.name} error:`, err.message);
+      errors.push({ account: acc.name, error: String(err.message || err) });
       await pool.query(`UPDATE fb_ad_accounts SET last_sync_at = NOW(), last_sync_error = $1 WHERE id = $2`, [String(err.message || err), acc.id]);
     }
   }
+  return { total, accounts: r.rows.length, errors };
 }
 
 // CRUD кабінетів
@@ -1241,10 +1245,10 @@ app.post('/api/fb/accounts/:id(\\d+)/test', checkAuth, async (req, res) => {
 
 // Ручний refresh синхронізації FB
 app.post('/api/fb/sync', checkAuth, async (req, res) => {
-  const daysBack = Number(req.body && req.body.days) || 7;
+  const daysBack = Math.min(365, Math.max(1, Number(req.body && req.body.days) || 7));
   try {
-    await syncAllFbAccounts(daysBack);
-    res.json({ success: true });
+    const r = await syncAllFbAccounts(daysBack);
+    res.json({ success: true, ...r, days: daysBack });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
