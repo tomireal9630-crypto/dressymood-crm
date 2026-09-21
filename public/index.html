@@ -77,6 +77,9 @@
                     <button onclick="switchView('finance')" id="btn-finance" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
                         <i class="fa-solid fa-wallet w-5 text-center"></i> Фінанси
                     </button>
+                    <button onclick="switchView('landing')" id="btn-landing" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
+                        <i class="fa-solid fa-wand-magic-sparkles w-5 text-center"></i> Лендінги
+                    </button>
                     <button onclick="switchView('settings')" id="btn-settings" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
                         <i class="fa-solid fa-gear w-5 text-center"></i> Налаштування
                     </button>
@@ -1572,6 +1575,11 @@
                     <p class="text-[11px] text-slate-400 font-medium mt-6"><i class="fa-solid fa-circle-info mr-1"></i> Вибір зберігається у цьому браузері.</p>
                 </div>
             </div>
+
+            <div id="view-landing" class="view-content h-full">
+                <iframe src="landing-generator.html" title="Генератор лендінгів"
+                    style="width:100%;height:calc(100vh - 5rem);border:0;border-radius:0;display:block"></iframe>
+            </div>
         </div>
     </main>
 
@@ -2075,7 +2083,7 @@
             const btn = document.getElementById(`btn-${view}`);
             if (btn) btn.classList.add('active');
 
-            const titles = { 'orders': 'ЗАМОВЛЕННЯ', 'warehouse': 'СКЛАД', 'callbacks': 'НЕ ДОЗВОНИ', 'statistics': 'СТАТИСТИКА', 'dashboard': 'ДАШБОРД', 'finance': 'ФІНАНСИ' };
+            const titles = { 'orders': 'ЗАМОВЛЕННЯ', 'warehouse': 'СКЛАД', 'callbacks': 'НЕ ДОЗВОНИ', 'statistics': 'СТАТИСТИКА', 'dashboard': 'ДАШБОРД', 'finance': 'ФІНАНСИ', 'landing': 'ЛЕНДІНГИ' };
             document.getElementById('current-view-title').innerText = titles[view] || view.toUpperCase();
 
             document.querySelectorAll('.view-content').forEach(el => el.classList.remove('active'));

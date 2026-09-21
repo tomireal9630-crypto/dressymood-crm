@@ -1,0 +1,790 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Генератор лендінгів · Velattini</title>
+<style>
+  :root{
+    --paper:#f5f1e8; --ink:#1c1a17; --muted:#6f685c; --line:#d9d2c4;
+    --accent:#b23b2e; --accent-soft:#f0d9d4; --field:#fffdf8; --ok:#2e7d4f;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);
+    font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.5}
+  h1,h2,h3{font-family:Georgia,"Times New Roman",serif;font-weight:700;letter-spacing:-.01em}
+  code,.mono{font-family:"SF Mono",Consolas,Menlo,monospace;font-size:13px}
+  .wrap{display:grid;grid-template-columns:1fr 360px;gap:0;min-height:100vh}
+  @media(max-width:900px){.wrap{grid-template-columns:1fr}}
+  /* ---- form column ---- */
+  .form{padding:28px 32px 80px;max-width:760px}
+  .topbar{display:flex;align-items:baseline;gap:12px;border-bottom:2px solid var(--ink);padding-bottom:14px;margin-bottom:8px}
+  .topbar h1{font-size:26px;margin:0}
+  .topbar .sub{color:var(--muted);font-size:13px}
+  fieldset{border:1px solid var(--line);border-radius:10px;margin:22px 0 0;padding:16px 18px 20px;background:#fbf8f0}
+  legend{font-family:Georgia,serif;font-size:18px;padding:0 8px;color:var(--accent)}
+  legend small{font-family:inherit;color:var(--muted);font-size:12px;font-weight:400}
+  label{display:block;font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:12px 0 4px}
+  input[type=text],input[type=number],textarea,select{
+    width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:7px;background:var(--field);
+    color:var(--ink);font-size:14px;font-family:inherit}
+  textarea{resize:vertical;min-height:64px;line-height:1.45}
+  input:focus,textarea:focus,select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+  .hint{font-size:12px;color:var(--muted);margin-top:6px}
+  /* repeatable cards */
+  .card{border:1px solid var(--line);border-radius:9px;padding:12px 14px;margin-top:12px;background:var(--field);position:relative}
+  .card .head{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px}
+  .card .head b{font-family:Georgia,serif;font-size:15px}
+  .btn{cursor:pointer;border:1px solid var(--line);background:#fff;border-radius:7px;padding:7px 13px;
+    font-size:13px;font-family:inherit;color:var(--ink)}
+  .btn:hover{border-color:var(--accent);color:var(--accent)}
+  .btn.add{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .btn.add:hover{background:var(--accent);border-color:var(--accent);color:#fff}
+  .btn.x{padding:3px 9px;line-height:1;color:var(--muted)}
+  .btn.x:hover{color:#fff;background:var(--accent);border-color:var(--accent)}
+  .btn.sm{padding:4px 9px;font-size:12px}
+  .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+  .chip{display:flex;align-items:center;gap:6px;background:#fff;border:1px solid var(--line);border-radius:20px;padding:4px 6px 4px 12px}
+  .chip input{border:none;background:transparent;width:78px;padding:2px;font-size:13px}
+  .chip input:focus{box-shadow:none}
+  .sizetbl{width:100%;border-collapse:collapse;margin-top:10px;font-size:13px}
+  .sizetbl th,.sizetbl td{border:1px solid var(--line);padding:4px;text-align:center}
+  .sizetbl th{background:#efe9dc}
+  .sizetbl input{border:none;background:transparent;text-align:center;padding:4px;width:100%}
+  .sizetbl input:focus{box-shadow:none;background:var(--accent-soft)}
+  .sizetbl td.lbl input{text-align:left}
+  .photolist{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+  .photolist .pl{display:flex;gap:8px;align-items:center}
+  .photolist .pl input{font-size:12px}
+  /* ---- panel column ---- */
+  .panel{background:var(--ink);color:#ece6d8;position:sticky;top:0;height:100vh;overflow:auto;padding:26px 22px}
+  @media(max-width:900px){.panel{position:static;height:auto}}
+  .panel h2{color:#fff;font-size:19px;margin:0 0 4px}
+  .panel p{font-size:13px;color:#b8b0a0;margin:6px 0}
+  .bigbtn{display:block;width:100%;text-align:center;background:var(--accent);color:#fff;border:none;
+    border-radius:9px;padding:14px;font-size:15px;font-weight:700;cursor:pointer;margin-top:14px;font-family:inherit}
+  .bigbtn:hover{filter:brightness(1.08)}
+  .ghost{display:block;width:100%;text-align:center;background:transparent;color:#ece6d8;border:1px solid #4a463d;
+    border-radius:9px;padding:10px;font-size:13px;cursor:pointer;margin-top:9px;font-family:inherit}
+  .ghost:hover{border-color:var(--accent);color:#fff}
+  .cheat{margin-top:20px;border-top:1px solid #3a362e;padding-top:16px}
+  .cheat h3{color:#fff;font-size:14px;text-transform:uppercase;letter-spacing:.05em;margin:0 0 8px}
+  .cheat .f{font-family:"SF Mono",Consolas,monospace;font-size:12px;color:#e8c9a0;background:#252219;
+    border:1px solid #3a362e;border-radius:6px;padding:7px 9px;margin:6px 0}
+  .cheat .f b{color:#fff;font-family:inherit}
+  .note{font-size:12px;color:#9a9384;line-height:1.55;margin-top:14px}
+  .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ok);color:#fff;
+    padding:11px 20px;border-radius:8px;font-size:14px;opacity:0;transition:.25s;pointer-events:none;z-index:50}
+  .toast.show{opacity:1}
+  details.help{margin-top:6px}
+  details.help summary{cursor:pointer;color:var(--accent);font-size:13px}
+  details.help div{font-size:12.5px;color:var(--muted);margin-top:6px;line-height:1.6}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <!-- ============ FORM ============ -->
+  <div class="form">
+    <div class="topbar">
+      <h1>Генератор лендінгів</h1>
+      <span class="sub">заповни поля → завантаж <code>index.html</code></span>
+    </div>
+
+    <details class="help">
+      <summary>Як це працює (коротко)</summary>
+      <div>
+        1. Цей файл — твій інструмент. Він лежить локально, на хостинг його заливати НЕ треба.<br>
+        2. Заповнюєш поля під новий товар. Розміри і кольори вводиш один раз — вони самі стають у таблицю,
+        у блоки кольорів і у форму замовлення.<br>
+        3. Тиснеш «Завантажити index.html» → кладеш файл у копію папки сайту (styles/ js/ photos/ mail.php лишаються ті самі).<br>
+        4. Закидаєш фото у <code>photos/1/</code> з іменами зі шпаргалки праворуч → заливаєш на хостинг.
+      </div>
+    </details>
+
+    <!-- ШВИДКЕ ЗАПОВНЕННЯ -->
+    <fieldset style="border-color:var(--accent);background:#fbf2ee">
+      <legend>⚡ Швидке заповнення <small>(встав опис від постачальника)</small></legend>
+      <textarea id="supplierText" placeholder="Встав сюди весь текст опису товару від постачальника — назву, ціну, розміри, тканину, кольори, заміри…" style="min-height:120px"></textarea>
+      <button class="btn add" id="parseBtn" style="margin-top:10px">Розпарсити та заповнити поля</button>
+      <div class="hint" id="parseResult" style="margin-top:10px"></div>
+    </fieldset>
+
+    <!-- ЗАГАЛЬНЕ -->
+    <fieldset>
+      <legend>Загальне</legend>
+      <label>Заголовок вкладки (title)</label>
+      <input type="text" id="title">
+      <div class="row">
+        <div><label>Meta Pixel ID</label><input type="text" id="pixelId"></div>
+        <div><label>Email у футері</label><input type="text" id="email"></div>
+      </div>
+    </fieldset>
+
+    <!-- ШАПКА -->
+    <fieldset>
+      <legend>Шапка та оффер <small>(шапка + нижній блок замовлення)</small></legend>
+      <div class="row">
+        <div><label>Головний заголовок</label><input type="text" id="mainTitle"></div>
+        <div><label>Назва товару (нижній блок)</label><input type="text" id="bottomName"></div>
+      </div>
+      <label>Підзаголовок (subtitle)</label>
+      <input type="text" id="subtitle">
+      <div class="row3">
+        <div><label>Ціна (роздрібна), грн</label><input type="number" id="newPrice"></div>
+        <div><label>Знижка, %</label><input type="number" id="discount"></div>
+        <div><label>Стара ціна (авто)</label><input type="number" id="oldPrice" readonly tabindex="-1" style="background:#efe9dc;color:var(--muted);cursor:not-allowed"></div>
+      </div>
+      <div class="hint">Вписуєш роздрібну ціну і знижку — стара ціна рахується сама: <code>стара = ціна ÷ (1 − знижка/100)</code>.</div>
+      <label>Залишилось одиниць</label>
+      <input type="number" id="unitsLeft" style="max-width:140px">
+      <label>3 переваги (під фото в шапці)</label>
+      <div class="row3">
+        <input type="text" id="benefit0">
+        <input type="text" id="benefit1">
+        <input type="text" id="benefit2">
+      </div>
+    </fieldset>
+
+    <!-- ВІДЕО -->
+    <fieldset>
+      <legend>Відео</legend>
+      <label>YouTube посилання (embed або звичайне)</label>
+      <input type="text" id="videoUrl">
+      <div class="hint">Можна вставити будь-яке: <code>youtu.be/XXXX</code>, <code>watch?v=XXXX</code> або <code>/embed/XXXX</code> — приведу до правильного формату сам.</div>
+    </fieldset>
+
+    <!-- ОПИС -->
+    <fieldset>
+      <legend>Опис товару</legend>
+      <label>Текст опису</label>
+      <textarea id="description"></textarea>
+      <div class="row">
+        <div><label>Тканина</label><input type="text" id="fabric"></div>
+        <div><label>Країна виробник</label><input type="text" id="country"></div>
+      </div>
+      <div class="hint">Перелік «Кольори:» у описі збереться автоматично зі списку кольорів нижче.</div>
+    </fieldset>
+
+    <!-- РОЗМІРИ -->
+    <fieldset>
+      <legend>Розміри <small>(стовпці = розміри, рядки = заміри)</small></legend>
+      <label>Розміри (стовпці)</label>
+      <div class="chips" id="sizeChips"></div>
+      <button class="btn add sm" id="addSize" style="margin-top:8px">+ розмір</button>
+      <div id="sizeTableWrap"></div>
+      <button class="btn add sm" id="addRow" style="margin-top:10px">+ рядок заміру</button>
+    </fieldset>
+
+    <!-- КОЛЬОРИ -->
+    <fieldset>
+      <legend>Кольори <small>(кожен = блок з каруселлю + опція у формі)</small></legend>
+      <div id="colorList"></div>
+      <button class="btn add" id="addColor" style="margin-top:12px">+ додати колір</button>
+    </fieldset>
+
+    <!-- ВІДГУКИ -->
+    <fieldset>
+      <legend>Відгуки</legend>
+      <div id="reviewList"></div>
+      <button class="btn add" id="addReview" style="margin-top:12px">+ додати відгук</button>
+    </fieldset>
+  </div>
+
+  <!-- ============ PANEL ============ -->
+  <div class="panel">
+    <h2>Готово до експорту</h2>
+    <p>Перевір поля зліва й завантажуй файл лендінга.</p>
+    <button class="bigbtn" id="download">⬇ Завантажити index.html</button>
+    <button class="ghost" id="preview">👁 Переглянути код</button>
+    <button class="ghost" id="saveDraft">💾 Зберегти чернетку (.json)</button>
+    <button class="ghost" id="loadDraftBtn">📂 Завантажити чернетку</button>
+    <input type="file" id="loadDraft" accept=".json" style="display:none">
+
+    <div class="cheat">
+      <h3>Шпаргалка по фото</h3>
+      <p style="margin-top:0">Назви файли саме так і поклади у <code>photos/1/</code>:</p>
+      <div id="cheatSheet"></div>
+    </div>
+
+    <div class="note">
+      Папки <code>styles/</code>, <code>js/</code>, <code>mail.php</code>, <code>send.php</code>,
+      аватарки й іконки кроків — НЕ чіпаєш, вони однакові для всіх товарів.
+      Під кожен товар міняється лише <code>index.html</code> + фото у <code>photos/1/</code>.
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+// ====================== STATE ======================
+const state = {
+  title:"СТИЛЬНА СУКНЯ",
+  pixelId:"1966472334287479",
+  email:"odyag@odyag.store",
+  mainTitle:"ХІТ СЕЗОНУ 2026",
+  bottomName:"СТИЛЬНА СУКНЯ",
+  subtitle:"Трендова ЕЛЕГАНТНА СУКНЯ -40%",
+  discount:40, oldPrice:1678, newPrice:1199, unitsLeft:15,
+  benefits:["ВЕЛИКІ РОЗМІРИ","СТИЛЬНИЙ ДИЗАЙН","НАТУРАЛЬНА ТКАНИНА"],
+  videoUrl:"https://www.youtube.com/embed/DYNzdZpEkFQ",
+  description:"Відкрийте для себе ідеальну сукню для спекотних днів. Ця ексклюзивна новинка створена для жінок, які цінують справжній комфорт та елегантність натуральних матеріалів.",
+  fabric:"льон", country:"Україна",
+  sizes:["48-50","52-54","56-58"],
+  sizeRows:[
+    {label:"Обхват грудей:", values:["108","116","122"]},
+    {label:"Обхват талії:", values:["116","122","126"]},
+    {label:"Об'єм стегон:", values:["124","132","138"]},
+    {label:"Довжина виробу:", values:["110","110","110"]}
+  ],
+  colors:[
+    {name:"Шоколад", photos:["photos/1/1.jpeg","photos/1/1-2.jpeg","photos/1/1-3.jpeg"]},
+    {name:"Червоний", photos:["photos/1/2.jpeg","photos/1/2-2.jpeg","photos/1/2-3.jpeg"]},
+    {name:"Блакитний", photos:["photos/1/3.jpeg","photos/1/3-2.jpeg","photos/1/3-3.jpeg"]},
+    {name:"Зелений", photos:["photos/1/4.jpeg","photos/1/4-2.jpeg","photos/1/4-3.jpeg"]}
+  ],
+  reviews:[
+    {avatar:"photos/ava1_95ba_31.jpg", name:"Маша", age:"35 років", date:"сьогодні",
+     text:"Сукня дуже зручна, легка, тканина приємна до тіла. Гарно сідає на фігуру."},
+    {avatar:"photos/ava2_c32b_32.jpg", name:"Олена", age:"45 років", date:"вчора",
+     text:"Сукня дуже сподобалася. Вільний крій не сковує рухів. Колір виглядає дорого і стильно."},
+    {avatar:"photos/ava3_75fc_33.jpg", name:"Катерина", age:"52 років", date:"позавчора",
+     text:"Нарешті знайшла гарну сукню з натуральної тканини на свій розмір. Сіла ідеально."}
+  ]
+};
+const AVATARS=["photos/ava1_95ba_31.jpg","photos/ava2_c32b_32.jpg","photos/ava3_75fc_33.jpg"];
+
+// ====================== HELPERS ======================
+function esc(s){return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+function defPhotos(i){const n=i+1;return [`photos/1/${n}.jpeg`,`photos/1/${n}-2.jpeg`,`photos/1/${n}-3.jpeg`];}
+function ytEmbed(u){
+  u=(u||"").trim(); if(!u) return "";
+  let id="";
+  let m=u.match(/[?&]v=([\w-]{6,})/); if(m)id=m[1];
+  if(!id){m=u.match(/youtu\.be\/([\w-]{6,})/); if(m)id=m[1];}
+  if(!id){m=u.match(/\/embed\/([\w-]{6,})/); if(m)id=m[1];}
+  if(!id){m=u.match(/\/shorts\/([\w-]{6,})/); if(m)id=m[1];}
+  if(!id && /^[\w-]{6,}$/.test(u)) id=u;
+  return id? "https://www.youtube.com/embed/"+id : u;
+}
+
+// ====================== SUPPLIER PARSER ======================
+const CYR="\\u0400-\\u04FF"; // увесь кириличний діапазон (укр+рос)
+function clean(s){return (s||"").replace(/\s+/g," ").replace(/^[\s.,;:\u2013\u2014\-]+/,"").replace(/[\s.,;:\u2013\u2014\-]+$/,"").trim();}
+function grab(text,re){const m=text.match(re);return m?clean(m[1]):"";}
+const GARMENTS=["Костюм","Сукня","Плаття","Сорочка","Блуза","Боді","Футболка","Вітровка","Куртка","Пальто","Худі","Світшот","Штани","Брюки","Спідниця","Жакет","Кардиган","Комбінезон","Сарафан","Жилет","Лосини","Бриджі","Лонгслів","Кофта","Топ","Шорти"];
+
+function parseName(t){
+  const num=t.match(/(?:Модель|Артикул|Код|№|#)\s*[№#:.\s]{0,4}?(\d{2,6})/i);
+  let type=""; for(const g of GARMENTS){ if(new RegExp(g,"i").test(t)){ type=g; break; } }
+  if(num) return (type?type+" ":"")+"Модель "+num[1];
+  return type||"";
+}
+function parsePrice(t){
+  let m=t.match(/Ціна\s*[-\u2013\u2014:]*\s*(\d[\d\s]*)\s*грн/i)
+     || t.match(/(?:Опт|дроп|роздріб|вартіст)[^\d]{0,14}(\d[\d\s]*)\s*грн/i)
+     || t.match(/(\d{3,5})\s*грн/i);
+  return m?parseInt(m[1].replace(/\s/g,""),10):0;
+}
+function parseFabric(t){
+  let f=grab(t, /(?:Тканина|Ткань|Тканини|Матеріал)\s*[:\-\u2013\u2014]*\s*([\s\S]*?)(?=Кольор|Колір|Розмір|Замір|Вимір|Ціна|Парам|Опис|Додатк|Сезон|$)/i);
+  f=f.split(/[.!?\n\u2022\u00b7\u2043]/)[0].replace(/\s+/g," ").replace(/[\s,;:\u2013\u2014\-]+$/,"").trim();
+  return f.length>70?f.slice(0,70).trim():f;
+}
+function parseSizes(t){
+  let b=grab(t, /Розмір[иіа]?\s*[:\-\u2013\u2014]*\s*([\s\S]*?)(?=Тканин|Ткань|Кольор|Колір|Замір|Вимір|Парам|Матеріал|Опис|Сезон|Додатк|$)/i);
+  let s=(b.match(/\d{2,3}\s*[-\u2013]\s*\d{2,3}/g)||[]).map(x=>x.replace(/\s/g,""));
+  if(!s.length) s=(b.match(/\b\d{2,3}\b/g)||[]);
+  return [...new Set(s)];
+}
+function parseColors(t){
+  let b=grab(t, /(?:Кольор[иіа]?|Колір|кольори)\s*[:\-\u2013\u2014]*\s*([\s\S]*?)(?=Замір|Вимір|Довжин|Розмір|Тканин|Матеріал|Парам|Опт|дроп|Ціна|Опис|Додатк|Сезон|$)/i);
+  b=b.split(/[!\n\u2022\u00b7\u2043]|\.\s/)[0];
+  return b.split(new RegExp("[,/]|\\s+та\\s+|\\s+і\\s+|-(?=["+CYR+"])","g"))
+    .map(c=>clean(c).replace(/^та\s+/i,""))
+    .filter(c=>c && c.length>1 && c.length<24 && !/\d/.test(c) && !/Ціна|грн|Тканин|Розмір|Замір|Опис|Матеріал|колір|кольор/i.test(c));
+}
+function parseDesc(t){
+  let d=grab(t, /Опис[ис]?\s*[:\-\u2013]*\s*([\s\S]*?)(?=Замір|Вимір|\d{2,3}\s*[-\u2013]\s*\d{2,3}|Платье|Описание|Замеры|$)/i);
+  if(!d) d=grab(t, new RegExp("Україн[іи]\\s*([\\s\\S]*?)(?=(?:["+CYR+"]{3,})?\\s*Модель|Ціна|Розмір|$)","i"));
+  return d;
+}
+
+function measSection(t){
+  let m=t.match(/(?:Заміри|Виміри|Вимір[іи]?|Параметри готового виробу)\s*[:\-\u2013\u2014]*([\s\S]*)/i);
+  let z=m?m[1]:t;
+  z=z.split(/Параметри модел|На модел|Модель на фото|Платье|Описание|Замеры|Размер фотомодел|Додаткові характеристик|@/i)[0];
+  return z;
+}
+function parseMeasBlocks(z, sizes){
+  if(!sizes.length) return null;
+  let anchors=[];
+  sizes.forEach(sz=>{ const re=new RegExp(sz.replace(/\s*[-\u2013]\s*/,"\\s*[-\u2013]\\s*")); const m=re.exec(z); if(m) anchors.push({sz,idx:m.index,end:m.index+m[0].length}); });
+  anchors.sort((a,b)=>a.idx-b.idx);
+  const common=anchors.length?z.slice(0,anchors[0].idx):z;
+  const segs={};
+  for(let i=0;i<anchors.length;i++){ const end=i+1<anchors.length?anchors[i+1].idx:z.length; segs[anchors[i].sz]=z.slice(anchors[i].end,end); }
+  function pairs(seg){
+    const out=[]; let cur="";
+    const re=new RegExp("(Сорочка|Штани|Брюки|Піджак|Кофта|Блуза|Бриджі|Верх|Низ)\\s*:?|(["+CYR+"().'’ʼ ]{2,}?)\\s*[-\u2013\u2014:]\\s*(\\d+(?:\\s*[~/,]\\s*\\d+)?)\\s*см","gi");
+    let m;
+    while((m=re.exec(seg))){
+      if(m[1]){ cur=m[1].trim()+" "; }
+      else if(m[2]){ const lbl=(cur+m[2].trim().replace(/^[.\s]+/,"")).replace(/\s+/g," ").replace(/^[.\s]+/,"").replace(/\s*\(\s*/g,"(").replace(/\s*\)\s*/g,")").trim(); if(lbl.length>1) out.push({label:lbl+":",value:m[3].replace(/\s/g,"")}); }
+    }
+    return out;
+  }
+  const map=new Map(); const ensure=l=>{if(!map.has(l))map.set(l,sizes.map(()=> ""));return map.get(l);};
+  pairs(common).forEach(p=>{const a=ensure(p.label);sizes.forEach((_,i)=>{if(!a[i])a[i]=p.value;});});
+  sizes.forEach((sz,i)=>pairs(segs[sz]||"").forEach(p=>{ensure(p.label)[i]=p.value;}));
+  const rows=[...map.entries()].map(([label,values])=>({label,values}));
+  return rows.length?rows:null;
+}
+function parseMeasParen(z, sizes){
+  const rows=new Map(); const ensure=l=>{if(!rows.has(l))rows.set(l,sizes.map(()=> ""));return rows.get(l);};
+  const re=new RegExp("(["+CYR+".() ]{3,}?)\\s*((?:\\(\\s*\\d{2,3}\\s*[-\u2013]\\s*\\d{2,3}\\s*\\)\\s*[-\u2013\u2014]?\\s*[\\d/]+\\s*см[.,]?\\s*)+)","g");
+  let m, found=false;
+  while((m=re.exec(z))){
+    const label=clean(m[1]); if(!label||label.length<2) continue;
+    const pr=new RegExp("\\(\\s*(\\d{2,3}[-\u2013]\\d{2,3})\\s*\\)\\s*[-\u2013\u2014]?\\s*([\\d/]+)","g");
+    let p;
+    while((p=pr.exec(m[2]))){ const sz=p[1].replace(/\s/g,""); const idx=sizes.indexOf(sz); if(idx>=0){ ensure(label+":")[idx]=p[2]; found=true; } }
+  }
+  return found?[...rows.entries()].map(([label,values])=>({label,values})):null;
+}
+function parseMeasurements(t, sizes){
+  const z=measSection(t);
+  const a=parseMeasBlocks(z,sizes), b=parseMeasParen(z,sizes);
+  const fill=rows=>(rows||[]).reduce((n,r)=>n+r.values.filter(Boolean).length,0);
+  return fill(b)>fill(a)?b:a;
+}
+
+function parseSupplier(text){
+  const t=(text||"").replace(/\u00A0/g," ").trim();
+  const res={};
+  res.name=parseName(t);
+  res.price=parsePrice(t);
+  res.fabric=parseFabric(t);
+  if(/Україн/i.test(t)) res.country="Україна";
+  res.sizes=parseSizes(t);
+  res.colors=parseColors(t);
+  res.description=parseDesc(t);
+  res.sizeRows=parseMeasurements(t,res.sizes);
+  return res;
+}
+
+function applyParsed(p){
+  const filled=[];
+  if(p.name){ state.title=p.name; state.bottomName=p.name; filled.push("назва"); }
+  if(p.price){ state.newPrice=p.price; filled.push("ціна "+p.price+"грн"); }
+  if(p.fabric){ state.fabric=p.fabric; filled.push("тканина"); }
+  if(p.country){ state.country=p.country; }
+  if(p.sizes&&p.sizes.length){ state.sizes=p.sizes.slice(); filled.push(p.sizes.length+" розмір(ів)"); }
+  if(p.colors&&p.colors.length){ state.colors=p.colors.map((name,i)=>({name,photos:defPhotos(i)})); filled.push(p.colors.length+" колір(ів)"); }
+  if(p.description){ state.description=p.description; filled.push("опис"); }
+  if(p.sizeRows&&p.sizeRows.length){ state.sizeRows=p.sizeRows; filled.push("таблиця замірів ("+p.sizeRows.length+" рядків)"); }
+  else if(p.sizes&&p.sizes.length){ state.sizeRows=[{label:"",values:p.sizes.map(()=> "")}]; }
+  return filled;
+}
+
+// ====================== BUILD index.html ======================
+function buildHtml(d){
+  const S = "<\/script>";               // safe closing tag for template
+  const colorsCsv = d.colors.map(c=>c.name).filter(Boolean).join(", ");
+  const hero = (d.colors[0]&&d.colors[0].photos[0])||"photos/1/1.jpeg";
+  const b = i => (d.colors[0]&&d.colors[0].photos[i])||hero;
+
+  // size table
+  let sizeHead = '<tr align="center" height="35"><td><b>Розмір</b></td>'+
+    d.sizes.map(s=>`<td><b>&nbsp; ${esc(s)}</b></td>`).join("")+'</tr>';
+  let sizeBody = d.sizeRows.map(r=>
+    '<tr align="center" height="35"><td>'+esc(r.label)+'</td>'+
+    d.sizes.map((_,j)=>`<td>${esc(r.values[j]||"")}</td>`).join("")+'</tr>'
+  ).join("\n        ");
+  const sizeTable =
+`<table class="size" width="100%">
+    <tbody>
+        ${sizeHead}
+        ${sizeBody}
+    </tbody>
+</table>`;
+
+  // color blocks
+  const colorBlocks = d.colors.map((c,idx)=>{
+    const slides = c.photos.filter(Boolean).map(p=>
+`                    <li>
+                        <div><img src="${esc(p)}" alt=""></div>
+                    </li>`).join("\n");
+    return (
+`            <section class="cat">
+                <ul class="bxslider">
+${slides}
+                </ul>
+            </section>
+            <br>
+            <div class="catitem">
+                <div class="clearfix">
+                    <h3>${esc(c.name)}</h3>
+                    <div class="catprice clearfix">
+                        <div class="cp-left"><span>-${esc(d.discount)}%</span>
+                            <p>${esc(d.oldPrice)}грн</p>
+                        </div>
+                        <div class="cp-right"><span>Ціна сьогодні:</span>
+                            <p>${esc(d.newPrice)} грн</p>
+                        </div>
+                    </div>
+                </div>
+                <a href="#order_form" rel='${idx+1}' class="button zakaz">Оформити замовлення</a>
+            </div>
+            <br>`);
+  }).join("\n");
+
+  // reviews
+  const reviews = d.reviews.map(r=>
+`                    <div class="review_item">
+                        <div class="author_block clearfix">
+                            <img src="${esc(r.avatar)}" alt="">
+                            <div class="author_info">
+                                <div class="name">${esc(r.name)}</div>
+                                <div class="text">${esc(r.age)}</div>
+                            </div>
+                            <div class="info">
+                                <div class="rating"></div>
+                                <div class="date">${esc(r.date)}</div>
+                            </div>
+                        </div>
+                        <p>${esc(r.text)}</p>
+                    </div>`).join("\n");
+
+  // selects
+  const colorOpts = d.colors.map(c=>`                        <option value="${esc(c.name)}">${esc(c.name)}</option>`).join("\n");
+  const sizeOpts  = d.sizes.map(s=>`                        <option value="${esc(s)}">${esc(s)}</option>`).join("\n");
+
+  return `<!DOCTYPE html>
+<html lang="uk">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=480">
+    <title>${esc(d.title)}</title>
+    <meta name="description" content=""/>
+    <link rel="shortcut icon" href=""/>
+    <link rel="stylesheet" href="styles/reset.css" type="text/css">
+    <link rel="stylesheet" href="styles/style.css" type="text/css">
+<!-- Meta Pixel Code -->
+<script>
+!function(f,b,e,v,n,t,s)
+{if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+n.queue=[];t=b.createElement(e);t.async=!0;
+t.src=v;s=b.getElementsByTagName(e)[0];
+s.parentNode.insertBefore(t,s)}(window, document,'script',
+'https://connect.facebook.net/en_US/fbevents.js');
+fbq('init', '${esc(d.pixelId)}');
+fbq('track', 'PageView');
+${S}
+<noscript><img height="1" width="1" style="display:none"
+src="https://www.facebook.com/tr?id=${esc(d.pixelId)}&ev=PageView&noscript=1"
+/></noscript>
+<!-- End Meta Pixel Code --></head>
+
+<body>
+    <div class="main_wrapper">
+        <!-- header 3 -->
+        <header class="offer_section offer3">
+            <h1 class="main_title">${esc(d.mainTitle)}</h1>
+            <div class="info_block">
+                <p class="subtitle">${esc(d.subtitle)}</p>
+                <div class="discount"><b>${esc(d.discount)}% знижка</b></div>
+                <img src="${esc(hero)}" alt="">
+            </div>
+            <div class="price_block">
+                <div class="price_item old">
+                    <div class="text">Звичайна ціна:</div>
+                    <div class="value">${esc(d.oldPrice)}грн</div>
+                </div>
+                <div class="price_item new">
+                    <div class="text">Ціна сьогодні:</div>
+                    <div class="value">${esc(d.newPrice)}грн</div>
+                </div>
+            </div>
+            <div class="benefits_block clearfix">
+                <div class="benefit_item"><img src="${esc(b(0))}" alt=""><p>${esc(d.benefits[0]||"")}</p></div>
+                <div class="benefit_item"><img src="${esc(b(1))}" alt=""><p>${esc(d.benefits[1]||"")}</p></div>
+                <div class="benefit_item"><img src="${esc(b(2))}" alt=""><p>${esc(d.benefits[2]||"")}</p></div>
+            </div>
+            <a href="#cat" class="button">Обрати сукню</a>
+            <div class="products_count">Залишилось <b>${esc(d.unitsLeft)}</b> одиниць по акції</div>
+        </header>
+        <br>
+        <div class="catitem">
+            <h2 class="title"><span>ЯК Сукня</span>
+ВИГЛЯДАЄ НАЖИВО!</h2>
+        </div>
+        <section>
+            <iframe width="480" height="720" src="${esc(ytEmbed(d.videoUrl))}" title="" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
+        </section>
+        <br><br>
+        <section class="description_section">
+            <h2 class="title"><span>Опис</span> сукні</h2>
+            <p>${esc(d.description)}</p>
+            <br>
+            <ul class="characteristics__list">
+                <li><b>Тканина:</b> ${esc(d.fabric)}</li>
+                <li><b>Країна виробник:</b> ${esc(d.country)}</li>
+                <li><b>Кольори:</b> ${esc(colorsCsv)}</li>
+                <li>${sizeTable}</li>
+                <br>
+                <center>*залишіть заявку і ми підберемо для вас розмір!</center>
+            </ul>
+        </section>
+        <br>
+        <section class="cat" id="cat">
+            <div class="catitem">
+                <h2 class="title"><span>Оберіть свій</span> колір</h2>
+            </div>
+            <center>Сукня у різних ракурсах, гортайте фото</center>
+            <br>
+${colorBlocks}
+            <br>
+            <section class="reviews3_section">
+                <h2 class="title"><span>Відгуки</span> покупців</h2>
+                <div class="reviews_list">
+${reviews}
+                </div>
+            </section>
+            <!-- order steps 1 -->
+            <div class="tlt">
+                <h2 class="title"><span>Як зробити</span><br> замовлення?</h2>
+            </div>
+            <div class="order_steps1">
+                <div class="step_item"><div class="step_wrapper"><img src="photos/order-steps-step1-i_20e1_34.png" alt=""><h4>Заявка</h4><p>Залиште заявку внизу сторінки</p></div></div>
+                <div class="step_item"><div class="step_wrapper"><img src="photos/order-steps-step2-i_2898_35.png" alt=""><h4>Дзвінок</h4><p>Наш менеджер уточнить деталі замовлення</p></div></div>
+                <div class="step_item"><div class="step_wrapper"><img src="photos/order-steps-step3-i_3374_36.png" alt=""><h4>Відправка</h4><p>Доставимо ваше замовлення Новою Поштою</p></div></div>
+                <div class="step_item"><div class="step_wrapper"><img src="photos/order-steps-step4-i_d3ec_37.png" alt=""><h4>Отримання</h4><p>Сплачуйте при отриманні на відділенні</p></div></div>
+            </div>
+            <!-- Доставка/оплата-v3 -->
+            <div class="tlt">
+                <section class="delivery-block-v3">
+                    <ul class="delivery-cont">
+                        <li><h3>Швидка доставка</h3><p>Доставляємо Новою Поштою по всій Україні. Вартість за тарифами Нової Пошти</p></li>
+                        <li><h3>Безпечна оплата</h3><p>Ви оплачуєте замовлення за фактом отримання та огляду виробу у відділенні або з кур'єром!</p></li>
+                        <li><h3>ОБМІН, ПОВЕРНЕННЯ ТА ГАРАНТІЇ</h3><p>Ми завжди перевіряємо товар перед відправкою на відділення нової пошти. Обмін і повернення протягом 14 днів!</p></li>
+                        <li><h3>Підберемо розмір</h3><p>Підберемо максимально точно за вашими індивідуальними параметрами потрібний розмір, використовуючи реальні виміри!</p></li>
+                    </ul>
+                </section>
+            </div>
+            <!-- order 3 -->
+            <section class="offer_section offer3 order">
+                <h1 class="main_title">${esc(d.mainTitle)}</h1>
+                <div class="info_block">
+                    <p class="subtitle">${esc(d.bottomName)}</p>
+                    <div class="discount"><b>${esc(d.discount)}% знижка</b></div>
+                    <img src="${esc(hero)}" alt="">
+                </div>
+                <div class="price_block">
+                    <div class="price_item old"><div class="text">Звичайна ціна:</div><div class="value">${esc(d.oldPrice)}грн</div></div>
+                    <div class="price_item new"><div class="text">Ціна сьогодні:</div><div class="value">${esc(d.newPrice)}грн</div></div>
+                </div>
+                <div class="benefits_block clearfix">
+                    <div class="benefit_item"><img src="${esc(b(0))}" alt=""><p>${esc(d.benefits[0]||"")}</p></div>
+                    <div class="benefit_item"><img src="${esc(b(1))}" alt=""><p>${esc(d.benefits[1]||"")}</p></div>
+                    <div class="benefit_item"><img src="${esc(b(2))}" alt=""><p>${esc(d.benefits[2]||"")}</p></div>
+                </div>
+                <p align="center">Для замовлення та консультації заповніть форму:</p>
+                <br>
+                <form id="order_form" class="order_form" action="mail.php" method="post">
+                    <select class="field" name="color" required>
+                        <option selected disabled>Оберіть колір</option>
+${colorOpts}
+                    </select>
+                    <select class="field" name="size" required>
+                        <option selected disabled>Оберіть розмір</option>
+${sizeOpts}
+                    </select>
+                    <input class="field" type="text" name="name" placeholder="Введіть Ваше ім'я" required>
+                    <input class="field phone" type="tel" id="phone" name="phone" placeholder="Введіть Ваш телефон" required>
+                    <button class="button">Оформити замовлення</button>
+                </form>
+                <div class="products_count">Залишилось <b>${esc(d.unitsLeft)}</b> одиниць по акції</div>
+            </section>
+            <!-- footer -->
+            <footer class="footer_section">
+                <p>Виробництво в Україні<br>Email: ${esc(d.email)}<br></p>
+                <br><br>
+                <center><a href="policy.html">Політика конфіденційності</a> | <a href="agreement.html">Угода користувача</a><br>
+                <a href="warranty.html">Обмін та повернення</a></center>
+                <br>
+            </footer>
+    </div>
+    <!-- scripts -->
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/2.2.4/jquery.min.js">${S}
+    <script src="js/jquery-bxslider.js">${S}
+    <link href="styles/jquery-bxslider.css" rel="stylesheet">
+    <script>
+   $(document).ready(function(){
+      $('.bxslider').bxSlider();
+   });
+${S}
+<script src="js/mask_input.js">${S}
+<script src="js/slick.min.js">${S}
+<script src="js/scripts.js">${S}
+<script>
+$(document).ready(function(){
+  $("#order_form").on("submit", function(e){
+    if (e.isDefaultPrevented()) return;            /* інший валідатор уже заблокував відправку */
+    var $btn = $(this).find("button").last();
+    var orig = $btn.html();
+    $btn.prop("disabled", true).html("Зачекайте...");
+    setTimeout(function(){ $btn.prop("disabled", false).html(orig); }, 5000); /* запобіжник, якщо відправка не відбулась */
+  });
+});
+${S}
+</body>
+
+</html>`;
+}
+
+// ====================== RENDER FORM ======================
+function recalcOld(){
+  const np=parseFloat(state.newPrice)||0, d=parseFloat(state.discount)||0;
+  state.oldPrice = (np>0 && d>0 && d<100) ? Math.round(np/(1-d/100)) : np;
+  const el=document.getElementById('oldPrice'); if(el) el.value=state.oldPrice;
+}
+function bindSimple(id){const el=document.getElementById(id);if(!el)return;
+  el.value=state[id]; el.addEventListener('input',()=>{state[id]=el.value; refreshCheat();});}
+["title","pixelId","email","mainTitle","bottomName","subtitle","unitsLeft","videoUrl","description","fabric","country"].forEach(bindSimple);
+["newPrice","discount"].forEach(id=>{const el=document.getElementById(id);el.value=state[id];
+  el.addEventListener('input',()=>{state[id]=el.value; recalcOld();});});
+[0,1,2].forEach(i=>{const el=document.getElementById("benefit"+i);el.value=state.benefits[i]||"";
+  el.addEventListener('input',()=>state.benefits[i]=el.value);});
+
+// --- sizes ---
+function renderSizes(){
+  const chips=document.getElementById('sizeChips'); chips.innerHTML="";
+  state.sizes.forEach((s,i)=>{
+    const c=document.createElement('div');c.className='chip';
+    c.innerHTML=`<input value="${esc(s)}"><button class="btn x">×</button>`;
+    c.querySelector('input').addEventListener('input',e=>{state.sizes[i]=e.target.value;renderSizeTable();refreshCheat();});
+    c.querySelector('button').addEventListener('click',()=>{state.sizes.splice(i,1);state.sizeRows.forEach(r=>r.values.splice(i,1));renderSizes();renderSizeTable();});
+    chips.appendChild(c);
+  });
+}
+function renderSizeTable(){
+  const w=document.getElementById('sizeTableWrap');
+  let h='<table class="sizetbl"><tr><th>Розмір</th>'+state.sizes.map(s=>`<th>${esc(s)}</th>`).join('')+'</tr>';
+  state.sizeRows.forEach((r,ri)=>{
+    h+='<tr><td class="lbl"><input data-r="'+ri+'" data-lbl="1" value="'+esc(r.label)+'"></td>';
+    state.sizes.forEach((_,ci)=>{h+='<td><input data-r="'+ri+'" data-c="'+ci+'" value="'+esc(r.values[ci]||"")+'"></td>';});
+    h+='<td><button class="btn x" data-del="'+ri+'">×</button></td></tr>';
+  });
+  h+='</table>'; w.innerHTML=h;
+  w.querySelectorAll('input').forEach(inp=>inp.addEventListener('input',e=>{
+    const ri=+e.target.dataset.r;
+    if(e.target.dataset.lbl)state.sizeRows[ri].label=e.target.value;
+    else state.sizeRows[ri].values[+e.target.dataset.c]=e.target.value;
+  }));
+  w.querySelectorAll('[data-del]').forEach(btn=>btn.addEventListener('click',e=>{
+    state.sizeRows.splice(+e.target.dataset.del,1);renderSizeTable();}));
+}
+document.getElementById('addSize').addEventListener('click',()=>{state.sizes.push("");state.sizeRows.forEach(r=>r.values.push(""));renderSizes();renderSizeTable();refreshCheat();});
+document.getElementById('addRow').addEventListener('click',()=>{state.sizeRows.push({label:"",values:state.sizes.map(()=> "")});renderSizeTable();});
+
+// --- colors ---
+function renderColors(){
+  const list=document.getElementById('colorList'); list.innerHTML="";
+  state.colors.forEach((c,i)=>{
+    const card=document.createElement('div');card.className='card';
+    let ph=c.photos.map((p,pi)=>
+      `<div class="pl"><input type="text" data-pi="${pi}" value="${esc(p)}"><button class="btn x" data-delp="${pi}">×</button></div>`).join("");
+    card.innerHTML=
+      `<div class="head"><b>Колір ${i+1}</b><button class="btn x" data-delc="1">видалити</button></div>
+       <label>Назва кольору</label><input type="text" class="cname" value="${esc(c.name)}">
+       <label>Фото (шлях у папці сайту)</label>
+       <div class="photolist">${ph}</div>
+       <button class="btn sm" data-addp="1" style="margin-top:8px">+ фото</button>`;
+    card.querySelector('.cname').addEventListener('input',e=>{state.colors[i].name=e.target.value;refreshCheat();renderFormHints();});
+    card.querySelectorAll('.photolist input').forEach(inp=>inp.addEventListener('input',e=>{state.colors[i].photos[+e.target.dataset.pi]=e.target.value;refreshCheat();}));
+    card.querySelectorAll('[data-delp]').forEach(b=>b.addEventListener('click',e=>{state.colors[i].photos.splice(+e.target.dataset.delp,1);renderColors();refreshCheat();}));
+    card.querySelector('[data-addp]').addEventListener('click',()=>{state.colors[i].photos.push("");renderColors();});
+    card.querySelector('[data-delc]').addEventListener('click',()=>{state.colors.splice(i,1);renderColors();refreshCheat();});
+    list.appendChild(card);
+  });
+}
+document.getElementById('addColor').addEventListener('click',()=>{
+  const i=state.colors.length; state.colors.push({name:"",photos:defPhotos(i)}); renderColors(); refreshCheat();});
+
+// --- reviews ---
+function renderReviews(){
+  const list=document.getElementById('reviewList'); list.innerHTML="";
+  state.reviews.forEach((r,i)=>{
+    const card=document.createElement('div');card.className='card';
+    card.innerHTML=
+      `<div class="head"><b>Відгук ${i+1}</b><button class="btn x" data-delr="1">видалити</button></div>
+       <div class="row3">
+         <div><label>Ім'я</label><input class="rn" value="${esc(r.name)}"></div>
+         <div><label>Вік</label><input class="ra" value="${esc(r.age)}"></div>
+         <div><label>Дата</label><input class="rd" value="${esc(r.date)}"></div>
+       </div>
+       <label>Текст</label><textarea class="rt">${esc(r.text)}</textarea>
+       <label>Аватар (шлях)</label><input class="rav" value="${esc(r.avatar)}">`;
+    card.querySelector('.rn').addEventListener('input',e=>r.name=e.target.value);
+    card.querySelector('.ra').addEventListener('input',e=>r.age=e.target.value);
+    card.querySelector('.rd').addEventListener('input',e=>r.date=e.target.value);
+    card.querySelector('.rt').addEventListener('input',e=>r.text=e.target.value);
+    card.querySelector('.rav').addEventListener('input',e=>r.avatar=e.target.value);
+    card.querySelector('[data-delr]').addEventListener('click',()=>{state.reviews.splice(i,1);renderReviews();});
+    list.appendChild(card);
+  });
+}
+document.getElementById('addReview').addEventListener('click',()=>{
+  const av=AVATARS[state.reviews.length%AVATARS.length];
+  state.reviews.push({avatar:av,name:"",age:"",date:"сьогодні",text:""}); renderReviews();});
+
+function renderFormHints(){}
+
+// --- cheat sheet (photo filenames) ---
+function refreshCheat(){
+  const w=document.getElementById('cheatSheet'); let h="";
+  state.colors.forEach(c=>{
+    const files=c.photos.filter(Boolean).map(p=>p.split('/').pop()).join(", ");
+    h+=`<div class="f"><b>${esc(c.name||"(без назви)")}</b><br>${esc(files)}</div>`;
+  });
+  w.innerHTML=h||'<p style="color:#9a9384">Додай кольори, щоб побачити імена файлів.</p>';
+}
+
+// ====================== ACTIONS ======================
+function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),1800);}
+function dl(name,content,type){const blob=new Blob([content],{type});const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download=name;a.click();URL.revokeObjectURL(url);}
+
+document.getElementById('download').addEventListener('click',()=>{dl('index.html',buildHtml(state),'text/html;charset=utf-8');toast('index.html завантажено');});
+document.getElementById('preview').addEventListener('click',()=>{const w=window.open();w.document.write('<pre style="white-space:pre-wrap;font:12px monospace;padding:16px">'+esc(buildHtml(state))+'</pre>');w.document.close();});
+document.getElementById('parseBtn').addEventListener('click',()=>{
+  const txt=document.getElementById('supplierText').value;
+  if(!txt.trim()){document.getElementById('parseResult').textContent='Спочатку встав текст опису.';return;}
+  const filled=applyParsed(parseSupplier(txt));
+  initForm();
+  document.getElementById('parseResult').innerHTML = filled.length
+    ? '✅ Заповнено: '+filled.join(', ')+'. <b>Перевір таблицю замірів</b> — її парсю приблизно.'
+    : '⚠ Не вдалося нічого розпізнати. Перевір текст або заповни вручну.';
+  toast('Поля заповнено');
+});
+document.getElementById('saveDraft').addEventListener('click',()=>{dl('chernetka.json',JSON.stringify(state,null,2),'application/json');toast('Чернетку збережено');});
+document.getElementById('loadDraftBtn').addEventListener('click',()=>document.getElementById('loadDraft').click());
+document.getElementById('loadDraft').addEventListener('change',e=>{const f=e.target.files[0];if(!f)return;const rd=new FileReader();
+  rd.onload=()=>{try{Object.assign(state,JSON.parse(rd.result));initForm();toast('Чернетку завантажено');}catch(err){alert('Не вдалося прочитати файл');}};rd.readAsText(f);});
+
+// ====================== INIT ======================
+function initForm(){
+  ["title","pixelId","email","mainTitle","bottomName","subtitle","discount","oldPrice","newPrice","unitsLeft","videoUrl","description","fabric","country"]
+    .forEach(id=>{const el=document.getElementById(id);if(el)el.value=state[id];});
+  [0,1,2].forEach(i=>document.getElementById("benefit"+i).value=state.benefits[i]||"");
+  renderSizes();renderSizeTable();renderColors();renderReviews();refreshCheat();recalcOld();
+}
+initForm();
+</script>
+</body>
+</html>
