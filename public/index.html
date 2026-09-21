@@ -775,6 +775,17 @@
                                             <span><input type="number" id="calcReturn" min="0" oninput="calcRecompute()" class="w-20 text-right text-sm font-black bg-slate-50 border border-slate-100 rounded px-2 py-1 outline-none"> ₴</span>
                                         </div>
                                     </div>
+                                    <div class="pt-3 border-t border-slate-100">
+                                        <div class="flex justify-between items-baseline mb-2">
+                                            <label class="text-xs font-bold text-slate-600" title="Хостинг, тариф, підписки — сума активних постійних витрат">🏢 Постійні витрати / міс</label>
+                                            <span><input type="number" id="calcFixed" min="0" oninput="calcRecompute()" class="w-24 text-right text-sm font-black bg-slate-50 border border-slate-100 rounded px-2 py-1 outline-none"> ₴</span>
+                                        </div>
+                                        <div class="flex justify-between items-baseline mb-1">
+                                            <label class="text-xs font-bold text-slate-600" title="Скільки замовлень плануєш на місяць — на них розкидаються постійні витрати">📦 Замовлень / міс (план)</label>
+                                            <span><input type="number" id="calcOrdersMonth" min="0" oninput="calcRecompute()" class="w-24 text-right text-sm font-black bg-slate-50 border border-slate-100 rounded px-2 py-1 outline-none"> шт</span>
+                                        </div>
+                                        <div class="text-[11px] text-slate-400 text-right">накладні на замовлення: <b id="calcOverheadPer" class="text-slate-600">0 ₴</b></div>
+                                    </div>
                                 </div>
 
                                 <div id="calcHistoryNote" class="mt-5 pt-4 border-t border-slate-100 text-[11px] text-slate-400"></div>
@@ -815,6 +826,10 @@
                                     <div class="flex justify-between">
                                         <span class="text-slate-500">Витрати на повернення</span>
                                         <span id="calcResReturns" class="font-bold text-rose-500">−0 ₴</span>
+                                    </div>
+                                    <div class="flex justify-between">
+                                        <span class="text-slate-500">Накладні (постійні)</span>
+                                        <span id="calcResOverhead" class="font-bold text-rose-500">−0 ₴</span>
                                     </div>
                                     <div class="flex justify-between">
                                         <span class="text-slate-500">Реклама</span>
@@ -3917,15 +3932,21 @@
         let calcCurrentProduct = null;     // дані з API economics
         let calcSettings = { return_cost: 110, target_roi_pct: 30 };
 
+        let calcRecurringSum = 0; // сума активних постійних витрат/міс
         async function initCalculator() {
             calcInit = true;
             try {
-                const [prodRes, settRes] = await Promise.all([
+                const [prodRes, settRes, recRes] = await Promise.all([
                     fetch('/api/warehouse/products'),
-                    fetch('/api/settings/economics')
+                    fetch('/api/settings/economics'),
+                    fetch('/api/finance/recurring')
                 ]);
                 const prods = await prodRes.json();
                 const sett = await settRes.json();
+                try {
+                    const rec = await recRes.json();
+                    calcRecurringSum = (rec || []).filter(x => x.is_active).reduce((s, x) => s + (Number(x.amount) || 0), 0);
+                } catch (e) { calcRecurringSum = 0; }
                 calcSettings = { ...calcSettings, ...sett };
                 const sel = document.getElementById('calcProduct');
                 sel.innerHTML = `<option value="">— Оберіть товар —</option>` +
@@ -3974,6 +3995,7 @@
             document.getElementById('calcBuyout').value = buyout;
             document.getElementById('calcBuyoutRange').value = buyout;
             document.getElementById('calcReturn').value = calcSettings.return_cost || 110;
+            document.getElementById('calcFixed').value = Math.round(calcRecurringSum);
             document.getElementById('calcHistoryNote').innerHTML =
                 `🆕 <b>Планування до запуску.</b> Впиши ціну й закупку, постав очікувані апрув/викуп — калькулятор покаже <b>рекомендований CPL</b> під ціль ROI. Апрув/викуп за замовч. — орієнтир з налаштувань (${apriv}% / ${buyout}%).`;
             calcRecompute();
@@ -3998,6 +4020,7 @@
             document.getElementById('calcBuyout').value = buyout;
             document.getElementById('calcBuyoutRange').value = buyout;
             document.getElementById('calcReturn').value = calcSettings.return_cost || 110;
+            document.getElementById('calcFixed').value = Math.round(calcRecurringSum);
 
             const note = h.total_leads > 0
                 ? `📊 Історія (за ${h.lookback_days || 30} днів): ${h.total_leads} заявок, апрув ${h.approval_pct}%, викуп ${h.buyout_pct}%${h.in_flight > 0 ? `, ${h.in_flight} в дорозі` : ''}.`
@@ -4036,16 +4059,24 @@
             const sold = approved * buyout;
             const refused = approved * (1 - buyout);
 
+            // Накладні (постійні витрати) на одне замовлення = фікс/міс ÷ замовлень/міс
+            const fixedMonthly = Number(document.getElementById('calcFixed').value) || 0;
+            const ordersMonth = Number(document.getElementById('calcOrdersMonth').value) || 0;
+            const overheadPerSale = ordersMonth > 0 ? fixedMonthly / ordersMonth : 0;
+            const overheadEl = document.getElementById('calcOverheadPer');
+            if (overheadEl) overheadEl.textContent = Math.round(overheadPerSale).toLocaleString('uk-UA') + ' ₴';
+
             const adSpend = 100 * cpl;
             const revenue = sold * price;
             const cogs = sold * cost;
             const returns = refused * retCost;
-            const netProfit = revenue - cogs - returns - adSpend;
+            const overhead = sold * overheadPerSale; // накладні на 100 лідів
+            const netProfit = revenue - cogs - returns - overhead - adSpend;
             const roi = adSpend > 0 ? netProfit / adSpend * 100 : 0;
-            const margin = revenue > 0 ? (revenue - cogs - returns) / revenue * 100 : 0;
+            const margin = revenue > 0 ? (revenue - cogs - returns - overhead) / revenue * 100 : 0;
 
-            // CPL_max і Рек для поточних параметрів
-            const grossPer100 = revenue - cogs - returns;
+            // CPL_max і Рек з урахуванням накладних
+            const grossPer100 = revenue - cogs - returns - overhead;
             const cplMax = grossPer100 / 100;
             const cplRec = cplMax / (1 + targetRoi);
 
@@ -4057,6 +4088,7 @@
             document.getElementById('calcResRevenue').textContent = uah(revenue);
             document.getElementById('calcResCogs').textContent = '−' + uah(cogs);
             document.getElementById('calcResReturns').textContent = '−' + uah(returns);
+            document.getElementById('calcResOverhead').textContent = '−' + uah(overhead);
             document.getElementById('calcResAdSpend').textContent = '−' + uah(adSpend);
             document.getElementById('calcResNetProfit').textContent = (netProfit >= 0 ? '+' : '') + uah(netProfit);
             document.getElementById('calcResRoi').textContent = `ROI: ${Math.round(roi)}%`;
