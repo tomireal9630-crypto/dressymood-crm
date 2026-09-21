@@ -2706,7 +2706,7 @@
                         <i class="fa-brands fa-facebook text-blue-500 text-xl"></i>
                         <div class="flex-1 min-w-0">
                             <div class="font-bold text-slate-800 text-sm">${esc(a.name)}</div>
-                            <div class="text-[10px] text-slate-400 font-mono">act_${esc(a.fb_account_id)} · синх. ${esc(synced)}</div>
+                            <div class="text-[10px] text-slate-400 font-mono">act_${esc(a.fb_account_id)} · ${esc(a.currency || '—')}${a.currency && a.currency !== 'UAH' && a.fx_rate ? ' ×' + a.fx_rate : ''} · синх. ${esc(synced)}</div>
                             ${err ? `<div class="text-[10px] text-rose-500 font-medium mt-0.5 truncate" title="${esc(err)}">${esc(err)}</div>` : ''}
                         </div>
                         ${statusBadge}

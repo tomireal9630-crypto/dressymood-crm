@@ -183,6 +183,8 @@ async function updateDatabaseSchema() {
                 created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
             );
         `);
+        await pool.query(`ALTER TABLE fb_ad_accounts ADD COLUMN IF NOT EXISTS currency VARCHAR(8);`);
+        await pool.query(`ALTER TABLE fb_ad_accounts ADD COLUMN IF NOT EXISTS fx_rate NUMERIC;`);
 
         await pool.query(`
             CREATE TABLE IF NOT EXISTS fb_spend_daily (
@@ -721,18 +723,20 @@ app.get('/api/stats/roi', checkAuth, async (req, res) => {
     if (dateFrom) { spendParams.push(dateFrom); spendConds.push(`date >= $${spendParams.length}::date`); }
     if (dateTo)   { spendParams.push(dateTo);   spendConds.push(`date <= $${spendParams.length}::date`); }
     const spendWhere = spendConds.length ? 'WHERE ' + spendConds.join(' AND ') : '';
+    const _fxUsd = Number(settings.fx_usd) || 41, _fxEur = Number(settings.fx_eur) || 45;
+    const grnSpend = `spend * CASE currency WHEN 'USD' THEN ${_fxUsd} WHEN 'EUR' THEN ${_fxEur} ELSE 1 END`;
     const spendTotalQ = `
       SELECT
-        COALESCE(SUM(spend * COALESCE(fx_rate,1)), 0)::numeric AS spend,
+        COALESCE(SUM(${grnSpend}), 0)::numeric AS spend,
         COALESCE(SUM(leads), 0)::int AS leads
       FROM fb_spend_daily ${spendWhere}`;
     const spendByArtQ = `
-      SELECT article, SUM(spend * COALESCE(fx_rate,1))::numeric AS spend, SUM(leads)::int AS leads
+      SELECT article, SUM(${grnSpend})::numeric AS spend, SUM(leads)::int AS leads
       FROM fb_spend_daily ${spendWhere}
       ${spendConds.length ? 'AND' : 'WHERE'} article IS NOT NULL AND article <> ''
       GROUP BY article`;
     const spendUnmappedQ = `
-      SELECT COALESCE(SUM(spend * COALESCE(fx_rate,1)), 0)::numeric AS spend, COALESCE(SUM(leads), 0)::int AS leads
+      SELECT COALESCE(SUM(${grnSpend}), 0)::numeric AS spend, COALESCE(SUM(leads), 0)::int AS leads
       FROM fb_spend_daily ${spendWhere}
       ${spendConds.length ? 'AND' : 'WHERE'} (article IS NULL OR article = '')`;
 
@@ -1122,15 +1126,19 @@ async function syncFbAccount(account, daysBack) {
   const settings = await getEconomicsSettings();
   const pattern = settings.campaign_regex || '\\[([^\\]]+)\\]';
   const cleanId = String(account.fb_account_id).replace(/^act_/, '');
-  // Валюта кабінету + курс у грн (spend зберігаємо в РОДНІЙ валюті, конвертуємо пізніше)
-  let fxRate = 1, currency = 'UAH';
+  // Валюта кабінету + курс у грн (spend зберігаємо в РОДНІЙ валюті, конвертуємо пізніше).
+  // Валюту визначаємо з FB і кешуємо на кабінеті; при збої запиту — беремо збережену (НЕ скидаємо в UAH).
+  const rateFor = (cur) => cur === 'USD' ? (Number(settings.fx_usd) || 41)
+                         : cur === 'EUR' ? (Number(settings.fx_eur) || 45) : 1;
+  let currency = (account.currency || '').toUpperCase() || null;
   try {
     const meta = await fbGet(`https://graph.facebook.com/${FB_API_VERSION}/act_${cleanId}?fields=currency&access_token=${encodeURIComponent(account.access_token)}`);
-    currency = (meta.currency || 'UAH').toUpperCase();
-    if (currency === 'USD') fxRate = Number(settings.fx_usd) || 41;
-    else if (currency === 'EUR') fxRate = Number(settings.fx_eur) || 45;
-    else fxRate = 1; // UAH або інша — 1:1
-  } catch (e) { fxRate = 1; currency = 'UAH'; }
+    if (meta && meta.currency) currency = String(meta.currency).toUpperCase();
+  } catch (e) { /* лишаємо збережену валюту кабінету */ }
+  if (!currency) currency = 'UAH';
+  const fxRate = rateFor(currency);
+  // Кешуємо валюту й курс на кабінеті
+  await pool.query(`UPDATE fb_ad_accounts SET currency = $1, fx_rate = $2 WHERE id = $3`, [currency, fxRate, account.id]).catch(() => {});
   const since = new Date(); since.setDate(since.getDate() - (daysBack || 7));
   const until = new Date();
   const iso = d => d.toISOString().slice(0, 10);
@@ -1206,7 +1214,7 @@ async function syncAllFbAccounts(daysBack) {
 app.get('/api/fb/accounts', checkAuth, async (req, res) => {
   try {
     const r = await pool.query(`
-      SELECT id, name, fb_account_id, is_active, last_sync_at, last_sync_error, created_at
+      SELECT id, name, fb_account_id, is_active, last_sync_at, last_sync_error, created_at, currency, fx_rate
       FROM fb_ad_accounts ORDER BY name`);
     res.json(r.rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -1374,6 +1382,9 @@ async function articleCplMap(dateFrom, dateTo) {
 // Дані для панелі: артикул → кампанії → групи, з метриками і статусами
 app.get('/api/fb/control', checkAuth, async (req, res) => {
   const { dateFrom, dateTo } = req.query;
+  const _s = await getEconomicsSettings();
+  const rateFor = (cur) => (String(cur || '').toUpperCase() === 'USD') ? (Number(_s.fx_usd) || 41)
+                        : (String(cur || '').toUpperCase() === 'EUR') ? (Number(_s.fx_eur) || 45) : 1;
   try {
     const sp = [], conds = [];
     if (dateFrom) { sp.push(dateFrom); conds.push(`date >= $${sp.length}::date`); }
@@ -1418,8 +1429,8 @@ app.get('/api/fb/control', checkAuth, async (req, res) => {
       };
       const sp2 = Number(r.spend) || 0, ld = Number(r.leads) || 0;
       const imp = Number(r.impressions) || 0, clk = Number(r.clicks) || 0;
-      const fx = Number(r.fx_rate) || 1;
-      A.currencies.add(r.currency || 'UAH'); A.fx = fx;
+      const fx = rateFor(r.currency); // поточний курс за валютою кабінету
+      A.currencies.add((r.currency || 'UAH').toUpperCase()); A.fx = fx;
       C.adsets.push({
         adset_id: r.adset_id, adset_name: r.adset_name, ad_account_id: r.ad_account_id,
         status: (cst.adsets && cst.adsets[r.adset_id] && cst.adsets[r.adset_id].status) || 'UNKNOWN',
@@ -2907,8 +2918,11 @@ async function computedFinanceStreams(dateFrom, dateTo, gran) {
   const fConds = [];
   if (dateFrom) { fp.push(dateFrom); fConds.push(`date >= $${fp.length}::date`); }
   if (dateTo)   { fp.push(dateTo);   fConds.push(`date < ($${fp.length}::date + interval '1 day')`); }
+  const _s = await getEconomicsSettings();
+  const _fxUsd = Number(_s.fx_usd) || 41, _fxEur = Number(_s.fx_eur) || 45;
   const adsQ = `
-    SELECT to_char(date_trunc('${gran}', date), 'YYYY-MM-DD') AS period, COALESCE(SUM(spend * COALESCE(fx_rate,1)),0)::numeric AS spend
+    SELECT to_char(date_trunc('${gran}', date), 'YYYY-MM-DD') AS period,
+           COALESCE(SUM(spend * CASE currency WHEN 'USD' THEN ${_fxUsd} WHEN 'EUR' THEN ${_fxEur} ELSE 1 END),0)::numeric AS spend
     FROM fb_spend_daily ${fConds.length ? 'WHERE ' + fConds.join(' AND ') : ''}
     GROUP BY 1`;
 
