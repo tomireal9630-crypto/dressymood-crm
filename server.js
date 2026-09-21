@@ -1,3 +1,4 @@
+process.env.TZ = 'Europe/Kyiv'; // єдиний час для всього застосунку (Date, логи, ТТН, SMS) = Київ
 require('dotenv').config();
 const express = require('express');
 const { Pool } = require('pg');
@@ -1866,7 +1867,7 @@ function renderTemplate(tpl, order, items) {
     TEL: order.phone || '',
     CITY: order.city || '',
     OP: order.branch || '',
-    DATE: new Date().toISOString().slice(0, 10)
+    DATE: new Date().toLocaleDateString('sv-SE') // YYYY-MM-DD у Europe/Kyiv (process.env.TZ)
   };
   return String(tpl || '').replace(/\{(\w+)\}/g, (_, k) => (map[k] != null ? String(map[k]) : ''));
 }
@@ -2809,7 +2810,7 @@ app.post('/api/finance/recurring/:id(\\d+)/post', checkAuth, async (req, res) =>
     const t = rr.rows[0];
     if (!t.account_id) return res.status(400).json({ error: 'У шаблоні не вказано рахунок — вкажи його спершу' });
 
-    const month = (req.body && req.body.month) || new Date().toISOString().slice(0, 7); // YYYY-MM
+    const month = (req.body && req.body.month) || new Date().toLocaleDateString('sv-SE').slice(0, 7); // YYYY-MM у Києві
     const ref = `${t.id}:${month}`;
     const dup = await pool.query(`SELECT id FROM finance_transactions WHERE source='recurring' AND source_ref=$1`, [ref]);
     if (dup.rows.length) return res.status(409).json({ error: 'Вже проведено за цей місяць' });
