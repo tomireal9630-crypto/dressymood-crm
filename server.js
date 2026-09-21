@@ -245,6 +245,21 @@ async function updateDatabaseSchema() {
         await pool.query(`CREATE INDEX IF NOT EXISTS idx_fin_tx_date ON finance_transactions(date);`);
         await pool.query(`CREATE INDEX IF NOT EXISTS idx_fin_tx_account ON finance_transactions(account_id);`);
 
+        // Регулярні (постійні) витрати — шаблони: оренда, зарплата, підписки, податки тощо
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS finance_recurring (
+                id SERIAL PRIMARY KEY,
+                name VARCHAR(150) NOT NULL,
+                amount NUMERIC NOT NULL DEFAULT 0,
+                category_id INTEGER REFERENCES finance_categories(id) ON DELETE SET NULL,
+                account_id INTEGER REFERENCES finance_accounts(id) ON DELETE SET NULL,
+                day_of_month SMALLINT DEFAULT 1,
+                note TEXT DEFAULT '',
+                is_active BOOLEAN DEFAULT true,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+        `);
+
         // Seed системних категорій (тільки якщо таблиця порожня)
         const catCount = await pool.query(`SELECT COUNT(*)::int AS c FROM finance_categories`);
         if (catCount.rows[0].c === 0) {
@@ -2538,6 +2553,65 @@ app.get('/api/finance/balances', checkAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// --- РОЗРАХУНКОВІ ФІНАНСОВІ ПОТОКИ ---
+// Продажі (виручка), собівартість (COGS), реклама (FB), повернення (пошта) рахуються НА ЛЬОТУ
+// з orders/order_items/fb_spend_daily. Вони НЕ пишуться в finance_transactions → неможливі дублі/розсинхрон.
+// Мітки (авто) відрізняють їх від ручних транзакцій.
+const AUTO_CATS = {
+  sales:   { category: 'Продаж (авто)',            color: '#10b981', kind: 'income'  },
+  cogs:    { category: 'Собівартість товару (авто)', color: '#f97316', kind: 'expense' },
+  ads:     { category: 'Реклама Facebook (авто)',   color: '#3b82f6', kind: 'expense' },
+  returns: { category: 'Повернення пошта (авто)',   color: '#f43f5e', kind: 'expense' }
+};
+
+// Повертає map period -> {revenue, cogs, ads, returns, orders} за gran ('day'|'week'|'month')
+async function computedFinanceStreams(dateFrom, dateTo, gran) {
+  const leadExpr = `COALESCE(o.original_created_at, o.created_at)`;
+
+  const sp = [];
+  const sConds = [`o.status = 'Продажа'`];
+  if (dateFrom) { sp.push(dateFrom); sConds.push(`${leadExpr} >= $${sp.length}::date`); }
+  if (dateTo)   { sp.push(dateTo);   sConds.push(`${leadExpr} < ($${sp.length}::date + interval '1 day')`); }
+  const salesQ = `
+    SELECT to_char(date_trunc('${gran}', ${leadExpr}), 'YYYY-MM-DD') AS period,
+           COALESCE(SUM(oi.price * oi.quantity),0)::numeric AS revenue,
+           COALESCE(SUM(COALESCE((SELECT MAX(cost) FROM products p WHERE p.article = oi.article),0) * oi.quantity),0)::numeric AS cogs,
+           COUNT(DISTINCT o.id)::int AS orders
+    FROM orders o JOIN order_items oi ON oi.order_id = o.id
+    WHERE ${sConds.join(' AND ')}
+    GROUP BY 1`;
+
+  const fp = [];
+  const fConds = [];
+  if (dateFrom) { fp.push(dateFrom); fConds.push(`date >= $${fp.length}::date`); }
+  if (dateTo)   { fp.push(dateTo);   fConds.push(`date < ($${fp.length}::date + interval '1 day')`); }
+  const adsQ = `
+    SELECT to_char(date_trunc('${gran}', date), 'YYYY-MM-DD') AS period, COALESCE(SUM(spend),0)::numeric AS spend
+    FROM fb_spend_daily ${fConds.length ? 'WHERE ' + fConds.join(' AND ') : ''}
+    GROUP BY 1`;
+
+  const rp = [];
+  const rConds = [`o.status IN ('Отказ','Возврат','Ошибка в ТТН')`];
+  if (dateFrom) { rp.push(dateFrom); rConds.push(`${leadExpr} >= $${rp.length}::date`); }
+  if (dateTo)   { rp.push(dateTo);   rConds.push(`${leadExpr} < ($${rp.length}::date + interval '1 day')`); }
+  const refQ = `
+    SELECT to_char(date_trunc('${gran}', ${leadExpr}), 'YYYY-MM-DD') AS period, COUNT(DISTINCT o.id)::int AS refused
+    FROM orders o WHERE ${rConds.join(' AND ')} GROUP BY 1`;
+
+  const settings = await getEconomicsSettings();
+  const returnCost = Number(settings.return_cost) || 0;
+  const [sales, ads, refs] = await Promise.all([
+    pool.query(salesQ, sp), pool.query(adsQ, fp), pool.query(refQ, rp)
+  ]);
+
+  const map = {};
+  const ensure = p => (map[p] = map[p] || { period: p, revenue: 0, cogs: 0, ads: 0, returns: 0, orders: 0 });
+  sales.rows.forEach(r => { const m = ensure(r.period); m.revenue = Number(r.revenue) || 0; m.cogs = Number(r.cogs) || 0; m.orders = Number(r.orders) || 0; });
+  ads.rows.forEach(r => { ensure(r.period).ads = Number(r.spend) || 0; });
+  refs.rows.forEach(r => { ensure(r.period).returns = (Number(r.refused) || 0) * returnCost; });
+  return map;
+}
+
 // --- ЗВІТ P&L ---
 app.get('/api/finance/pnl', checkAuth, async (req, res) => {
   const { dateFrom, dateTo, granularity } = req.query;
@@ -2566,19 +2640,29 @@ app.get('/api/finance/pnl', checkAuth, async (req, res) => {
 
     // Групуємо в зручний формат: { period: { income: [{cat,total}], expense: [{cat,total}], totals: {income, expense, profit} } }
     const periods = {};
+    const ensureP = p => (periods[p] = periods[p] || { period: p, income: [], expense: [], totals: { income: 0, expense: 0, profit: 0 } });
     for (const row of r.rows) {
-      const p = row.period;
-      if (!periods[p]) periods[p] = { period: p, income: [], expense: [], totals: { income: 0, expense: 0, profit: 0 } };
+      const P = ensureP(row.period);
       const item = { category: row.category, color: row.color, total: Number(row.total) || 0 };
-      if (row.kind === 'income') {
-        periods[p].income.push(item);
-        periods[p].totals.income += item.total;
-      } else {
-        periods[p].expense.push(item);
-        periods[p].totals.expense += item.total;
-      }
+      if (row.kind === 'income') { P.income.push(item); P.totals.income += item.total; }
+      else                       { P.expense.push(item); P.totals.expense += item.total; }
     }
-    Object.values(periods).forEach(p => { p.totals.profit = p.totals.income - p.totals.expense; });
+
+    // Додаємо розрахункові потоки
+    const streams = await computedFinanceStreams(dateFrom, dateTo, gran);
+    for (const s of Object.values(streams)) {
+      const P = ensureP(s.period);
+      if (s.revenue > 0) { P.income.push({ ...AUTO_CATS.sales, total: s.revenue }); P.totals.income += s.revenue; }
+      if (s.cogs > 0)    { P.expense.push({ ...AUTO_CATS.cogs, total: s.cogs });    P.totals.expense += s.cogs; }
+      if (s.ads > 0)     { P.expense.push({ ...AUTO_CATS.ads, total: s.ads });      P.totals.expense += s.ads; }
+      if (s.returns > 0) { P.expense.push({ ...AUTO_CATS.returns, total: s.returns }); P.totals.expense += s.returns; }
+    }
+
+    Object.values(periods).forEach(p => {
+      p.income.sort((a, b) => b.total - a.total);
+      p.expense.sort((a, b) => b.total - a.total);
+      p.totals.profit = p.totals.income - p.totals.expense;
+    });
     res.json(Object.values(periods).sort((a, b) => b.period.localeCompare(a.period)));
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -2600,15 +2684,144 @@ app.get('/api/finance/cashflow', checkAuth, async (req, res) => {
       FROM finance_transactions
       ${where}
       GROUP BY date_trunc('${gran}', date)
-      ORDER BY date_trunc('${gran}', date)
     `;
     const r = await pool.query(q, params);
-    res.json(r.rows.map(row => ({
-      period: row.period,
-      income: Number(row.income) || 0,
-      expense: Number(row.expense) || 0,
-      net: (Number(row.income) || 0) - (Number(row.expense) || 0)
-    })));
+
+    const map = {};
+    const ensure = p => (map[p] = map[p] || { period: p, income: 0, expense: 0 });
+    r.rows.forEach(row => { const m = ensure(row.period); m.income += Number(row.income) || 0; m.expense += Number(row.expense) || 0; });
+
+    const streams = await computedFinanceStreams(dateFrom, dateTo, gran);
+    for (const s of Object.values(streams)) {
+      const m = ensure(s.period);
+      m.income += s.revenue;
+      m.expense += s.cogs + s.ads + s.returns;
+    }
+
+    const out = Object.values(map)
+      .map(m => ({ period: m.period, income: m.income, expense: m.expense, net: m.income - m.expense }))
+      .sort((a, b) => a.period.localeCompare(b.period));
+    res.json(out);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// --- ЗВЕДЕННЯ (картки за період) ---
+app.get('/api/finance/summary', checkAuth, async (req, res) => {
+  const { dateFrom, dateTo } = req.query;
+  try {
+    // Розрахункові потоки одним відром
+    const streams = await computedFinanceStreams(dateFrom, dateTo, 'year');
+    let revenue = 0, cogs = 0, ads = 0, returns = 0, ordersSold = 0;
+    for (const s of Object.values(streams)) { revenue += s.revenue; cogs += s.cogs; ads += s.ads; returns += s.returns; ordersSold += s.orders; }
+
+    // Ручні транзакції за період
+    const mp = [];
+    const mConds = [];
+    if (dateFrom) { mp.push(dateFrom); mConds.push(`date >= $${mp.length}::date`); }
+    if (dateTo)   { mp.push(dateTo);   mConds.push(`date <= $${mp.length}::date`); }
+    const mWhere = mConds.length ? 'WHERE ' + mConds.join(' AND ') : '';
+    const mR = await pool.query(`
+      SELECT
+        COALESCE(SUM(amount) FILTER (WHERE kind='income'),0)::numeric  AS manual_income,
+        COALESCE(SUM(amount) FILTER (WHERE kind='expense'),0)::numeric AS manual_expense
+      FROM finance_transactions ${mWhere}`, mp);
+    const manualIncome  = Number(mR.rows[0].manual_income)  || 0;
+    const manualExpense = Number(mR.rows[0].manual_expense) || 0;
+
+    const totalIncome  = revenue + manualIncome;
+    const totalExpense = cogs + ads + returns + manualExpense;
+    const profit = totalIncome - totalExpense;
+
+    res.json({
+      revenue, cogs, ads, returns, manualIncome, manualExpense,
+      totalIncome, totalExpense, profit,
+      ordersSold,
+      avgCheck: ordersSold ? revenue / ordersSold : 0,
+      marginPct: totalIncome ? (profit / totalIncome) * 100 : 0,
+      // розбивка витрат для міні-діаграми
+      expenseBreakdown: [
+        { label: 'Собівартість', value: cogs,          color: AUTO_CATS.cogs.color },
+        { label: 'Реклама',      value: ads,           color: AUTO_CATS.ads.color },
+        { label: 'Повернення',   value: returns,       color: AUTO_CATS.returns.color },
+        { label: 'Інші (ручні)', value: manualExpense, color: '#64748b' }
+      ].filter(x => x.value > 0)
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// --- РЕГУЛЯРНІ (ПОСТІЙНІ) ВИТРАТИ ---
+app.get('/api/finance/recurring', checkAuth, async (req, res) => {
+  try {
+    const r = await pool.query(`
+      SELECT rr.*, c.name AS category_name, c.color AS category_color, a.name AS account_name,
+             EXISTS (
+               SELECT 1 FROM finance_transactions t
+               WHERE t.source = 'recurring' AND t.source_ref = rr.id::text || ':' || to_char(now(),'YYYY-MM')
+             ) AS posted_this_month
+      FROM finance_recurring rr
+      LEFT JOIN finance_categories c ON c.id = rr.category_id
+      LEFT JOIN finance_accounts a   ON a.id = rr.account_id
+      ORDER BY rr.is_active DESC, rr.day_of_month, rr.id`);
+    res.json(r.rows.map(x => ({ ...x, amount: Number(x.amount) || 0 })));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/finance/recurring', checkAuth, async (req, res) => {
+  const { name, amount, category_id, account_id, day_of_month, note } = req.body;
+  if (!name || !amount) return res.status(400).json({ error: 'name та amount обовʼязкові' });
+  const amt = Number(amount);
+  if (!isFinite(amt) || amt <= 0) return res.status(400).json({ error: 'amount має бути > 0' });
+  try {
+    const r = await pool.query(
+      `INSERT INTO finance_recurring (name, amount, category_id, account_id, day_of_month, note)
+       VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
+      [name, amt, category_id || null, account_id || null, Math.min(31, Math.max(1, Number(day_of_month) || 1)), note || '']
+    );
+    res.json({ success: true, id: r.rows[0].id });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.patch('/api/finance/recurring/:id(\\d+)', checkAuth, async (req, res) => {
+  const allowed = ['name', 'amount', 'category_id', 'account_id', 'day_of_month', 'note', 'is_active'];
+  const keys = Object.keys(req.body).filter(k => allowed.includes(k));
+  if (!keys.length) return res.status(400).json({ error: 'Нічого оновити' });
+  const setClause = keys.map((k, i) => `${k} = $${i + 1}`).join(', ');
+  const values = keys.map(k => req.body[k]);
+  values.push(req.params.id);
+  try {
+    await pool.query(`UPDATE finance_recurring SET ${setClause} WHERE id = $${values.length}`, values);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/finance/recurring/:id(\\d+)', checkAuth, async (req, res) => {
+  try {
+    await pool.query(`DELETE FROM finance_recurring WHERE id = $1`, [req.params.id]);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Провести регулярну витрату за місяць (ідемпотентно: один раз на місяць)
+app.post('/api/finance/recurring/:id(\\d+)/post', checkAuth, async (req, res) => {
+  try {
+    const rr = await pool.query(`SELECT * FROM finance_recurring WHERE id = $1`, [req.params.id]);
+    if (!rr.rows.length) return res.status(404).json({ error: 'Не знайдено' });
+    const t = rr.rows[0];
+    if (!t.account_id) return res.status(400).json({ error: 'У шаблоні не вказано рахунок — вкажи його спершу' });
+
+    const month = (req.body && req.body.month) || new Date().toISOString().slice(0, 7); // YYYY-MM
+    const ref = `${t.id}:${month}`;
+    const dup = await pool.query(`SELECT id FROM finance_transactions WHERE source='recurring' AND source_ref=$1`, [ref]);
+    if (dup.rows.length) return res.status(409).json({ error: 'Вже проведено за цей місяць' });
+
+    const day = String(Math.min(28, Math.max(1, t.day_of_month || 1))).padStart(2, '0');
+    const date = `${month}-${day}`;
+    const ins = await pool.query(
+      `INSERT INTO finance_transactions (date, kind, amount, account_id, category_id, description, source, source_ref)
+       VALUES ($1,'expense',$2,$3,$4,$5,'recurring',$6) RETURNING id`,
+      [date, t.amount, t.account_id, t.category_id, t.name + (t.note ? ' — ' + t.note : ''), ref]
+    );
+    res.json({ success: true, id: ins.rows[0].id });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

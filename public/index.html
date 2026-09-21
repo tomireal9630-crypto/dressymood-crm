@@ -1133,14 +1133,36 @@
 
                 <!-- Підвкладки -->
                 <div class="flex items-center gap-6 border-b border-slate-200 mb-6">
+                    <button onclick="switchFinanceTab('overview')" data-fin-tab="overview" class="stats-tab pb-3 text-sm font-bold transition-all">📈 Огляд</button>
                     <button onclick="switchFinanceTab('transactions')" data-fin-tab="transactions" class="stats-tab pb-3 text-sm font-bold transition-all">📋 Транзакції</button>
                     <button onclick="switchFinanceTab('pnl')" data-fin-tab="pnl" class="stats-tab pb-3 text-sm font-bold transition-all">📊 P&L</button>
                     <button onclick="switchFinanceTab('cashflow')" data-fin-tab="cashflow" class="stats-tab pb-3 text-sm font-bold transition-all">💸 Cash Flow</button>
                     <button onclick="switchFinanceTab('settings')" data-fin-tab="settings" class="stats-tab pb-3 text-sm font-bold transition-all">⚙️ Рахунки / Категорії</button>
                 </div>
 
+                <!-- ОГЛЯД -->
+                <div id="fin-tab-overview" class="fin-tab-content hidden">
+                    <div class="flex items-end gap-3 flex-wrap bg-white border border-slate-100 rounded-2xl p-3 shadow-sm mb-4">
+                        <div>
+                            <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">З</label>
+                            <input type="date" id="finOvFrom" onchange="loadFinOverview()" class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
+                        </div>
+                        <div>
+                            <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">По</label>
+                            <input type="date" id="finOvTo" onchange="loadFinOverview()" class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
+                        </div>
+                        <div class="flex items-center gap-1.5">
+                            <button onclick="finOvPreset('month')" class="px-3 py-2 rounded-lg text-xs font-bold bg-slate-100 text-slate-600 hover:bg-slate-200 transition-all">Цей місяць</button>
+                            <button onclick="finOvPreset('prevMonth')" class="px-3 py-2 rounded-lg text-xs font-bold bg-slate-100 text-slate-600 hover:bg-slate-200 transition-all">Мин. місяць</button>
+                            <button onclick="finOvPreset('year')" class="px-3 py-2 rounded-lg text-xs font-bold bg-slate-100 text-slate-600 hover:bg-slate-200 transition-all">Рік</button>
+                            <button onclick="finOvPreset('all')" class="px-3 py-2 rounded-lg text-xs font-bold bg-slate-100 text-slate-600 hover:bg-slate-200 transition-all">Весь час</button>
+                        </div>
+                    </div>
+                    <div id="finOverviewBody"><div class="text-center text-slate-400 py-10">Завантаження…</div></div>
+                </div>
+
                 <!-- ТРАНЗАКЦІЇ -->
-                <div id="fin-tab-transactions" class="fin-tab-content">
+                <div id="fin-tab-transactions" class="fin-tab-content hidden">
                     <div class="flex items-end gap-3 flex-wrap bg-white border border-slate-100 rounded-2xl p-3 shadow-sm mb-4">
                         <div>
                             <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">З</label>
@@ -1265,6 +1287,16 @@
                             </div>
                             <div id="finCategoriesList" class="space-y-2"></div>
                         </div>
+                    </div>
+
+                    <!-- РЕГУЛЯРНІ (ПОСТІЙНІ) ВИТРАТИ -->
+                    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 mt-6">
+                        <div class="flex justify-between items-center mb-1">
+                            <h3 class="text-sm font-black text-slate-800 uppercase tracking-widest">Постійні витрати</h3>
+                            <button onclick="openRecurringModal()" class="text-violet-600 hover:bg-violet-50 px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider"><i class="fa-solid fa-plus mr-1"></i> Додати</button>
+                        </div>
+                        <p class="text-[11px] text-slate-400 font-medium mb-4">Оренда, зарплата, підписки, податки. Кнопка «Провести» створює витрату за поточний місяць (один раз).</p>
+                        <div id="finRecurringList" class="space-y-2"></div>
                     </div>
                 </div>
             </div>
@@ -1590,6 +1622,48 @@
                     <button type="button" onclick="closeModal('finTxModal')" class="px-6 py-3 rounded-xl font-bold text-sm text-slate-600 bg-slate-100 hover:bg-slate-200 transition-all">Скасувати</button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- Модалка: Постійна витрата -->
+    <div id="finRecurringModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] hidden items-center justify-center p-6">
+        <div class="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl overflow-hidden">
+            <div class="p-6 border-b border-slate-100 flex justify-between items-center bg-violet-50/50">
+                <h3 class="text-lg font-black text-slate-800 uppercase italic">Постійна витрата</h3>
+                <button onclick="closeRecurringModal()" class="text-slate-400 hover:text-rose-500"><i class="fa-solid fa-xmark text-xl"></i></button>
+            </div>
+            <div class="p-6 space-y-4">
+                <div>
+                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-1">Назва (Оренда, Зарплата...)</label>
+                    <input type="text" id="recName" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none font-bold text-sm">
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-400 uppercase mb-1">Сума (₴)</label>
+                        <input type="number" id="recAmount" step="0.01" min="0" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none font-black text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-400 uppercase mb-1">День місяця</label>
+                        <input type="number" id="recDay" min="1" max="31" value="1" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none font-black text-sm">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-1">Категорія</label>
+                    <select id="recCategory" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none font-bold text-sm"></select>
+                </div>
+                <div>
+                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-1">Рахунок (звідки списувати)</label>
+                    <select id="recAccount" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none font-bold text-sm"></select>
+                </div>
+                <div>
+                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-1">Нотатка (опц.)</label>
+                    <input type="text" id="recNote" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none font-bold text-sm">
+                </div>
+                <div class="flex gap-3 pt-2">
+                    <button type="button" onclick="saveRecurring()" class="flex-1 bg-violet-600 text-white py-3 rounded-xl font-black text-sm uppercase tracking-widest hover:bg-violet-700 transition-all">Зберегти</button>
+                    <button type="button" onclick="closeRecurringModal()" class="px-6 py-3 rounded-xl font-bold text-sm text-slate-600 bg-slate-100 hover:bg-slate-200 transition-all">Скасувати</button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -3927,7 +4001,7 @@
         let finAccountsCache = [];
         let finCategoriesCache = [];
         let finInit = false;
-        let finCurrentTab = 'transactions';
+        let finCurrentTab = 'overview';
 
         function finUah(n) { return Math.round(Number(n) || 0).toLocaleString('uk-UA') + ' ₴'; }
         function finUahPrecise(n) { return Number(n || 0).toLocaleString('uk-UA') + ' ₴'; }
@@ -3937,11 +4011,11 @@
             const iso = d => d.toISOString().slice(0, 10);
             const now = new Date();
             const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-            ['finTxFrom', 'finPnlFrom', 'finCfFrom'].forEach(id => {
+            ['finTxFrom', 'finPnlFrom', 'finCfFrom', 'finOvFrom'].forEach(id => {
                 const el = document.getElementById(id);
                 if (el && !el.value) el.value = iso(monthStart);
             });
-            ['finTxTo', 'finPnlTo', 'finCfTo'].forEach(id => {
+            ['finTxTo', 'finPnlTo', 'finCfTo', 'finOvTo'].forEach(id => {
                 const el = document.getElementById(id);
                 if (el && !el.value) el.value = iso(now);
             });
@@ -4015,10 +4089,11 @@
             document.querySelectorAll('.fin-tab-content').forEach(el => el.classList.add('hidden'));
             const t = document.getElementById('fin-tab-' + tab);
             if (t) t.classList.remove('hidden');
+            if (tab === 'overview') loadFinOverview();
             if (tab === 'transactions') loadFinTransactions();
             if (tab === 'pnl') loadFinPnl();
             if (tab === 'cashflow') loadFinCashflow();
-            if (tab === 'settings') renderFinAccountsList(), renderFinCategoriesList();
+            if (tab === 'settings') renderFinAccountsList(), renderFinCategoriesList(), loadFinRecurring();
         }
 
         async function loadFinTransactions() {
@@ -4377,6 +4452,193 @@
             } catch (e) {
                 tbody.innerHTML = `<tr><td colspan="5" class="p-8 text-center text-rose-500">Помилка: ${esc(e.message)}</td></tr>`;
             }
+        }
+
+        // --- ОГЛЯД (сводка + графіки) ---
+        function finOvPreset(kind) {
+            const iso = d => d.toISOString().slice(0, 10);
+            const now = new Date();
+            let from = '', to = iso(now);
+            if (kind === 'month') from = iso(new Date(now.getFullYear(), now.getMonth(), 1));
+            else if (kind === 'prevMonth') {
+                from = iso(new Date(now.getFullYear(), now.getMonth() - 1, 1));
+                to = iso(new Date(now.getFullYear(), now.getMonth(), 0));
+            } else if (kind === 'year') from = iso(new Date(now.getFullYear(), 0, 1));
+            else if (kind === 'all') { from = ''; to = ''; }
+            const f = document.getElementById('finOvFrom'), t = document.getElementById('finOvTo');
+            if (f) f.value = from; if (t) t.value = to;
+            loadFinOverview();
+        }
+
+        async function loadFinOverview() {
+            const from = (document.getElementById('finOvFrom') || {}).value;
+            const to = (document.getElementById('finOvTo') || {}).value;
+            const params = new URLSearchParams();
+            if (from) params.set('dateFrom', from);
+            if (to) params.set('dateTo', to);
+            const body = document.getElementById('finOverviewBody');
+            body.innerHTML = `<div class="text-center text-slate-400 py-10">Завантаження…</div>`;
+            try {
+                const cfParams = new URLSearchParams(params); cfParams.set('granularity', 'month');
+                const [sR, cR] = await Promise.all([
+                    fetch('/api/finance/summary?' + params.toString()),
+                    fetch('/api/finance/cashflow?' + cfParams.toString())
+                ]);
+                const s = await sR.json();
+                const cf = await cR.json();
+
+                const card = (label, value, cls, sub) => `
+                    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+                        <div class="text-[10px] font-black uppercase tracking-widest mb-1 text-slate-400">${label}</div>
+                        <div class="text-2xl font-black ${cls}">${value}</div>
+                        ${sub ? `<div class="text-[11px] text-slate-400 font-medium mt-1">${sub}</div>` : ''}
+                    </div>`;
+
+                const kpis = `
+                    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
+                        ${card('Дохід', finUah(s.totalIncome), 'text-emerald-600', 'продажі + інше')}
+                        ${card('Витрати', finUah(s.totalExpense), 'text-rose-600', 'усі затрати')}
+                        ${card('Чистий прибуток', (s.profit >= 0 ? '+' : '') + finUah(s.profit), s.profit >= 0 ? 'text-violet-600' : 'text-rose-600', 'дохід − витрати')}
+                        ${card('Продажів', s.ordersSold + ' шт', 'text-slate-800', 'статус «Продажа»')}
+                        ${card('Середній чек', finUah(s.avgCheck), 'text-slate-800', 'виручка / продажі')}
+                        ${card('Маржа', (Math.round(s.marginPct * 10) / 10) + ' %', s.marginPct >= 0 ? 'text-slate-800' : 'text-rose-600', 'прибуток / дохід')}
+                    </div>`;
+
+                body.innerHTML = kpis + `
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <div class="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+                            <div class="text-sm font-black text-slate-800 uppercase tracking-widest mb-4">Дохід / Витрати по місяцях</div>
+                            ${renderFinBarChart(cf)}
+                        </div>
+                        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+                            <div class="text-sm font-black text-slate-800 uppercase tracking-widest mb-4">Структура витрат</div>
+                            ${renderFinExpenseBreakdown(s.expenseBreakdown, s.totalExpense)}
+                        </div>
+                    </div>`;
+            } catch (e) {
+                body.innerHTML = `<div class="text-center text-rose-500 py-10">Помилка: ${esc(e.message)}</div>`;
+            }
+        }
+
+        function renderFinBarChart(rows) {
+            if (!rows || !rows.length) return `<div class="text-center text-slate-400 py-10 text-sm">Немає даних за період</div>`;
+            const data = rows.slice(-12); // до 12 останніх періодів
+            const maxV = Math.max(...data.map(r => Math.max(r.income, r.expense)), 1);
+            const W = Math.max(320, data.length * 64), H = 200, pad = 24, bw = 18, gap = 6;
+            const step = (W - pad * 2) / data.length;
+            const y = v => H - pad - (v / maxV) * (H - pad * 2);
+            const fmtM = p => { const [yy, mm] = p.split('-'); return `${mm}.${yy.slice(2)}`; };
+            let bars = '';
+            data.forEach((r, i) => {
+                const cx = pad + step * i + step / 2;
+                const x1 = cx - bw - gap / 2, x2 = cx + gap / 2;
+                bars += `
+                    <rect x="${x1}" y="${y(r.income)}" width="${bw}" height="${Math.max(0, H - pad - y(r.income))}" rx="3" fill="#10b981"></rect>
+                    <rect x="${x2}" y="${y(r.expense)}" width="${bw}" height="${Math.max(0, H - pad - y(r.expense))}" rx="3" fill="#f43f5e"></rect>
+                    <text x="${cx}" y="${H - 6}" text-anchor="middle" font-size="9" fill="#94a3b8" font-weight="700">${fmtM(r.period)}</text>`;
+            });
+            return `
+                <div class="flex items-center gap-4 mb-2 text-[11px] font-bold">
+                    <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-sm bg-emerald-500"></span> Дохід</span>
+                    <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-sm bg-rose-500"></span> Витрати</span>
+                </div>
+                <div class="overflow-x-auto"><svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" class="max-w-full">
+                    <line x1="${pad}" y1="${H - pad}" x2="${W - pad}" y2="${H - pad}" stroke="#e2e8f0" stroke-width="1"></line>
+                    ${bars}
+                </svg></div>`;
+        }
+
+        function renderFinExpenseBreakdown(items, total) {
+            if (!items || !items.length) return `<div class="text-center text-slate-400 py-10 text-sm">Немає витрат за період</div>`;
+            const t = total || items.reduce((s, x) => s + x.value, 0) || 1;
+            return items.map(x => {
+                const pct = Math.round(x.value / t * 100);
+                return `
+                    <div class="mb-3">
+                        <div class="flex justify-between items-center text-xs font-bold mb-1">
+                            <span class="flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full" style="background:${esc(x.color)}"></span>${esc(x.label)}</span>
+                            <span class="text-slate-600">${finUah(x.value)} <span class="text-slate-400">(${pct}%)</span></span>
+                        </div>
+                        <div class="h-2 bg-slate-100 rounded-full overflow-hidden"><div class="h-full rounded-full" style="width:${pct}%;background:${esc(x.color)}"></div></div>
+                    </div>`;
+            }).join('');
+        }
+
+        // --- РЕГУЛЯРНІ (ПОСТІЙНІ) ВИТРАТИ ---
+        async function loadFinRecurring() {
+            const wrap = document.getElementById('finRecurringList');
+            if (!wrap) return;
+            wrap.innerHTML = `<div class="text-center text-slate-400 py-4 text-sm">Завантаження…</div>`;
+            try {
+                const r = await fetch('/api/finance/recurring');
+                const rows = await r.json();
+                if (!rows.length) { wrap.innerHTML = `<div class="text-xs text-slate-400 italic py-2">Ще немає постійних витрат. Додай оренду, зарплату, підписки.</div>`; return; }
+                wrap.innerHTML = rows.map(x => `
+                    <div class="flex items-center justify-between gap-3 p-3 rounded-xl border border-slate-100 ${x.is_active ? '' : 'opacity-50'}">
+                        <div class="min-w-0">
+                            <div class="text-sm font-bold text-slate-700 truncate">${esc(x.name)}
+                                <span class="text-[10px] font-black text-slate-400 ml-1">${x.day_of_month}-го</span></div>
+                            <div class="text-[11px] text-slate-400 font-medium truncate">
+                                ${esc(x.category_name || '— без категорії')} · ${esc(x.account_name || '⚠️ без рахунку')}
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2 shrink-0">
+                            <span class="text-sm font-black text-rose-600 whitespace-nowrap">${finUah(x.amount)}</span>
+                            ${x.posted_this_month
+                                ? `<span class="text-[10px] font-black text-emerald-500 px-2 py-1 bg-emerald-50 rounded-lg whitespace-nowrap">✓ Проведено</span>`
+                                : `<button onclick="postRecurring(${x.id})" class="text-[10px] font-black text-violet-600 px-2 py-1 bg-violet-50 hover:bg-violet-100 rounded-lg whitespace-nowrap">Провести</button>`}
+                            <button onclick="deleteRecurring(${x.id})" title="Видалити" class="text-slate-300 hover:text-rose-500 p-1"><i class="fa-solid fa-trash-can text-xs"></i></button>
+                        </div>
+                    </div>`).join('');
+            } catch (e) { wrap.innerHTML = `<div class="text-xs text-rose-500 py-2">Помилка: ${esc(e.message)}</div>`; }
+        }
+
+        function openRecurringModal() {
+            const catOpts = (finCategoriesCache || []).filter(c => c.kind === 'expense')
+                .map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
+            const accOpts = (finAccountsCache || []).map(a => `<option value="${a.id}">${esc(a.name)}</option>`).join('');
+            const m = document.getElementById('finRecurringModal');
+            document.getElementById('recName').value = '';
+            document.getElementById('recAmount').value = '';
+            document.getElementById('recDay').value = '1';
+            document.getElementById('recNote').value = '';
+            document.getElementById('recCategory').innerHTML = `<option value="">— категорія —</option>` + catOpts;
+            document.getElementById('recAccount').innerHTML = `<option value="">— рахунок —</option>` + accOpts;
+            m.classList.remove('hidden'); m.classList.add('flex');
+        }
+        function closeRecurringModal() {
+            const m = document.getElementById('finRecurringModal');
+            m.classList.add('hidden'); m.classList.remove('flex');
+        }
+        async function saveRecurring() {
+            const payload = {
+                name: document.getElementById('recName').value.trim(),
+                amount: Number(document.getElementById('recAmount').value),
+                category_id: document.getElementById('recCategory').value || null,
+                account_id: document.getElementById('recAccount').value || null,
+                day_of_month: Number(document.getElementById('recDay').value) || 1,
+                note: document.getElementById('recNote').value.trim()
+            };
+            if (!payload.name || !payload.amount) { alert('Вкажи назву та суму'); return; }
+            try {
+                const r = await fetch('/api/finance/recurring', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                const d = await r.json();
+                if (!r.ok) throw new Error(d.error || 'Помилка');
+                closeRecurringModal(); loadFinRecurring();
+            } catch (e) { alert('Помилка: ' + e.message); }
+        }
+        async function deleteRecurring(id) {
+            if (!confirm('Видалити цю постійну витрату? (вже проведені транзакції залишаться)')) return;
+            try { await fetch(`/api/finance/recurring/${id}`, { method: 'DELETE' }); loadFinRecurring(); }
+            catch (e) { alert('Помилка: ' + e.message); }
+        }
+        async function postRecurring(id) {
+            try {
+                const r = await fetch(`/api/finance/recurring/${id}/post`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+                const d = await r.json();
+                if (!r.ok) throw new Error(d.error || 'Помилка');
+                loadFinRecurring(); loadFinBalances();
+            } catch (e) { alert('Помилка: ' + e.message); }
         }
 
         let editingOrderId = null;
