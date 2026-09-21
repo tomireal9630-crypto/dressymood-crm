@@ -77,6 +77,9 @@
                     <button onclick="switchView('finance')" id="btn-finance" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
                         <i class="fa-solid fa-wallet w-5 text-center"></i> Фінанси
                     </button>
+                    <button onclick="switchView('fbcontrol')" id="btn-fbcontrol" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
+                        <i class="fa-solid fa-bullhorn w-5 text-center"></i> Реклама
+                    </button>
                     <button onclick="switchView('landing')" id="btn-landing" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
                         <i class="fa-solid fa-wand-magic-sparkles w-5 text-center"></i> Лендінги
                     </button>
@@ -1580,6 +1583,27 @@
                 <iframe src="landing-generator.html" title="Генератор лендінгів"
                     style="width:100%;height:calc(100vh - 5rem);border:0;border-radius:0;display:block"></iframe>
             </div>
+
+            <div id="view-fbcontrol" class="view-content h-full">
+                <div class="flex justify-between items-start mb-6 gap-4 flex-wrap">
+                    <div>
+                        <h2 class="text-3xl font-black text-slate-800 uppercase italic tracking-tighter">Керування рекламою</h2>
+                        <p class="text-slate-400 font-medium text-sm">Кампанії та групи по моделях · ROI · пауза/увімкнення</p>
+                    </div>
+                    <div class="flex items-end gap-3 flex-wrap">
+                        <div>
+                            <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">З</label>
+                            <input type="date" id="fbCtlFrom" class="px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
+                        </div>
+                        <div>
+                            <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">По</label>
+                            <input type="date" id="fbCtlTo" class="px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
+                        </div>
+                        <button onclick="loadFbControl()" class="px-5 py-2 rounded-lg text-xs font-black uppercase tracking-wider text-white transition-all" style="background:linear-gradient(135deg,#8b5cf6,#ec4899)">Показати</button>
+                    </div>
+                </div>
+                <div id="fbCtlBody"><div class="text-center text-slate-400 py-10">Завантаження…</div></div>
+            </div>
         </div>
     </main>
 
@@ -2083,7 +2107,7 @@
             const btn = document.getElementById(`btn-${view}`);
             if (btn) btn.classList.add('active');
 
-            const titles = { 'orders': 'ЗАМОВЛЕННЯ', 'warehouse': 'СКЛАД', 'callbacks': 'НЕ ДОЗВОНИ', 'statistics': 'СТАТИСТИКА', 'dashboard': 'ДАШБОРД', 'finance': 'ФІНАНСИ', 'landing': 'ЛЕНДІНГИ' };
+            const titles = { 'orders': 'ЗАМОВЛЕННЯ', 'warehouse': 'СКЛАД', 'callbacks': 'НЕ ДОЗВОНИ', 'statistics': 'СТАТИСТИКА', 'dashboard': 'ДАШБОРД', 'finance': 'ФІНАНСИ', 'landing': 'ЛЕНДІНГИ', 'fbcontrol': 'РЕКЛАМА' };
             document.getElementById('current-view-title').innerText = titles[view] || view.toUpperCase();
 
             document.querySelectorAll('.view-content').forEach(el => el.classList.remove('active'));
@@ -2097,6 +2121,7 @@
             if (view === 'statistics') switchStatsTab('control');
             if (view === 'dashboard') { if (!dashInit) initDashboard(); else loadDashboard(); }
             if (view === 'finance') { if (!finInit) initFinance(); else { loadFinBalances(); switchFinanceTab(finCurrentTab); } }
+            if (view === 'fbcontrol') { if (!fbCtlInit) initFbControl(); else loadFbControl(); }
             refreshData();
         }
 
@@ -4650,6 +4675,129 @@
                 if (!r.ok) throw new Error(d.error || 'Помилка');
                 loadFinRecurring(); loadFinBalances();
             } catch (e) { alert('Помилка: ' + e.message); }
+        }
+
+        // ===== КЕРУВАННЯ РЕКЛАМОЮ =====
+        let fbCtlInit = false;
+        function initFbControl() {
+            fbCtlInit = true;
+            const iso = d => d.toISOString().slice(0, 10);
+            const now = new Date(); const from = new Date(now); from.setDate(from.getDate() - 14);
+            const f = document.getElementById('fbCtlFrom'), t = document.getElementById('fbCtlTo');
+            if (f && !f.value) f.value = iso(from);
+            if (t && !t.value) t.value = iso(now);
+            loadFbControl();
+        }
+        function fbUah(n) { return Math.round(Number(n) || 0).toLocaleString('uk-UA') + ' ₴'; }
+        function fbStatusBadge(s) {
+            const map = { ACTIVE: ['✅', 'text-emerald-600 bg-emerald-50'], PAUSED: ['⏸', 'text-slate-500 bg-slate-100'] };
+            const m = map[s] || ['⚠️', 'text-amber-600 bg-amber-50'];
+            return `<span class="text-[10px] font-black px-2 py-0.5 rounded ${m[1]} whitespace-nowrap">${m[0]} ${esc(s || '—')}</span>`;
+        }
+        async function loadFbControl() {
+            const from = (document.getElementById('fbCtlFrom') || {}).value || '';
+            const to = (document.getElementById('fbCtlTo') || {}).value || '';
+            const params = new URLSearchParams();
+            if (from) params.set('dateFrom', from);
+            if (to) params.set('dateTo', to);
+            const body = document.getElementById('fbCtlBody');
+            body.innerHTML = `<div class="text-center text-slate-400 py-10">Завантаження…</div>`;
+            try {
+                const r = await fetch('/api/fb/control?' + params.toString());
+                const d = await r.json();
+                if (!r.ok) throw new Error(d.error || 'Помилка');
+                if (!d.articles || !d.articles.length) {
+                    body.innerHTML = `<div class="bg-white rounded-2xl border border-slate-100 p-10 text-center text-slate-400">
+                        Немає даних реклами за період. Підключи FB-кабінет у <b>Налаштування</b> та зачекай синхронізацію.</div>`;
+                    return;
+                }
+                const errBar = (d.errors && d.errors.length)
+                    ? `<div class="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4 text-xs text-amber-700 font-bold">⚠️ Не вдалось отримати статуси деяких кабінетів: ${d.errors.map(e => esc(e.error)).join('; ')}</div>` : '';
+                body.innerHTML = errBar + d.articles.map(A => {
+                    const roiTxt = A.roi == null ? '<span class="text-slate-400">ROI —</span>'
+                        : `<span class="${A.roi >= 0 ? 'text-violet-600' : 'text-rose-600'}">ROI ${Math.round(A.roi)}%</span>`;
+                    const roiBad = A.roi != null && A.roi < 0;
+                    return `
+                    <div class="bg-white rounded-2xl shadow-sm border ${roiBad ? 'border-rose-200' : 'border-slate-100'} mb-4 overflow-hidden">
+                        <div class="px-5 py-4 flex items-center justify-between gap-3 flex-wrap ${roiBad ? 'bg-rose-50/50' : 'bg-slate-50/50'} border-b border-slate-100">
+                            <div class="font-black text-slate-800 uppercase">${esc(A.article)}
+                                <span class="ml-3 text-sm font-black">${roiTxt}</span></div>
+                            <div class="flex items-center gap-4 text-xs font-bold text-slate-500">
+                                <span>Σтрата <b class="text-slate-700">${fbUah(A.spend)}</b></span>
+                                <span>Σліди <b class="text-slate-700">${A.leads}</b></span>
+                                <span>CPL <b class="text-blue-600">${fbUah(A.cpl)}</b></span>
+                                <button onclick='fbPauseArticle(${JSON.stringify(A.campaigns).replace(/'/g, "&#39;")})' class="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase bg-rose-500 text-white hover:bg-rose-600 transition-all">⏸ Пауза всіх</button>
+                            </div>
+                        </div>
+                        <div class="p-3 space-y-2">
+                            ${A.campaigns.map(C => `
+                                <div class="rounded-xl border border-slate-100">
+                                    <div class="px-4 py-2.5 flex items-center justify-between gap-3 flex-wrap bg-slate-50/40">
+                                        <div class="flex items-center gap-2 min-w-0">
+                                            ${fbStatusBadge(C.status)}
+                                            <span class="text-sm font-bold text-slate-700 truncate">${esc(C.campaign_name || C.campaign_id)}</span>
+                                        </div>
+                                        <div class="flex items-center gap-3 text-[11px] font-bold text-slate-500 shrink-0">
+                                            <span>${fbUah(C.spend)}</span><span>${C.leads} лід.</span><span class="text-blue-600">CPL ${fbUah(C.cpl)}</span>
+                                            ${fbActionBtn('campaign', C.campaign_id, C.ad_account_id, C.status)}
+                                        </div>
+                                    </div>
+                                    <div class="divide-y divide-slate-50">
+                                        ${C.adsets.map(G => `
+                                            <div class="px-4 py-2 flex items-center justify-between gap-3 flex-wrap">
+                                                <div class="flex items-center gap-2 min-w-0 pl-3">
+                                                    ${fbStatusBadge(G.status)}
+                                                    <span class="text-xs font-medium text-slate-600 truncate">${esc(G.adset_name || G.adset_id)}</span>
+                                                </div>
+                                                <div class="flex items-center gap-3 text-[11px] font-bold text-slate-400 shrink-0">
+                                                    <span>${fbUah(G.spend)}</span><span>${G.leads} лід.</span>
+                                                    <span class="text-blue-600">CPL ${fbUah(G.cpl)}</span><span>CTR ${G.ctr.toFixed(1)}%</span>
+                                                    ${fbActionBtn('adset', G.adset_id, G.ad_account_id, G.status)}
+                                                </div>
+                                            </div>`).join('')}
+                                    </div>
+                                </div>`).join('')}
+                        </div>
+                    </div>`;
+                }).join('');
+            } catch (e) {
+                body.innerHTML = `<div class="text-center text-rose-500 py-10">Помилка: ${esc(e.message)}</div>`;
+            }
+        }
+        function fbActionBtn(level, id, accId, status) {
+            if (status === 'PAUSED')
+                return `<button onclick="fbSetStatus('${level}','${esc(id)}',${accId},'ACTIVE')" class="px-2.5 py-1 rounded-lg text-[10px] font-black bg-emerald-500 text-white hover:bg-emerald-600">▶ Вкл</button>`;
+            return `<button onclick="fbSetStatus('${level}','${esc(id)}',${accId},'PAUSED')" class="px-2.5 py-1 rounded-lg text-[10px] font-black bg-slate-700 text-white hover:bg-slate-900">⏸ Пауза</button>`;
+        }
+        async function fbSetStatus(level, id, accId, status) {
+            const verb = status === 'PAUSED' ? 'поставити на паузу' : 'увімкнути';
+            if (!confirm(`FB: ${verb} ${level === 'campaign' ? 'кампанію' : 'групу'}?`)) return;
+            try {
+                const r = await fetch(`/api/fb/entity/${level}/${encodeURIComponent(id)}/status`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status, account_id: accId })
+                });
+                const d = await r.json();
+                if (!r.ok) throw new Error(d.error || 'Помилка');
+                showToast('Готово: ' + status);
+                loadFbControl();
+            } catch (e) { alert('Помилка: ' + e.message); }
+        }
+        async function fbPauseArticle(campaigns) {
+            if (!Array.isArray(campaigns) || !confirm('Поставити на паузу ВСІ кампанії цього артикула?')) return;
+            let ok = 0, fail = 0;
+            for (const C of campaigns) {
+                if (C.status === 'PAUSED') continue;
+                try {
+                    const r = await fetch(`/api/fb/entity/campaign/${encodeURIComponent(C.campaign_id)}/status`, {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ status: 'PAUSED', account_id: C.ad_account_id })
+                    });
+                    r.ok ? ok++ : fail++;
+                } catch (e) { fail++; }
+            }
+            alert(`Пауза: ${ok} ок, ${fail} помилок`);
+            loadFbControl();
         }
 
         let editingOrderId = null;

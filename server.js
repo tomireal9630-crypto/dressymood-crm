@@ -202,6 +202,12 @@ async function updateDatabaseSchema() {
         `);
         await pool.query(`CREATE INDEX IF NOT EXISTS idx_fb_spend_date ON fb_spend_daily(date);`);
         await pool.query(`CREATE INDEX IF NOT EXISTS idx_fb_spend_article ON fb_spend_daily(article);`);
+        // Рівень груп (adset): синк тепер level=adset, зберігаємо adset_id/adset_name.
+        // Сума по article не змінюється (adset'и складаються в кампанію). Керування — по кампанії й по групі.
+        await pool.query(`ALTER TABLE fb_spend_daily ADD COLUMN IF NOT EXISTS adset_id VARCHAR(64);`);
+        await pool.query(`ALTER TABLE fb_spend_daily ADD COLUMN IF NOT EXISTS adset_name TEXT DEFAULT '';`);
+        await pool.query(`ALTER TABLE fb_spend_daily DROP CONSTRAINT IF EXISTS fb_spend_daily_ad_account_id_date_campaign_id_key;`).catch(()=>{});
+        await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_fb_spend_adset ON fb_spend_daily(ad_account_id, date, adset_id);`).catch(()=>{});
 
         // === ФІНАНСИ ===
         await pool.query(`
@@ -1060,10 +1066,10 @@ async function syncFbAccount(account, daysBack) {
   const until = new Date();
   const iso = d => d.toISOString().slice(0, 10);
   const timeRange = JSON.stringify({ since: iso(since), until: iso(until) });
-  const fields = 'spend,impressions,clicks,actions,campaign_id,campaign_name';
+  const fields = 'spend,impressions,clicks,actions,campaign_id,campaign_name,adset_id,adset_name';
   const params = new URLSearchParams({
     fields,
-    level: 'campaign',
+    level: 'adset',
     time_increment: '1',
     time_range: timeRange,
     limit: '500',
@@ -1078,23 +1084,28 @@ async function syncFbAccount(account, daysBack) {
       const date = r.date_start;
       const campaignId = r.campaign_id;
       const campaignName = r.campaign_name || '';
-      const article = extractArticleFromCampaign(campaignName, pattern);
+      const adsetId = r.adset_id || null;
+      const adsetName = r.adset_name || '';
+      // Артикул шукаємо в назві кампанії, а якщо там нема — у назві групи
+      const article = extractArticleFromCampaign(campaignName, pattern) || extractArticleFromCampaign(adsetName, pattern);
       const spend = Number(r.spend) || 0;
       const impressions = Number(r.impressions) || 0;
       const clicks = Number(r.clicks) || 0;
       const leads = getLeadCountFromActions(r.actions);
       await pool.query(`
-        INSERT INTO fb_spend_daily (ad_account_id, date, campaign_id, campaign_name, article, spend, impressions, clicks, leads, last_synced_at)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, NOW())
-        ON CONFLICT (ad_account_id, date, campaign_id) DO UPDATE SET
+        INSERT INTO fb_spend_daily (ad_account_id, date, campaign_id, campaign_name, adset_id, adset_name, article, spend, impressions, clicks, leads, last_synced_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11, NOW())
+        ON CONFLICT (ad_account_id, date, adset_id) DO UPDATE SET
+          campaign_id = EXCLUDED.campaign_id,
           campaign_name = EXCLUDED.campaign_name,
+          adset_name = EXCLUDED.adset_name,
           article = EXCLUDED.article,
           spend = EXCLUDED.spend,
           impressions = EXCLUDED.impressions,
           clicks = EXCLUDED.clicks,
           leads = EXCLUDED.leads,
           last_synced_at = NOW()
-      `, [account.id, date, campaignId, campaignName, article, spend, impressions, clicks, leads]);
+      `, [account.id, date, campaignId, campaignName, adsetId, adsetName, article, spend, impressions, clicks, leads]);
       inserted++;
     }
     url = (j.paging && j.paging.next) ? j.paging.next : null;
@@ -1180,6 +1191,155 @@ app.post('/api/fb/sync', checkAuth, async (req, res) => {
     await syncAllFbAccounts(daysBack);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ===== ПАНЕЛЬ КЕРУВАННЯ РЕКЛАМОЮ (ручна) =====
+
+// Живі статуси кампаній і груп з FB (effective_status) для одного кабінету
+async function fbLiveStatuses(account) {
+  const cleanId = String(account.fb_account_id).replace(/^act_/, '');
+  const campaigns = {}, adsets = {};
+  // Кампанії
+  let url = `https://graph.facebook.com/${FB_API_VERSION}/act_${cleanId}/campaigns?fields=id,name,effective_status&limit=200&access_token=${encodeURIComponent(account.access_token)}`;
+  while (url) {
+    const j = await fbGet(url);
+    (j.data || []).forEach(c => { campaigns[c.id] = { name: c.name, status: c.effective_status }; });
+    url = (j.paging && j.paging.next) ? j.paging.next : null;
+  }
+  // Групи
+  url = `https://graph.facebook.com/${FB_API_VERSION}/act_${cleanId}/adsets?fields=id,name,effective_status,campaign_id&limit=500&access_token=${encodeURIComponent(account.access_token)}`;
+  while (url) {
+    const j = await fbGet(url);
+    (j.data || []).forEach(a => { adsets[a.id] = { name: a.name, status: a.effective_status, campaign_id: a.campaign_id }; });
+    url = (j.paging && j.paging.next) ? j.paging.next : null;
+  }
+  return { campaigns, adsets };
+}
+
+// ROI по артикулах за вікно (виручка/COGS/повернення/реклама → roi)
+async function articleRoiMap(dateFrom, dateTo) {
+  const lead = `COALESCE(o.original_created_at, o.created_at)`;
+  const sp = [], sc = [`o.status='Продажа'`];
+  if (dateFrom) { sp.push(dateFrom); sc.push(`${lead} >= $${sp.length}::date`); }
+  if (dateTo)   { sp.push(dateTo);   sc.push(`${lead} < ($${sp.length}::date + interval '1 day')`); }
+  const sales = await pool.query(`
+    SELECT oi.article,
+           COALESCE(SUM(oi.price*oi.quantity),0)::numeric revenue,
+           COALESCE(SUM(COALESCE((SELECT MAX(cost) FROM products p WHERE p.article=oi.article),0)*oi.quantity),0)::numeric cost
+    FROM orders o JOIN order_items oi ON oi.order_id=o.id
+    WHERE ${sc.join(' AND ')} AND oi.article IS NOT NULL AND oi.article <> ''
+    GROUP BY oi.article`, sp);
+  const rp = [], rc = [`o.status IN ('Отказ','Возврат','Ошибка в ТТН')`];
+  if (dateFrom) { rp.push(dateFrom); rc.push(`${lead} >= $${rp.length}::date`); }
+  if (dateTo)   { rp.push(dateTo);   rc.push(`${lead} < ($${rp.length}::date + interval '1 day')`); }
+  const refs = await pool.query(`
+    SELECT oi.article, COUNT(DISTINCT o.id)::int refused
+    FROM orders o JOIN order_items oi ON oi.order_id=o.id
+    WHERE ${rc.join(' AND ')} AND oi.article IS NOT NULL AND oi.article <> ''
+    GROUP BY oi.article`, rp);
+  const returnCost = Number((await getEconomicsSettings()).return_cost) || 0;
+  const map = {};
+  sales.rows.forEach(r => { map[r.article] = { revenue: +r.revenue, cost: +r.cost, refused: 0, spend: 0 }; });
+  refs.rows.forEach(r => { (map[r.article] = map[r.article] || { revenue:0, cost:0, refused:0, spend:0 }).refused = r.refused; });
+  return { map, returnCost };
+}
+
+// Дані для панелі: артикул → кампанії → групи, з метриками і статусами
+app.get('/api/fb/control', checkAuth, async (req, res) => {
+  const { dateFrom, dateTo } = req.query;
+  try {
+    const sp = [], conds = [];
+    if (dateFrom) { sp.push(dateFrom); conds.push(`date >= $${sp.length}::date`); }
+    if (dateTo)   { sp.push(dateTo);   conds.push(`date <= $${sp.length}::date`); }
+    const where = conds.length ? 'WHERE ' + conds.join(' AND ') : '';
+    const agg = await pool.query(`
+      SELECT ad_account_id, campaign_id, MAX(campaign_name) campaign_name,
+             adset_id, MAX(adset_name) adset_name, MAX(article) article,
+             SUM(spend)::numeric spend, SUM(leads)::int leads,
+             SUM(impressions)::bigint impressions, SUM(clicks)::bigint clicks
+      FROM fb_spend_daily ${where}
+      GROUP BY ad_account_id, campaign_id, adset_id
+      ORDER BY article NULLS LAST, campaign_id, spend DESC`, sp);
+
+    // Живі статуси по кабінетах
+    const accIds = [...new Set(agg.rows.map(r => r.ad_account_id))];
+    const accs = accIds.length ? (await pool.query(`SELECT id, fb_account_id, access_token FROM fb_ad_accounts WHERE id = ANY($1)`, [accIds])).rows : [];
+    const statusByAcc = {};
+    for (const a of accs) {
+      try { statusByAcc[a.id] = await fbLiveStatuses(a); }
+      catch (e) { statusByAcc[a.id] = { campaigns: {}, adsets: {}, error: e.message }; }
+    }
+    const { map: roiMap, returnCost } = await articleRoiMap(dateFrom, dateTo);
+
+    // Будуємо ієрархію article → campaign → adset
+    const arts = {};
+    for (const r of agg.rows) {
+      const artKey = r.article || '— без артикула';
+      const A = arts[artKey] = arts[artKey] || { article: artKey, spend: 0, leads: 0, campaigns: {} };
+      const cst = (statusByAcc[r.ad_account_id] || {});
+      const cId = r.campaign_id;
+      const C = A.campaigns[cId] = A.campaigns[cId] || {
+        campaign_id: cId, campaign_name: r.campaign_name, ad_account_id: r.ad_account_id,
+        status: (cst.campaigns && cst.campaigns[cId] && cst.campaigns[cId].status) || 'UNKNOWN',
+        spend: 0, leads: 0, adsets: []
+      };
+      const sp2 = Number(r.spend) || 0, ld = Number(r.leads) || 0;
+      const imp = Number(r.impressions) || 0, clk = Number(r.clicks) || 0;
+      C.adsets.push({
+        adset_id: r.adset_id, adset_name: r.adset_name, ad_account_id: r.ad_account_id,
+        status: (cst.adsets && cst.adsets[r.adset_id] && cst.adsets[r.adset_id].status) || 'UNKNOWN',
+        spend: sp2, leads: ld, impressions: imp, clicks: clk,
+        cpl: ld ? sp2 / ld : 0, ctr: imp ? clk / imp * 100 : 0
+      });
+      C.spend += sp2; C.leads += ld; A.spend += sp2; A.leads += ld;
+    }
+
+    const out = Object.values(arts).map(A => {
+      const ro = roiMap[A.article];
+      let roi = null, revenue = 0, netHint = 0;
+      if (ro) {
+        revenue = ro.revenue;
+        const net = ro.revenue - ro.cost - A.spend - ro.refused * returnCost;
+        roi = A.spend ? net / A.spend * 100 : null;
+        netHint = net;
+      }
+      return {
+        article: A.article, spend: A.spend, leads: A.leads,
+        cpl: A.leads ? A.spend / A.leads : 0,
+        revenue, roi, net: netHint,
+        campaigns: Object.values(A.campaigns).map(C => ({
+          ...C, cpl: C.leads ? C.spend / C.leads : 0
+        }))
+      };
+    }).sort((a, b) => b.spend - a.spend);
+
+    res.json({ articles: out, errors: Object.entries(statusByAcc).filter(([,v]) => v.error).map(([id,v]) => ({ account_id: +id, error: v.error })) });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Пауза/увімкнення кампанії або групи (потрібен токен ads_management)
+app.post('/api/fb/entity/:level(campaign|adset)/:id/status', checkAuth, async (req, res) => {
+  const { level, id } = req.params;
+  const status = req.body && req.body.status;
+  const accountId = req.body && req.body.account_id;
+  if (!['ACTIVE', 'PAUSED'].includes(status)) return res.status(400).json({ error: 'status має бути ACTIVE або PAUSED' });
+  try {
+    const accRes = await pool.query(`SELECT access_token FROM fb_ad_accounts WHERE id = $1`, [accountId]);
+    if (!accRes.rows.length) return res.status(404).json({ error: 'Кабінет не знайдено' });
+    const token = accRes.rows[0].access_token;
+    const resp = await fetch(`https://graph.facebook.com/${FB_API_VERSION}/${id}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status, access_token: token })
+    });
+    const j = await resp.json();
+    if (!resp.ok || j.error) {
+      const m = (j.error && j.error.message) || ('HTTP ' + resp.status);
+      const hint = /permission|ads_management|(#200)/i.test(m) ? ' (потрібен токен з правом ads_management)' : '';
+      return res.status(400).json({ error: m + hint });
+    }
+    res.json({ success: true, level, id, status });
+  } catch (err) { res.status(400).json({ error: err.message }); }
 });
 
 // Cron: щогодинна синхронізація. Перший виклик через хв після старту.
