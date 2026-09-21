@@ -1599,6 +1599,12 @@
                             <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">По</label>
                             <input type="date" id="fbCtlTo" class="px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
                         </div>
+                        <div>
+                            <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">Кабінет</label>
+                            <select id="fbCtlAcc" onchange="renderFbControl()" class="px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
+                                <option value="">Всі кабінети</option>
+                            </select>
+                        </div>
                         <button onclick="loadFbControl()" class="px-5 py-2 rounded-lg text-xs font-black uppercase tracking-wider text-white transition-all" style="background:linear-gradient(135deg,#8b5cf6,#ec4899)">Показати</button>
                     </div>
                 </div>
@@ -4694,6 +4700,14 @@
             const m = map[s] || ['⚠️', 'text-amber-600 bg-amber-50'];
             return `<span class="text-[10px] font-black px-2 py-0.5 rounded ${m[1]} whitespace-nowrap">${m[0]} ${esc(s || '—')}</span>`;
         }
+        let fbCtlData = null;
+        // Колір CPL відносно порогів моделі: зелений ≤ рекоменд., жовтий ≤ беззбитк., червоний вище
+        function fbCplClass(cpl, rec, max) {
+            if (rec == null || max == null || !cpl) return 'text-slate-500';
+            if (cpl <= rec) return 'text-emerald-600';
+            if (cpl <= max) return 'text-amber-600';
+            return 'text-rose-600';
+        }
         async function loadFbControl() {
             const from = (document.getElementById('fbCtlFrom') || {}).value || '';
             const to = (document.getElementById('fbCtlTo') || {}).value || '';
@@ -4706,63 +4720,89 @@
                 const r = await fetch('/api/fb/control?' + params.toString());
                 const d = await r.json();
                 if (!r.ok) throw new Error(d.error || 'Помилка');
-                if (!d.articles || !d.articles.length) {
-                    body.innerHTML = `<div class="bg-white rounded-2xl border border-slate-100 p-10 text-center text-slate-400">
-                        Немає даних реклами за період. Підключи FB-кабінет у <b>Налаштування</b> та зачекай синхронізацію.</div>`;
-                    return;
+                fbCtlData = d;
+                // Список кабінетів для фільтра
+                const accs = new Set();
+                (d.articles || []).forEach(A => A.campaigns.forEach(C => accs.add(C.ad_account_name)));
+                const sel = document.getElementById('fbCtlAcc');
+                if (sel) {
+                    const cur = sel.value;
+                    sel.innerHTML = `<option value="">Всі кабінети</option>` + [...accs].map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
+                    if (cur) sel.value = cur;
                 }
-                const errBar = (d.errors && d.errors.length)
-                    ? `<div class="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4 text-xs text-amber-700 font-bold">⚠️ Не вдалось отримати статуси деяких кабінетів: ${d.errors.map(e => esc(e.error)).join('; ')}</div>` : '';
-                body.innerHTML = errBar + d.articles.map(A => {
-                    const roiTxt = A.roi == null ? '<span class="text-slate-400">ROI —</span>'
-                        : `<span class="${A.roi >= 0 ? 'text-violet-600' : 'text-rose-600'}">ROI ${Math.round(A.roi)}%</span>`;
-                    const roiBad = A.roi != null && A.roi < 0;
-                    return `
-                    <div class="bg-white rounded-2xl shadow-sm border ${roiBad ? 'border-rose-200' : 'border-slate-100'} mb-4 overflow-hidden">
-                        <div class="px-5 py-4 flex items-center justify-between gap-3 flex-wrap ${roiBad ? 'bg-rose-50/50' : 'bg-slate-50/50'} border-b border-slate-100">
-                            <div class="font-black text-slate-800 uppercase">${esc(A.article)}
-                                <span class="ml-3 text-sm font-black">${roiTxt}</span></div>
-                            <div class="flex items-center gap-4 text-xs font-bold text-slate-500">
-                                <span>Σтрата <b class="text-slate-700">${fbUah(A.spend)}</b></span>
-                                <span>Σліди <b class="text-slate-700">${A.leads}</b></span>
-                                <span>CPL <b class="text-blue-600">${fbUah(A.cpl)}</b></span>
-                                <button onclick='fbPauseArticle(${JSON.stringify(A.campaigns).replace(/'/g, "&#39;")})' class="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase bg-rose-500 text-white hover:bg-rose-600 transition-all">⏸ Пауза всіх</button>
-                            </div>
-                        </div>
-                        <div class="p-3 space-y-2">
-                            ${A.campaigns.map(C => `
-                                <div class="rounded-xl border border-slate-100">
-                                    <div class="px-4 py-2.5 flex items-center justify-between gap-3 flex-wrap bg-slate-50/40">
-                                        <div class="flex items-center gap-2 min-w-0">
-                                            ${fbStatusBadge(C.status)}
-                                            <span class="text-sm font-bold text-slate-700 truncate">${esc(C.campaign_name || C.campaign_id)}</span>
-                                        </div>
-                                        <div class="flex items-center gap-3 text-[11px] font-bold text-slate-500 shrink-0">
-                                            <span>${fbUah(C.spend)}</span><span>${C.leads} лід.</span><span class="text-blue-600">CPL ${fbUah(C.cpl)}</span>
-                                            ${fbActionBtn('campaign', C.campaign_id, C.ad_account_id, C.status)}
-                                        </div>
-                                    </div>
-                                    <div class="divide-y divide-slate-50">
-                                        ${C.adsets.map(G => `
-                                            <div class="px-4 py-2 flex items-center justify-between gap-3 flex-wrap">
-                                                <div class="flex items-center gap-2 min-w-0 pl-3">
-                                                    ${fbStatusBadge(G.status)}
-                                                    <span class="text-xs font-medium text-slate-600 truncate">${esc(G.adset_name || G.adset_id)}</span>
-                                                </div>
-                                                <div class="flex items-center gap-3 text-[11px] font-bold text-slate-400 shrink-0">
-                                                    <span>${fbUah(G.spend)}</span><span>${G.leads} лід.</span>
-                                                    <span class="text-blue-600">CPL ${fbUah(G.cpl)}</span><span>CTR ${G.ctr.toFixed(1)}%</span>
-                                                    ${fbActionBtn('adset', G.adset_id, G.ad_account_id, G.status)}
-                                                </div>
-                                            </div>`).join('')}
-                                    </div>
-                                </div>`).join('')}
-                        </div>
-                    </div>`;
-                }).join('');
+                renderFbControl();
             } catch (e) {
                 body.innerHTML = `<div class="text-center text-rose-500 py-10">Помилка: ${esc(e.message)}</div>`;
             }
+        }
+        function renderFbControl() {
+            const d = fbCtlData; if (!d) return;
+            const accFilter = (document.getElementById('fbCtlAcc') || {}).value || '';
+            const body = document.getElementById('fbCtlBody');
+            // фільтруємо кампанії по кабінету
+            const articles = (d.articles || []).map(A => {
+                const campaigns = accFilter ? A.campaigns.filter(C => C.ad_account_name === accFilter) : A.campaigns;
+                return { ...A, campaigns };
+            }).filter(A => A.campaigns.length);
+            if (!articles.length) {
+                body.innerHTML = `<div class="bg-white rounded-2xl border border-slate-100 p-10 text-center text-slate-400">
+                    Немає даних реклами за період. Підключи FB-кабінет у <b>Налаштування</b> та зачекай синхронізацію.</div>`;
+                return;
+            }
+            const errBar = (d.errors && d.errors.length)
+                ? `<div class="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4 text-xs text-amber-700 font-bold">⚠️ Не вдалось отримати статуси деяких кабінетів: ${d.errors.map(e => esc(e.error)).join('; ')}</div>` : '';
+            body.innerHTML = errBar + articles.map(A => {
+                const roiTxt = A.roi == null ? '<span class="text-slate-400">ROI —</span>'
+                    : `<span class="${A.roi >= 0 ? 'text-violet-600' : 'text-rose-600'}">ROI ${Math.round(A.roi)}%</span>`;
+                const roiBad = A.roi != null && A.roi < 0;
+                const target = A.cpl_recommended != null
+                    ? `<span title="Рекомендований / граничний CPL моделі">ціль CPL <b class="text-emerald-600">≤${fbUah(A.cpl_recommended)}</b> <span class="text-slate-300">/ беззб. ${fbUah(A.cpl_max)}</span></span>` : '';
+                return `
+                <div class="bg-white rounded-2xl shadow-sm border ${roiBad ? 'border-rose-200' : 'border-slate-100'} mb-4 overflow-hidden">
+                    <div class="px-5 py-4 flex items-center justify-between gap-3 flex-wrap ${roiBad ? 'bg-rose-50/50' : 'bg-slate-50/50'} border-b border-slate-100">
+                        <div class="font-black text-slate-800 uppercase">${esc(A.article)}
+                            <span class="ml-3 text-sm font-black">${roiTxt}</span></div>
+                        <div class="flex items-center gap-4 text-xs font-bold text-slate-500 flex-wrap">
+                            ${target}
+                            <span>Σтрата <b class="text-slate-700">${fbUah(A.spend)}</b></span>
+                            <span>Σліди <b class="text-slate-700">${A.leads}</b></span>
+                            <span>CPL <b class="${fbCplClass(A.cpl, A.cpl_recommended, A.cpl_max)}">${fbUah(A.cpl)}</b></span>
+                            <button onclick='fbPauseArticle(${JSON.stringify(A.campaigns).replace(/'/g, "&#39;")})' class="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase bg-rose-500 text-white hover:bg-rose-600 transition-all">⏸ Пауза всіх</button>
+                        </div>
+                    </div>
+                    <div class="p-3 space-y-2">
+                        ${A.campaigns.map(C => `
+                            <div class="rounded-xl border border-slate-100">
+                                <div class="px-4 py-2.5 flex items-center justify-between gap-3 flex-wrap bg-slate-50/40">
+                                    <div class="flex items-center gap-2 min-w-0">
+                                        ${fbStatusBadge(C.status)}
+                                        <span class="text-sm font-bold text-slate-700 truncate">${esc(C.campaign_name || C.campaign_id)}</span>
+                                        <span class="text-[9px] font-black text-violet-500 bg-violet-50 px-1.5 py-0.5 rounded whitespace-nowrap">${esc(C.ad_account_name)}</span>
+                                    </div>
+                                    <div class="flex items-center gap-3 text-[11px] font-bold text-slate-500 shrink-0">
+                                        <span>${fbUah(C.spend)}</span><span>${C.leads} лід.</span>
+                                        <span class="${fbCplClass(C.cpl, A.cpl_recommended, A.cpl_max)}">CPL ${fbUah(C.cpl)}</span>
+                                        ${fbActionBtn('campaign', C.campaign_id, C.ad_account_id, C.status)}
+                                    </div>
+                                </div>
+                                <div class="divide-y divide-slate-50">
+                                    ${C.adsets.map(G => `
+                                        <div class="px-4 py-2 flex items-center justify-between gap-3 flex-wrap">
+                                            <div class="flex items-center gap-2 min-w-0 pl-3">
+                                                ${fbStatusBadge(G.status)}
+                                                <span class="text-xs font-medium text-slate-600 truncate">${esc(G.adset_name || G.adset_id)}</span>
+                                            </div>
+                                            <div class="flex items-center gap-3 text-[11px] font-bold text-slate-400 shrink-0">
+                                                <span>${fbUah(G.spend)}</span><span>${G.leads} лід.</span>
+                                                <span class="${fbCplClass(G.cpl, A.cpl_recommended, A.cpl_max)}">CPL ${fbUah(G.cpl)}</span><span>CTR ${G.ctr.toFixed(1)}%</span>
+                                                ${fbActionBtn('adset', G.adset_id, G.ad_account_id, G.status)}
+                                            </div>
+                                        </div>`).join('')}
+                                </div>
+                            </div>`).join('')}
+                    </div>
+                </div>`;
+            }).join('');
         }
         function fbActionBtn(level, id, accId, status) {
             if (status === 'PAUSED')

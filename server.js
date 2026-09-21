@@ -1244,6 +1244,42 @@ async function articleRoiMap(dateFrom, dateTo) {
   return { map, returnCost };
 }
 
+// Пороги CPL по артикулах (беззбитковий і рекомендований) — щоб фарбувати кампанії
+async function articleCplMap(dateFrom, dateTo) {
+  const settings = await getEconomicsSettings();
+  const returnCost = Number(settings.return_cost) || 0;
+  const defTargetRoi = Number(settings.target_roi_pct) || 30;
+  const lead = `COALESCE(o.original_created_at, o.created_at)`;
+  const APPROVED = `('В работе','Доставка','В пути','На почте','Продажа','Отказ','Возврат','Ошибка в ТТН','Переадресация')`;
+  const p = [], c = [`o.status <> '✗✗✗'`, `oi.article IS NOT NULL`, `oi.article <> ''`];
+  if (dateFrom) { p.push(dateFrom); c.push(`${lead} >= $${p.length}::date`); }
+  if (dateTo)   { p.push(dateTo);   c.push(`${lead} < ($${p.length}::date + interval '1 day')`); }
+  const r = await pool.query(`
+    WITH leads AS (SELECT DISTINCT o.id, o.status, oi.article FROM orders o JOIN order_items oi ON oi.order_id=o.id WHERE ${c.join(' AND ')})
+    SELECT l.article,
+           COUNT(*)::int total_leads,
+           COUNT(*) FILTER (WHERE status IN ${APPROVED})::int approved,
+           COUNT(*) FILTER (WHERE status IN ('Продажа'))::int sold,
+           COUNT(*) FILTER (WHERE status IN ('Отказ','Возврат','Ошибка в ТТН'))::int refused_after,
+           MAX(pr.price)::numeric price, MAX(pr.cost)::numeric cost, MAX(pr.target_roi_pct) target_roi
+    FROM leads l LEFT JOIN products pr ON pr.article = l.article
+    GROUP BY l.article`, p);
+  const map = {};
+  for (const row of r.rows) {
+    const price = Number(row.price) || 0, cost = Number(row.cost) || 0;
+    if (!price) { map[row.article] = null; continue; }
+    const targetRoi = (row.target_roi != null ? Number(row.target_roi) : defTargetRoi) / 100;
+    const total = row.total_leads, approvalRate = total ? row.approved / total : 0;
+    const resolved = row.sold + row.refused_after, useFinal = resolved >= 5;
+    const buyoutRate = useFinal ? row.sold / resolved : (row.approved ? row.sold / row.approved : 0);
+    const refusalRate = useFinal ? row.refused_after / resolved : (row.approved ? row.refused_after / row.approved : 0);
+    const sold100 = 100 * approvalRate * buyoutRate, refused100 = 100 * approvalRate * refusalRate;
+    const cplMax = (sold100 * price - sold100 * cost - refused100 * returnCost) / 100;
+    map[row.article] = { cpl_max: cplMax, cpl_recommended: cplMax / (1 + targetRoi), has_history: total > 0 && row.approved > 0 };
+  }
+  return map;
+}
+
 // Дані для панелі: артикул → кампанії → групи, з метриками і статусами
 app.get('/api/fb/control', checkAuth, async (req, res) => {
   const { dateFrom, dateTo } = req.query;
@@ -1263,13 +1299,16 @@ app.get('/api/fb/control', checkAuth, async (req, res) => {
 
     // Живі статуси по кабінетах
     const accIds = [...new Set(agg.rows.map(r => r.ad_account_id))];
-    const accs = accIds.length ? (await pool.query(`SELECT id, fb_account_id, access_token FROM fb_ad_accounts WHERE id = ANY($1)`, [accIds])).rows : [];
+    const accs = accIds.length ? (await pool.query(`SELECT id, name, fb_account_id, access_token FROM fb_ad_accounts WHERE id = ANY($1)`, [accIds])).rows : [];
+    const accName = {};
+    accs.forEach(a => { accName[a.id] = a.name; });
     const statusByAcc = {};
     for (const a of accs) {
       try { statusByAcc[a.id] = await fbLiveStatuses(a); }
       catch (e) { statusByAcc[a.id] = { campaigns: {}, adsets: {}, error: e.message }; }
     }
     const { map: roiMap, returnCost } = await articleRoiMap(dateFrom, dateTo);
+    const cplMap = await articleCplMap(dateFrom, dateTo);
 
     // Будуємо ієрархію article → campaign → adset
     const arts = {};
@@ -1280,6 +1319,7 @@ app.get('/api/fb/control', checkAuth, async (req, res) => {
       const cId = r.campaign_id;
       const C = A.campaigns[cId] = A.campaigns[cId] || {
         campaign_id: cId, campaign_name: r.campaign_name, ad_account_id: r.ad_account_id,
+        ad_account_name: accName[r.ad_account_id] || ('#' + r.ad_account_id),
         status: (cst.campaigns && cst.campaigns[cId] && cst.campaigns[cId].status) || 'UNKNOWN',
         spend: 0, leads: 0, adsets: []
       };
@@ -1303,10 +1343,13 @@ app.get('/api/fb/control', checkAuth, async (req, res) => {
         roi = A.spend ? net / A.spend * 100 : null;
         netHint = net;
       }
+      const econ = cplMap[A.article] || null;
       return {
         article: A.article, spend: A.spend, leads: A.leads,
         cpl: A.leads ? A.spend / A.leads : 0,
         revenue, roi, net: netHint,
+        cpl_max: econ ? econ.cpl_max : null,
+        cpl_recommended: econ ? econ.cpl_recommended : null,
         campaigns: Object.values(A.campaigns).map(C => ({
           ...C, cpl: C.leads ? C.spend / C.leads : 0
         }))
