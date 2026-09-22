@@ -698,9 +698,9 @@ app.patch('/api/orders/:id', checkAuth, async (req, res) => {
     const values = keys.map(k => req.body[k]);
     values.push(req.params.id);
     await pool.query(`UPDATE orders SET ${setClause}${extraSet} WHERE id = $${values.length}`, values);
-    // Відмова/повернення → заводимо повернення для обліку з кур'єром
-    if (RETURN_TRIGGER_STATUSES.includes(req.body.status)) {
-      try { await ensureReturnForOrder(req.params.id); } catch (e) {}
+    // Відмова/повернення → заводимо повернення для обліку з кур'єром (і навпаки — знімаємо)
+    if (req.body.status !== undefined) {
+      await syncReturnForOrderStatus(req.params.id, req.body.status);
     }
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -808,9 +808,10 @@ app.get('/api/stats/roi', checkAuth, async (req, res) => {
       AND oi.article IS NOT NULL AND oi.article <> ''
       GROUP BY oi.article`;
 
-    // Повернення (для returns cost) — Отказ/Возврат/Ошибка в ТТН в період, по даті ліда
+    // Повернення (для returns cost) — лише ВІДПРАВЛЕНІ посилки (є ТТН): тільки за них НП бере
+    // за зворотну доставку і кур'єр — за відправку. Без ТТН нічого не їхало.
     const refusedParams = [];
-    const refusedConds = [`o.status IN ('Отказ','Возврат','Ошибка в ТТН')`];
+    const refusedConds = [`o.status IN ('Отказ','Возврат','Ошибка в ТТН')`, `o.ttn <> ''`, `o.ttn IS NOT NULL`];
     if (dateFrom) { refusedParams.push(dateFrom); refusedConds.push(`${dateExpr} >= $${refusedParams.length}::date`); }
     if (dateTo)   { refusedParams.push(dateTo);   refusedConds.push(`${dateExpr} < ($${refusedParams.length}::date + interval '1 day')`); }
     const refusedWhere = 'WHERE ' + refusedConds.join(' AND ');
@@ -2575,6 +2576,7 @@ app.put('/api/orders/:id(\\d+)/full', checkAuth, async (req, res) => {
     }
 
     await client.query('COMMIT');
+    await syncReturnForOrderStatus(orderId, b.status || 'Новый');
     res.json({ success: true });
   } catch (err) {
     await client.query('ROLLBACK');
@@ -2967,6 +2969,21 @@ async function ensureReturnForOrder(orderId) {
   return r.rows.length ? r.rows[0].id : null;
 }
 
+// Статус замовлення змінився → завести повернення або прибрати зайве.
+// Якщо замовлення «повернули в гру» (Продажа/Доставка/В пути/На почте), а посилка ще не їхала
+// назад (немає зворотної ЕН і не відмічено вручну) — рядок повернення зайвий, видаляємо.
+async function syncReturnForOrderStatus(orderId, status) {
+  try {
+    if (RETURN_TRIGGER_STATUSES.includes(status)) { await ensureReturnForOrder(orderId); return; }
+    if (['Продажа', 'Доставка', 'В пути', 'На почте'].includes(status)) {
+      await pool.query(
+        `DELETE FROM returns WHERE order_id = $1 AND status = 'in_transit'
+           AND (return_ttn IS NULL OR return_ttn = '') AND arrived_at IS NULL AND picked_up_at IS NULL`,
+        [orderId]);
+    }
+  } catch (e) { console.error('[returns sync status]', e.message); }
+}
+
 // Бекфіл: усі замовлення зі статусом відмови й ТТН, у яких ще немає повернення
 async function backfillReturns() {
   const r = await pool.query(`
@@ -3125,9 +3142,41 @@ app.get('/api/returns/summary', checkAuth, async (req, res) => {
              COALESCE(SUM(np_return_cost), 0)::numeric AS np_return_cost
       FROM returns ${where}
       GROUP BY 1 ORDER BY total DESC`, p);
+    // Від чого відмовляються: розбивка по артикулах
+    const byArt = await pool.query(`
+      SELECT oi.article,
+             MAX(p.name) AS name,
+             COUNT(DISTINCT rt.id)::int AS refused,
+             COUNT(DISTINCT rt.id) FILTER (WHERE rt.status = 'received')::int AS received,
+             COUNT(DISTINCT rt.id) FILTER (WHERE rt.status = 'picked_up')::int AS on_hands,
+             COUNT(DISTINCT rt.id) FILTER (WHERE rt.status IN ('in_transit','at_branch'))::int AS on_way
+      FROM returns rt
+      JOIN order_items oi ON oi.order_id = rt.order_id
+      LEFT JOIN products p ON p.article = oi.article
+      ${where ? where.replace(/refused_at/g, 'rt.refused_at') : ''}
+      ${where ? 'AND' : 'WHERE'} oi.article IS NOT NULL AND oi.article <> ''
+      GROUP BY oi.article ORDER BY refused DESC`, p);
+
+    // Скільки всього продано цих артикулів за період — щоб бачити % відмов
+    const soldP = [], soldC = [`o.status = 'Продажа'`];
+    const lead = `COALESCE(o.original_created_at, o.created_at)`;
+    if (dateFrom) { soldP.push(dateFrom); soldC.push(`${lead} >= $${soldP.length}::date`); }
+    if (dateTo) { soldP.push(dateTo); soldC.push(`${lead} < ($${soldP.length}::date + interval '1 day')`); }
+    const sold = await pool.query(`
+      SELECT oi.article, COUNT(DISTINCT o.id)::int AS sold
+      FROM orders o JOIN order_items oi ON oi.order_id = o.id
+      WHERE ${soldC.join(' AND ')} AND oi.article IS NOT NULL AND oi.article <> ''
+      GROUP BY oi.article`, soldP);
+    const soldMap = {};
+    sold.rows.forEach(x => { soldMap[x.article] = x.sold; });
+    const byArticle = byArt.rows.map(x => {
+      const s = soldMap[x.article] || 0;
+      return { ...x, sold: s, refusal_pct: (s + x.refused) ? Math.round(x.refused / (s + x.refused) * 1000) / 10 : 0 };
+    });
+
     // Список міст для фільтра — по всій таблиці, не лише по періоду
     const cities = await pool.query(`SELECT DISTINCT return_city FROM returns WHERE return_city <> '' ORDER BY 1`);
-    res.json({ byCity: r.rows, cities: cities.rows.map(x => x.return_city) });
+    res.json({ byCity: r.rows, byArticle, cities: cities.rows.map(x => x.return_city) });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

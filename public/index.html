@@ -556,6 +556,27 @@
                 <!-- Зведення по містах -->
                 <div id="returnsSummary" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 mb-6"></div>
 
+                <!-- Від чого відмовляються -->
+                <div id="returnsByArticleWrap" class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 mb-6 hidden">
+                    <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Від чого відмовляються</div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-sm">
+                            <thead>
+                                <tr class="border-b border-slate-100">
+                                    <th class="py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">Артикул / товар</th>
+                                    <th class="py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Відмов</th>
+                                    <th class="py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Продано</th>
+                                    <th class="py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">% відмов</th>
+                                    <th class="py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Їде / на відд.</th>
+                                    <th class="py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">У кур'єра</th>
+                                    <th class="py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Отримано</th>
+                                </tr>
+                            </thead>
+                            <tbody id="returnsByArticle" class="divide-y divide-slate-50"></tbody>
+                        </table>
+                    </div>
+                </div>
+
                 <!-- Фільтри -->
                 <div class="flex items-end gap-2 flex-wrap bg-white border border-slate-100 rounded-2xl p-3 shadow-sm mb-6">
                     <div>
@@ -3357,6 +3378,7 @@
                 returnsRows = rows;
                 returnsSelected.clear();
                 renderReturnsSummary(sum);
+                renderReturnsByArticle(sum);
                 renderReturnsTable();
                 fillReturnsCityFilter(sum.cities || []);
             } catch (e) {
@@ -3403,6 +3425,32 @@
                     </div>
                     ${c.problem ? `<div class="text-[11px] text-rose-500 font-bold mt-2"><i class="fa-solid fa-triangle-exclamation mr-1"></i>${c.problem} з проблемою</div>` : ''}
                 </div>`).join('');
+        }
+
+        function renderReturnsByArticle(sum) {
+            const wrap = document.getElementById('returnsByArticleWrap');
+            const tb = document.getElementById('returnsByArticle');
+            if (!wrap || !tb) return;
+            const rows = (sum && sum.byArticle) || [];
+            wrap.classList.toggle('hidden', !rows.length);
+            if (!rows.length) return;
+            tb.innerHTML = rows.map(r => {
+                const pct = Number(r.refusal_pct) || 0;
+                const pctCls = pct >= 40 ? 'bg-rose-50 text-rose-600' : pct >= 20 ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600';
+                return `
+                <tr class="hover:bg-slate-50 transition-all">
+                    <td class="py-2.5">
+                        <div class="font-black text-slate-800 uppercase">${esc(r.article)}</div>
+                        <div class="text-[11px] text-slate-400">${esc(r.name || '')}</div>
+                    </td>
+                    <td class="py-2.5 text-center font-black text-rose-500">${r.refused}</td>
+                    <td class="py-2.5 text-center font-bold text-slate-600">${r.sold}</td>
+                    <td class="py-2.5 text-center"><span class="inline-flex text-[11px] font-black px-2.5 py-1 rounded-full ${pctCls}">${pct}%</span></td>
+                    <td class="py-2.5 text-center font-bold text-slate-500">${r.on_way}</td>
+                    <td class="py-2.5 text-center font-bold ${r.on_hands ? 'text-violet-600' : 'text-slate-300'}">${r.on_hands}</td>
+                    <td class="py-2.5 text-center font-bold text-emerald-600">${r.received}</td>
+                </tr>`;
+            }).join('');
         }
 
         function renderReturnsTable() {
