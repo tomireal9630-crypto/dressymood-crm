@@ -785,6 +785,12 @@
                                             <span><input type="number" id="calcSmsPrice" min="0" step="0.01" oninput="calcRecompute()" class="w-20 text-right text-sm font-black bg-slate-50 border border-slate-100 rounded px-2 py-1 outline-none"> ₴</span>
                                         </div>
                                     </div>
+                                    <div>
+                                        <div class="flex justify-between items-baseline mb-2">
+                                            <label class="text-xs font-bold text-slate-600" title="За кожну відправлену посилку: продажі + відмови">🚚 Кур'єр за відправку</label>
+                                            <span><input type="number" id="calcCourier" min="0" step="0.01" oninput="calcRecompute()" class="w-20 text-right text-sm font-black bg-slate-50 border border-slate-100 rounded px-2 py-1 outline-none"> ₴</span>
+                                        </div>
+                                    </div>
                                     <div class="pt-3 border-t border-slate-100">
                                         <div class="flex justify-between items-baseline mb-2">
                                             <label class="text-xs font-bold text-slate-600" title="Хостинг, тариф, підписки — сума активних постійних витрат">🏢 Постійні витрати / міс</label>
@@ -840,6 +846,10 @@
                                     <div class="flex justify-between">
                                         <span class="text-slate-500">SMS (підтвердженим)</span>
                                         <span id="calcResSms" class="font-bold text-rose-500">−0 ₴</span>
+                                    </div>
+                                    <div class="flex justify-between">
+                                        <span class="text-slate-500">Кур'єр (відправленим)</span>
+                                        <span id="calcResCourier" class="font-bold text-rose-500">−0 ₴</span>
                                     </div>
                                     <div class="flex justify-between">
                                         <span class="text-slate-500">Накладні (постійні)</span>
@@ -977,9 +987,9 @@
                             <div class="text-[10px] text-slate-400 mt-1">CPL <span id="roiKpiCpl">0</span> ₴</div>
                         </div>
                         <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-4">
-                            <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Собів.+Поверн.</div>
+                            <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Собів.+Поверн.+Кур'єр</div>
                             <div id="roiKpiCosts" class="text-xl font-black text-rose-500">0 ₴</div>
-                            <div class="text-[10px] text-slate-400 mt-1"><span id="roiKpiRefused">0</span> відмов на НП</div>
+                            <div class="text-[10px] text-slate-400 mt-1"><span id="roiKpiRefused">0</span> відмов на НП · кур'єр <span id="roiKpiCourier">0</span> ₴</div>
                         </div>
                         <div class="bg-white rounded-2xl shadow-sm border-2 border-emerald-200 p-4">
                             <div class="text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-1">Чистий прибуток</div>
@@ -1111,6 +1121,7 @@
                     <div class="flex items-end gap-3 flex-wrap mb-4 text-xs text-slate-500">
                         <div class="flex items-center gap-2"><span class="font-bold">Історія:</span> <span id="unitEconLookbackLabel">останні 30 днів</span></div>
                         <div class="flex items-center gap-2"><span class="font-bold">Відмова на НП:</span> <span id="unitEconReturnCostLabel">110 ₴</span></div>
+                        <div class="flex items-center gap-2"><span class="font-bold">Кур'єр за відправку:</span> <span id="unitEconCourierLabel">40 ₴</span></div>
                         <button onclick="loadUnitEconomics()" class="ml-auto px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider text-white transition-all" style="background:linear-gradient(135deg,#8b5cf6,#ec4899)">
                             <i class="fa-solid fa-rotate"></i> Оновити
                         </button>
@@ -1530,6 +1541,12 @@
                                 <input type="number" step="0.01" min="0" name="sms_price" placeholder="0.90"
                                     class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-bold text-sm">
                                 <div class="text-[10px] text-slate-400 font-medium mt-1">Постійні витрати (хостинг тощо) беруться з вкладки Фінанси → Постійні витрати</div>
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Кур'єр за відправку (₴)</label>
+                                <input type="number" step="0.01" min="0" name="courier_cost" placeholder="40"
+                                    class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-bold text-sm">
+                                <div class="text-[10px] text-slate-400 font-medium mt-1">За кожну відправлену посилку (продажі + відмови). Не входить у собівартість — окрема стаття у ROI, юніт-економіці й Фінансах</div>
                             </div>
                             <div>
                                 <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Курс USD → грн</label>
@@ -2720,6 +2737,7 @@
                 if (f.new_buyout_pct) f.new_buyout_pct.value = s.new_buyout_pct ?? '';
                 if (f.sms_count) f.sms_count.value = s.sms_count ?? '';
                 if (f.sms_price) f.sms_price.value = s.sms_price ?? '';
+                if (f.courier_cost) f.courier_cost.value = s.courier_cost ?? '';
                 if (f.fx_usd) f.fx_usd.value = s.fx_usd ?? '';
                 if (f.fx_eur) f.fx_eur.value = s.fx_eur ?? '';
             } catch (e) { /* мовчки */ }
@@ -2745,6 +2763,7 @@
                     new_buyout_pct: f.new_buyout_pct ? f.new_buyout_pct.value : '',
                     sms_count: f.sms_count ? f.sms_count.value : '',
                     sms_price: f.sms_price ? f.sms_price.value : '',
+                    courier_cost: f.courier_cost ? f.courier_cost.value : '',
                     fx_usd: f.fx_usd ? f.fx_usd.value : '',
                     fx_eur: f.fx_eur ? f.fx_eur.value : ''
                 };
@@ -3796,7 +3815,9 @@
             document.getElementById('roiKpiLeads').textContent = int(t.leads);
             document.getElementById('roiKpiRoas').textContent = (Number(t.roas || 0)).toFixed(2) + '×';
             document.getElementById('roiKpiCpl').textContent = Math.round(t.cpl || 0);
-            document.getElementById('roiKpiCosts').textContent = uah((Number(t.cost) || 0) + (Number(t.returns_cost) || 0));
+            document.getElementById('roiKpiCosts').textContent = uah((Number(t.cost) || 0) + (Number(t.returns_cost) || 0) + (Number(t.courier_cost) || 0));
+            const courierEl = document.getElementById('roiKpiCourier');
+            if (courierEl) courierEl.textContent = int(Math.round(t.courier_cost || 0));
             document.getElementById('roiKpiRefused').textContent = int(t.refused);
             document.getElementById('roiKpiNetProfit').textContent = uah(t.net_profit);
             const npEl = document.getElementById('roiKpiNetProfit');
@@ -3862,7 +3883,7 @@
                     <td class="px-4 py-3 text-right font-black text-slate-800">${uah(r.revenue)}</td>
                     <td class="px-4 py-3 text-right font-bold text-rose-500">${uah(r.cost)}</td>
                     <td class="px-4 py-3 text-right font-black text-blue-500">${uah(r.ad_spend)}</td>
-                    <td class="px-4 py-3 text-right font-bold text-rose-500">${uah(r.returns_cost)}<div class="text-[10px] text-slate-400 font-medium">${r.refused} шт</div></td>
+                    <td class="px-4 py-3 text-right font-bold text-rose-500">${uah(r.returns_cost)}<div class="text-[10px] text-slate-400 font-medium">${r.refused} шт · кур'єр ${uah(r.courier_cost)}</div></td>
                     <td class="px-4 py-3 text-center">${noSpend ? '<span class="text-slate-300">—</span>' : `<span class="inline-flex items-center text-[11px] font-black px-2.5 py-1 rounded-full ${roasCls}">${roasV.toFixed(2)}×</span>`}</td>
                     <td class="px-4 py-3 text-right text-xs font-bold text-slate-600">${noSpend ? '—' : Math.round(r.cpl) + ' ₴'}</td>
                     <td class="px-4 py-3 text-right font-black ${npCls}">${uah(r.net_profit)}</td>
@@ -3896,6 +3917,8 @@
             const rcLbl = document.getElementById('unitEconReturnCostLabel');
             if (lbl) lbl.textContent = `останні ${lookback} днів`;
             if (rcLbl) rcLbl.textContent = `${retCost} ₴`;
+            const courLbl = document.getElementById('unitEconCourierLabel');
+            if (courLbl) courLbl.textContent = `${s.courier_cost || 0} ₴`;
             renderUnitEconomicsTable();
         }
 
@@ -4128,6 +4151,7 @@
             document.getElementById('calcFixed').value = Math.round(calcRecurringSum);
             if (calcSettings.sms_count != null) document.getElementById('calcSmsCount').value = calcSettings.sms_count;
             if (calcSettings.sms_price != null) document.getElementById('calcSmsPrice').value = calcSettings.sms_price;
+            document.getElementById('calcCourier').value = calcSettings.courier_cost != null ? calcSettings.courier_cost : 40;
             document.getElementById('calcHistoryNote').innerHTML =
                 `🆕 <b>Планування до запуску.</b> Впиши ціну й закупку, постав очікувані апрув/викуп — калькулятор покаже <b>рекомендований CPL</b> під ціль ROI. Апрув/викуп за замовч. — орієнтир з налаштувань (${apriv}% / ${buyout}%).`;
             calcRecompute();
@@ -4155,6 +4179,7 @@
             document.getElementById('calcFixed').value = Math.round(calcRecurringSum);
             if (calcSettings.sms_count != null) document.getElementById('calcSmsCount').value = calcSettings.sms_count;
             if (calcSettings.sms_price != null) document.getElementById('calcSmsPrice').value = calcSettings.sms_price;
+            document.getElementById('calcCourier').value = calcSettings.courier_cost != null ? calcSettings.courier_cost : 40;
 
             const note = h.total_leads > 0
                 ? `📊 Історія (за ${h.lookback_days || 30} днів): ${h.total_leads} заявок, апрув ${h.approval_pct}%, викуп ${h.buyout_pct}%${h.in_flight > 0 ? `, ${h.in_flight} в дорозі` : ''}.`
@@ -4204,19 +4229,21 @@
             const smsCount = Number(document.getElementById('calcSmsCount').value) || 0;
             const smsPrice = Number(document.getElementById('calcSmsPrice').value) || 0;
             const smsPerApproved = smsCount * smsPrice;
+            const courierPerShip = Number(document.getElementById('calcCourier').value) || 0;
 
             const adSpend = 100 * cpl;
             const revenue = sold * price;
             const cogs = sold * cost;
             const returns = refused * retCost;
             const smsCost = approved * smsPerApproved; // SMS шлються всім підтвердженим
+            const courier = (sold + refused) * courierPerShip; // кур'єр — за кожну відправлену посилку
             const overhead = sold * overheadPerSale; // накладні на 100 лідів
-            const netProfit = revenue - cogs - returns - smsCost - overhead - adSpend;
+            const netProfit = revenue - cogs - returns - smsCost - courier - overhead - adSpend;
             const roi = adSpend > 0 ? netProfit / adSpend * 100 : 0;
-            const margin = revenue > 0 ? (revenue - cogs - returns - smsCost - overhead) / revenue * 100 : 0;
+            const margin = revenue > 0 ? (revenue - cogs - returns - smsCost - courier - overhead) / revenue * 100 : 0;
 
             // CPL_max і Рек з урахуванням усіх змінних витрат
-            const grossPer100 = revenue - cogs - returns - smsCost - overhead;
+            const grossPer100 = revenue - cogs - returns - smsCost - courier - overhead;
             const cplMax = grossPer100 / 100;
             const cplRec = cplMax / (1 + targetRoi);
 
@@ -4229,6 +4256,7 @@
             document.getElementById('calcResCogs').textContent = '−' + uah(cogs);
             document.getElementById('calcResReturns').textContent = '−' + uah(returns);
             document.getElementById('calcResSms').textContent = '−' + uah(smsCost);
+            document.getElementById('calcResCourier').textContent = '−' + uah(courier);
             document.getElementById('calcResOverhead').textContent = '−' + uah(overhead);
             document.getElementById('calcResAdSpend').textContent = '−' + uah(adSpend);
             document.getElementById('calcResNetProfit').textContent = (netProfit >= 0 ? '+' : '') + uah(netProfit);

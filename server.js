@@ -803,7 +803,7 @@ app.get('/api/stats/roi', checkAuth, async (req, res) => {
       pool.query(appTotalQ, appParams),
       pool.query(appByArtQ, appParams)
     ]);
-    const { smsCost, overheadPerSale } = await overheadContext(dateFrom, dateTo);
+    const { smsCost, courierCost, overheadPerSale } = await overheadContext(dateFrom, dateTo);
 
     const tr = t.rows[0] || {};
     const revenue = Number(tr.revenue) || 0;
@@ -816,7 +816,9 @@ app.get('/api/stats/roi', checkAuth, async (req, res) => {
     const approvedTotal = Number(appT.rows[0].approved) || 0;
     const smsTotal = approvedTotal * smsCost;
     const overheadTotal = (Number(tr.orders) || 0) * overheadPerSale;
-    const netProfit = grossProfit - adSpend - returnsCost - smsTotal - overheadTotal;
+    // Кур'єр — за кожну відправлену посилку: продані + відмови (відмова теж їхала до клієнта)
+    const courierTotal = ((Number(tr.orders) || 0) + refusedTotal) * courierCost;
+    const netProfit = grossProfit - adSpend - returnsCost - smsTotal - courierTotal - overheadTotal;
     const approvedMap = {};
     appA.rows.forEach(r => { approvedMap[r.article] = Number(r.approved) || 0; });
     const roas = adSpend ? revenue / adSpend : 0;
@@ -849,7 +851,8 @@ app.get('/api/stats/roi', checkAuth, async (req, res) => {
       const ld = (spendMap[article] && spendMap[article].leads) || 0;
       const smsC = (approvedMap[article] || 0) * smsCost;
       const ovhC = (Number(r.orders) || 0) * overheadPerSale;
-      const net = gross - sp - ret - smsC - ovhC;
+      const courC = ((Number(r.orders) || 0) + refused) * courierCost;
+      const net = gross - sp - ret - smsC - courC - ovhC;
       return {
         article,
         orders: Number(r.orders) || 0,
@@ -862,6 +865,7 @@ app.get('/api/stats/roi', checkAuth, async (req, res) => {
         refused,
         returns_cost: ret,
         sms_cost: smsC,
+        courier_cost: courC,
         overhead_cost: ovhC,
         net_profit: net,
         roas: sp ? rev / sp : 0,
@@ -884,6 +888,7 @@ app.get('/api/stats/roi', checkAuth, async (req, res) => {
         refused: refusedTotal,
         returns_cost: returnsCost,
         sms_cost: smsTotal,
+        courier_cost: courierTotal,
         overhead_cost: overheadTotal,
         net_profit: netProfit,
         roas,
@@ -966,6 +971,7 @@ const ECONOMICS_DEFAULTS = {
   new_buyout_pct: 60,
   sms_count: 3,   // скільки SMS на підтверджене замовлення
   sms_price: 0,   // ціна однієї SMS, ₴
+  courier_cost: 40, // кур'єр за одну відправку, ₴ (на кожну відправлену посилку: продаж + відмови)
   fx_usd: 41,     // курс USD→UAH для конвертації витрат FB
   fx_eur: 45      // курс EUR→UAH
 };
@@ -975,11 +981,12 @@ async function getEconomicsSettings() {
   return { ...ECONOMICS_DEFAULTS, ...(r.rows.length ? r.rows[0].value : {}) };
 }
 
-// Змінні витрати бізнесу: SMS на підтверджене + накладні (постійні витрати) на замовлення.
+// Змінні витрати бізнесу: SMS на підтверджене + кур'єр на відправлене + накладні (постійні витрати) на замовлення.
 // Накладні розкидаються на ФАКТИЧНІ продажі періоду (варіант A).
 async function overheadContext(dateFrom, dateTo) {
   const s = await getEconomicsSettings();
   const smsCost = (Number(s.sms_count) || 0) * (Number(s.sms_price) || 0); // ₴ на підтверджене замовлення
+  const courierCost = Number(s.courier_cost) || 0; // ₴ на кожну відправлену посилку (продаж + відмова)
   const fx = await pool.query(`SELECT COALESCE(SUM(amount),0)::numeric s FROM finance_recurring WHERE is_active = true`);
   const fixedMonthly = Number(fx.rows[0].s) || 0;
   let days = 30;
@@ -995,7 +1002,7 @@ async function overheadContext(dateFrom, dateTo) {
   const ts = await pool.query(`SELECT COUNT(DISTINCT o.id)::int n FROM orders o WHERE ${c.join(' AND ')}`, p);
   const totalSold = ts.rows[0].n || 0;
   const overheadPerSale = totalSold > 0 ? periodFixed / totalSold : 0;
-  return { smsCost, overheadPerSale, fixedMonthly, periodFixed, totalSold };
+  return { smsCost, courierCost, overheadPerSale, fixedMonthly, periodFixed, totalSold };
 }
 
 app.get('/api/settings/economics', checkAuth, async (req, res) => {
@@ -1004,7 +1011,7 @@ app.get('/api/settings/economics', checkAuth, async (req, res) => {
 });
 
 app.post('/api/settings/economics', checkAuth, async (req, res) => {
-  const allowed = ['return_cost', 'lookback_days', 'settlement_days', 'target_roi_pct', 'campaign_regex', 'new_approval_pct', 'new_buyout_pct', 'sms_count', 'sms_price', 'fx_usd', 'fx_eur'];
+  const allowed = ['return_cost', 'lookback_days', 'settlement_days', 'target_roi_pct', 'campaign_regex', 'new_approval_pct', 'new_buyout_pct', 'sms_count', 'sms_price', 'courier_cost', 'fx_usd', 'fx_eur'];
   const current = await getEconomicsSettings();
   const next = { ...current };
   for (const k of allowed) {
@@ -1088,13 +1095,14 @@ app.get('/api/products/:id(\\d+)/economics', checkAuth, async (req, res) => {
       refused: 100 * approvalRate * refusalRate
     };
     const _to2 = new Date(); const _from2 = new Date(); _from2.setDate(_from2.getDate() - lookback);
-    const { smsCost: _sms, overheadPerSale: _ovh } = await overheadContext(_from2.toLocaleDateString('sv-SE'), _to2.toLocaleDateString('sv-SE'));
+    const { smsCost: _sms, courierCost: _cour, overheadPerSale: _ovh } = await overheadContext(_from2.toLocaleDateString('sv-SE'), _to2.toLocaleDateString('sv-SE'));
     const revenue = per100.sold * sellPrice;
     const cogs = per100.sold * productCost;
     const returns = per100.refused * returnCost;
     const smsCost100 = per100.approved * _sms;
+    const courier100 = (per100.sold + per100.refused) * _cour;
     const overhead100 = per100.sold * _ovh;
-    const grossProfit = revenue - cogs - returns - smsCost100 - overhead100;
+    const grossProfit = revenue - cogs - returns - smsCost100 - courier100 - overhead100;
     const cpl_max = grossProfit / 100;
     const cpl_recommended = cpl_max / (1 + targetRoi);
 
@@ -1113,7 +1121,7 @@ app.get('/api/products/:id(\\d+)/economics', checkAuth, async (req, res) => {
         refusal_pct: Math.round(refusalRate * 1000) / 10,
         is_extrapolated: useFinal
       },
-      settings: { return_cost: returnCost },
+      settings: { return_cost: returnCost, courier_cost: _cour },
       cpl: {
         max: Math.round(cpl_max * 100) / 100,
         recommended: Math.round(cpl_recommended * 100) / 100,
@@ -1391,7 +1399,7 @@ async function articleCplMap(dateFrom, dateTo) {
     GROUP BY l.article`, p);
   const newApproval = Math.max(0, Math.min(100, Number(settings.new_approval_pct))) / 100 || 0.7;
   const newBuyout = Math.max(0, Math.min(100, Number(settings.new_buyout_pct))) / 100 || 0.6;
-  const { smsCost, overheadPerSale } = await overheadContext(dateFrom, dateTo);
+  const { smsCost, courierCost, overheadPerSale } = await overheadContext(dateFrom, dateTo);
   const map = {};
   for (const row of r.rows) {
     const price = Number(row.price) || 0, cost = Number(row.cost) || 0;
@@ -1414,8 +1422,8 @@ async function articleCplMap(dateFrom, dateTo) {
     }
     const approved100 = 100 * approvalRate;
     const sold100 = 100 * approvalRate * buyoutRate, refused100 = 100 * approvalRate * refusalRate;
-    // Валовий на 100 лідів = продажі×(ціна−собів.) − відмови×відмова − підтв.×SMS − продажі×накладні
-    const cplMax = (sold100 * price - sold100 * cost - refused100 * returnCost - approved100 * smsCost - sold100 * overheadPerSale) / 100;
+    // Валовий на 100 лідів = продажі×(ціна−собів.) − відмови×відмова − підтв.×SMS − відправлені×кур'єр − продажі×накладні
+    const cplMax = (sold100 * price - sold100 * cost - refused100 * returnCost - approved100 * smsCost - (sold100 + refused100) * courierCost - sold100 * overheadPerSale) / 100;
     map[row.article] = { cpl_max: cplMax, cpl_recommended: cplMax / (1 + targetRoi), provisional, has_history: reliable };
   }
   return map;
@@ -1808,7 +1816,7 @@ app.get('/api/stats/unit-economics', checkAuth, async (req, res) => {
     // Змінні витрати (SMS на підтверджене + накладні на продаж) за вікно lookback
     const _to = new Date(); const _from = new Date(); _from.setDate(_from.getDate() - lookback);
     const iso = d => d.toLocaleDateString('sv-SE');
-    const { smsCost, overheadPerSale } = await overheadContext(iso(_from), iso(_to));
+    const { smsCost, courierCost, overheadPerSale } = await overheadContext(iso(_from), iso(_to));
     const RESOLVED_MIN = 5;
     const rows = r.rows.map(row => {
       const sellPrice = Number(row.price) || 0;
@@ -1826,7 +1834,7 @@ app.get('/api/stats/unit-economics', checkAuth, async (req, res) => {
       const approved100 = 100 * approvalRate;
       const sold100 = 100 * approvalRate * buyoutRate;
       const refused100 = 100 * approvalRate * refusalRate;
-      const grossProfit100 = sold100 * sellPrice - sold100 * productCost - refused100 * returnCost - approved100 * smsCost - sold100 * overheadPerSale;
+      const grossProfit100 = sold100 * sellPrice - sold100 * productCost - refused100 * returnCost - approved100 * smsCost - (sold100 + refused100) * courierCost - sold100 * overheadPerSale;
       const cpl_max = grossProfit100 / 100;
       const cpl_recommended = cpl_max / (1 + targetRoi);
 
@@ -1850,7 +1858,7 @@ app.get('/api/stats/unit-economics', checkAuth, async (req, res) => {
       };
     });
 
-    res.json({ rows, settings: { lookback_days: lookback, return_cost: returnCost, default_target_roi_pct: defaultTargetRoi } });
+    res.json({ rows, settings: { lookback_days: lookback, return_cost: returnCost, courier_cost: courierCost, default_target_roi_pct: defaultTargetRoi } });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -3143,10 +3151,11 @@ const AUTO_CATS = {
   sales:   { category: 'Продаж (авто)',            color: '#10b981', kind: 'income'  },
   cogs:    { category: 'Собівартість товару (авто)', color: '#f97316', kind: 'expense' },
   ads:     { category: 'Реклама Facebook (авто)',   color: '#3b82f6', kind: 'expense' },
-  returns: { category: 'Повернення пошта (авто)',   color: '#f43f5e', kind: 'expense' }
+  returns: { category: 'Повернення пошта (авто)',   color: '#f43f5e', kind: 'expense' },
+  courier: { category: "Кур'єр / відправка (авто)", color: '#a855f7', kind: 'expense' }
 };
 
-// Повертає map period -> {revenue, cogs, ads, returns, orders} за gran ('day'|'week'|'month')
+// Повертає map period -> {revenue, cogs, ads, returns, courier, orders} за gran ('day'|'week'|'month')
 async function computedFinanceStreams(dateFrom, dateTo, gran) {
   const leadExpr = `COALESCE(o.original_created_at, o.created_at)`;
 
@@ -3185,15 +3194,18 @@ async function computedFinanceStreams(dateFrom, dateTo, gran) {
 
   const settings = await getEconomicsSettings();
   const returnCost = Number(settings.return_cost) || 0;
+  const courierCost = Number(settings.courier_cost) || 0;
   const [sales, ads, refs] = await Promise.all([
     pool.query(salesQ, sp), pool.query(adsQ, fp), pool.query(refQ, rp)
   ]);
 
   const map = {};
-  const ensure = p => (map[p] = map[p] || { period: p, revenue: 0, cogs: 0, ads: 0, returns: 0, orders: 0 });
+  const ensure = p => (map[p] = map[p] || { period: p, revenue: 0, cogs: 0, ads: 0, returns: 0, courier: 0, refused: 0, orders: 0 });
   sales.rows.forEach(r => { const m = ensure(r.period); m.revenue = Number(r.revenue) || 0; m.cogs = Number(r.cogs) || 0; m.orders = Number(r.orders) || 0; });
   ads.rows.forEach(r => { ensure(r.period).ads = Number(r.spend) || 0; });
-  refs.rows.forEach(r => { ensure(r.period).returns = (Number(r.refused) || 0) * returnCost; });
+  refs.rows.forEach(r => { const m = ensure(r.period); m.refused = Number(r.refused) || 0; m.returns = m.refused * returnCost; });
+  // Кур'єр — за кожну відправлену посилку (продані + відмови)
+  Object.values(map).forEach(m => { m.courier = (m.orders + m.refused) * courierCost; });
   return map;
 }
 
@@ -3241,6 +3253,7 @@ app.get('/api/finance/pnl', checkAuth, async (req, res) => {
       if (s.cogs > 0)    { P.expense.push({ ...AUTO_CATS.cogs, total: s.cogs });    P.totals.expense += s.cogs; }
       if (s.ads > 0)     { P.expense.push({ ...AUTO_CATS.ads, total: s.ads });      P.totals.expense += s.ads; }
       if (s.returns > 0) { P.expense.push({ ...AUTO_CATS.returns, total: s.returns }); P.totals.expense += s.returns; }
+      if (s.courier > 0) { P.expense.push({ ...AUTO_CATS.courier, total: s.courier }); P.totals.expense += s.courier; }
     }
 
     Object.values(periods).forEach(p => {
@@ -3280,7 +3293,7 @@ app.get('/api/finance/cashflow', checkAuth, async (req, res) => {
     for (const s of Object.values(streams)) {
       const m = ensure(s.period);
       m.income += s.revenue;
-      m.expense += s.cogs + s.ads + s.returns;
+      m.expense += s.cogs + s.ads + s.returns + s.courier;
     }
 
     const out = Object.values(map)
@@ -3296,8 +3309,8 @@ app.get('/api/finance/summary', checkAuth, async (req, res) => {
   try {
     // Розрахункові потоки одним відром
     const streams = await computedFinanceStreams(dateFrom, dateTo, 'year');
-    let revenue = 0, cogs = 0, ads = 0, returns = 0, ordersSold = 0;
-    for (const s of Object.values(streams)) { revenue += s.revenue; cogs += s.cogs; ads += s.ads; returns += s.returns; ordersSold += s.orders; }
+    let revenue = 0, cogs = 0, ads = 0, returns = 0, courier = 0, ordersSold = 0;
+    for (const s of Object.values(streams)) { revenue += s.revenue; cogs += s.cogs; ads += s.ads; returns += s.returns; courier += s.courier; ordersSold += s.orders; }
 
     // Ручні транзакції за період
     const mp = [];
@@ -3314,11 +3327,11 @@ app.get('/api/finance/summary', checkAuth, async (req, res) => {
     const manualExpense = Number(mR.rows[0].manual_expense) || 0;
 
     const totalIncome  = revenue + manualIncome;
-    const totalExpense = cogs + ads + returns + manualExpense;
+    const totalExpense = cogs + ads + returns + courier + manualExpense;
     const profit = totalIncome - totalExpense;
 
     res.json({
-      revenue, cogs, ads, returns, manualIncome, manualExpense,
+      revenue, cogs, ads, returns, courier, manualIncome, manualExpense,
       totalIncome, totalExpense, profit,
       ordersSold,
       avgCheck: ordersSold ? revenue / ordersSold : 0,
@@ -3328,6 +3341,7 @@ app.get('/api/finance/summary', checkAuth, async (req, res) => {
         { label: 'Собівартість', value: cogs,          color: AUTO_CATS.cogs.color },
         { label: 'Реклама',      value: ads,           color: AUTO_CATS.ads.color },
         { label: 'Повернення',   value: returns,       color: AUTO_CATS.returns.color },
+        { label: "Кур'єр",       value: courier,       color: AUTO_CATS.courier.color },
         { label: 'Інші (ручні)', value: manualExpense, color: '#64748b' }
       ].filter(x => x.value > 0)
     });
