@@ -64,6 +64,10 @@
                     <button onclick="switchView('export')" id="btn-export" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
                         <i class="fa-solid fa-file-export w-5 text-center"></i> Вигрузка
                     </button>
+                    <button onclick="switchView('returns')" id="btn-returns" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
+                        <i class="fa-solid fa-rotate-left w-5 text-center"></i> Повернення
+                        <span id="returnsBadge" class="ml-auto bg-violet-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full hidden" title="У кур'єра на руках">0</span>
+                    </button>
                 </nav>
             </div>
 
@@ -528,6 +532,83 @@
                         </thead>
                         <tbody id="stockTable" class="divide-y divide-slate-50"></tbody>
                     </table>
+                </div>
+            </div>
+            <div id="view-returns" class="view-content h-full">
+                <div class="flex justify-between items-start mb-6 gap-4 flex-wrap">
+                    <div>
+                        <h2 class="text-3xl font-black text-slate-800 uppercase italic tracking-tighter">Повернення</h2>
+                        <p class="text-slate-400 font-medium text-sm">Відмови, що їдуть назад. НП веде до «забрав кур'єр», ти відмічаєш «отримано» — різниця = у кур'єра на руках</p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button onclick="returnsSync()" id="returnsSyncBtn" class="px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider bg-slate-100 text-slate-600 hover:bg-slate-200 transition-all">
+                            <i class="fa-solid fa-rotate mr-1"></i> Оновити з НП
+                        </button>
+                        <button onclick="returnsBulk('received')" id="returnsBulkBtn" class="px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider bg-emerald-500 text-white hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-200 disabled:opacity-40 disabled:shadow-none" disabled>
+                            <i class="fa-solid fa-check-double mr-1"></i> Отримав від кур'єра (<span id="returnsSelCount">0</span>)
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Зведення по містах -->
+                <div id="returnsSummary" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 mb-6"></div>
+
+                <!-- Фільтри -->
+                <div class="flex items-end gap-2 flex-wrap bg-white border border-slate-100 rounded-2xl p-3 shadow-sm mb-6">
+                    <div>
+                        <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">Статус</label>
+                        <select id="returnsStatusFilter" onchange="loadReturns()" class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
+                            <option value="">Всі, крім отриманих</option>
+                            <option value="in_transit">Їде назад</option>
+                            <option value="at_branch">На відділенні</option>
+                            <option value="picked_up">У кур'єра на руках</option>
+                            <option value="received">Отримано</option>
+                            <option value="problem">Проблема</option>
+                            <option value="all">Взагалі всі</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">Місто</label>
+                        <select id="returnsCityFilter" onchange="loadReturns()" class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
+                            <option value="">Всі міста</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">Відмова з</label>
+                        <input type="date" id="returnsDateFrom" onchange="loadReturns()" class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
+                    </div>
+                    <div>
+                        <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">по</label>
+                        <input type="date" id="returnsDateTo" onchange="loadReturns()" class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
+                    </div>
+                    <div class="flex-1 min-w-[180px]">
+                        <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">Пошук</label>
+                        <input type="text" id="returnsSearch" placeholder="ТТН, клієнт, телефон, артикул" oninput="returnsSearchDebounced()" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
+                    </div>
+                    <button onclick="resetReturnsFilters()" class="px-3 py-2 rounded-lg text-xs font-bold bg-rose-50 text-rose-500 hover:bg-rose-100 transition-all">Скинути</button>
+                    <button onclick="copyReturnsList()" class="px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider bg-slate-100 text-slate-600 hover:bg-slate-200 transition-all" title="Список для звірки з кур'єром">
+                        <i class="fa-solid fa-copy mr-1"></i> Список для звірки
+                    </button>
+                </div>
+
+                <div class="bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/40 border border-slate-100 overflow-hidden">
+                    <div class="overflow-x-auto">
+                    <table class="w-full text-left text-sm">
+                        <thead>
+                            <tr class="bg-slate-50/50 border-b border-slate-100">
+                                <th class="px-4 py-4 w-10"><input type="checkbox" id="returnsSelAll" onchange="returnsToggleAll(this.checked)" class="w-4 h-4 accent-emerald-500"></th>
+                                <th class="px-4 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Відмова</th>
+                                <th class="px-4 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Клієнт / товар</th>
+                                <th class="px-4 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">ТТН → зворотна</th>
+                                <th class="px-4 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Куди</th>
+                                <th class="px-4 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Статус</th>
+                                <th class="px-4 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Нотатка</th>
+                                <th class="px-4 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Дії</th>
+                            </tr>
+                        </thead>
+                        <tbody id="returnsTable" class="divide-y divide-slate-50"></tbody>
+                    </table>
+                    </div>
                 </div>
             </div>
             <div id="view-export" class="view-content h-full">
@@ -2276,7 +2357,7 @@
             const btn = document.getElementById(`btn-${view}`);
             if (btn) btn.classList.add('active');
 
-            const titles = { 'orders': 'ЗАМОВЛЕННЯ', 'warehouse': 'СКЛАД', 'callbacks': 'НЕ ДОЗВОНИ', 'statistics': 'СТАТИСТИКА', 'dashboard': 'ДАШБОРД', 'finance': 'ФІНАНСИ', 'landing': 'ЛЕНДІНГИ', 'fbcontrol': 'РЕКЛАМА' };
+            const titles = { 'orders': 'ЗАМОВЛЕННЯ', 'warehouse': 'СКЛАД', 'callbacks': 'НЕ ДОЗВОНИ', 'statistics': 'СТАТИСТИКА', 'dashboard': 'ДАШБОРД', 'finance': 'ФІНАНСИ', 'landing': 'ЛЕНДІНГИ', 'fbcontrol': 'РЕКЛАМА', 'returns': 'ПОВЕРНЕННЯ' };
             document.getElementById('current-view-title').innerText = titles[view] || view.toUpperCase();
 
             document.querySelectorAll('.view-content').forEach(el => el.classList.remove('active'));
@@ -2287,6 +2368,7 @@
             if (view === 'settings') { loadNpSettings(); loadSmsSettings(); loadCheckboxSettings(); loadEconSettings(); loadFbAccounts(); }
             if (view === 'regulars') loadRegulars();
             if (view === 'export') loadExport();
+            if (view === 'returns') loadReturns();
             if (view === 'statistics') switchStatsTab('control');
             if (view === 'dashboard') { if (!dashInit) initDashboard(); else loadDashboard(); }
             if (view === 'finance') { if (!finInit) initFinance(); else { loadFinBalances(); switchFinanceTab(finCurrentTab); } }
@@ -2300,6 +2382,7 @@
             if (currentView === 'stock') loadStockData();
             if (currentView === 'export') loadExport();
             updateCallbacksBadge();
+            updateReturnsBadge();
         }
 
         // --- НОВА ПОШТА ---
@@ -3036,6 +3119,243 @@
                 const list = Array.isArray(d) ? d : [];
                 f.innerHTML = `<option value="">Всі постачальники</option>` +
                     list.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
+            } catch (e) { /* мовчки */ }
+        }
+
+        // --- ПОВЕРНЕННЯ (облік із кур'єром) ---
+        let returnsRows = [];
+        const returnsSelected = new Set();
+        const RETURN_STATUS_UI = {
+            in_transit: { label: 'Їде назад',        cls: 'bg-slate-100 text-slate-500' },
+            at_branch:  { label: 'На відділенні',    cls: 'bg-amber-50 text-amber-600' },
+            picked_up:  { label: "Забрав кур'єр",    cls: 'bg-violet-50 text-violet-600' },
+            received:   { label: 'Отримано',         cls: 'bg-emerald-50 text-emerald-600' },
+            problem:    { label: 'Проблема',         cls: 'bg-rose-50 text-rose-600' }
+        };
+        const retDate = v => v ? new Date(v).toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: '2-digit' }) : '—';
+        const retDays = v => v ? Math.floor((Date.now() - new Date(v)) / 86400000) : null;
+
+        function returnsSearchDebounced() {
+            clearTimeout(returnsSearchDebounced._t);
+            returnsSearchDebounced._t = setTimeout(loadReturns, 300);
+        }
+
+        function resetReturnsFilters() {
+            ['returnsStatusFilter', 'returnsCityFilter', 'returnsDateFrom', 'returnsDateTo', 'returnsSearch'].forEach(id => {
+                const el = document.getElementById(id); if (el) el.value = '';
+            });
+            loadReturns();
+        }
+
+        async function loadReturns() {
+            const tbody = document.getElementById('returnsTable');
+            if (!tbody) return;
+            const status = (document.getElementById('returnsStatusFilter') || {}).value || '';
+            const city = (document.getElementById('returnsCityFilter') || {}).value || '';
+            const from = (document.getElementById('returnsDateFrom') || {}).value || '';
+            const to = (document.getElementById('returnsDateTo') || {}).value || '';
+            const q = ((document.getElementById('returnsSearch') || {}).value || '').trim();
+            const params = new URLSearchParams();
+            if (status && status !== 'all') params.set('status', status);
+            if (city) params.set('city', city);
+            if (from) params.set('dateFrom', from);
+            if (to) params.set('dateTo', to);
+            if (q) params.set('q', q);
+            const sp = new URLSearchParams();
+            if (from) sp.set('dateFrom', from);
+            if (to) sp.set('dateTo', to);
+            try {
+                const [lr, sr] = await Promise.all([
+                    fetch('/api/returns?' + params.toString()),
+                    fetch('/api/returns/summary?' + sp.toString())
+                ]);
+                let rows = await lr.json();
+                const sum = await sr.json();
+                if (!Array.isArray(rows)) rows = [];
+                // За замовч. ховаємо отримані — вони закриті
+                if (!status) rows = rows.filter(r => r.status !== 'received');
+                returnsRows = rows;
+                returnsSelected.clear();
+                renderReturnsSummary(sum);
+                renderReturnsTable();
+                fillReturnsCityFilter(sum.cities || []);
+            } catch (e) {
+                tbody.innerHTML = `<tr><td colspan="8" class="p-8 text-center text-rose-500">Помилка: ${esc(e.message)}</td></tr>`;
+            }
+        }
+
+        function fillReturnsCityFilter(cities) {
+            const sel = document.getElementById('returnsCityFilter');
+            if (!sel) return;
+            const cur = sel.value;
+            sel.innerHTML = `<option value="">Всі міста</option>` + cities.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
+            sel.value = cur;
+        }
+
+        function renderReturnsSummary(sum) {
+            const wrap = document.getElementById('returnsSummary');
+            if (!wrap) return;
+            const list = (sum && sum.byCity) || [];
+            if (!list.length) { wrap.innerHTML = ''; return; }
+            wrap.innerHTML = list.map(c => `
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+                    <div class="flex justify-between items-baseline mb-3">
+                        <div class="text-lg font-black text-slate-800 uppercase tracking-tight"><i class="fa-solid fa-location-dot text-violet-500 mr-1"></i> ${esc(c.city)}</div>
+                        <div class="text-xs font-bold text-slate-400">${c.total} відмов</div>
+                    </div>
+                    <div class="grid grid-cols-4 gap-2 text-center">
+                        <div class="bg-slate-50 rounded-xl py-2">
+                            <div class="text-[9px] font-black text-slate-400 uppercase">Їде</div>
+                            <div class="text-lg font-black text-slate-600">${c.in_transit}</div>
+                        </div>
+                        <div class="bg-amber-50 rounded-xl py-2" title="${c.at_branch_stale} лежать > 5 днів">
+                            <div class="text-[9px] font-black text-amber-500 uppercase">На відд.</div>
+                            <div class="text-lg font-black text-amber-600">${c.at_branch}${c.at_branch_stale ? `<span class="text-[10px] text-rose-500 ml-1" title="лежать понад 5 днів">⚠${c.at_branch_stale}</span>` : ''}</div>
+                        </div>
+                        <div class="bg-violet-50 rounded-xl py-2 ${c.on_hands ? 'ring-2 ring-violet-300' : ''}">
+                            <div class="text-[9px] font-black text-violet-500 uppercase">У кур'єра</div>
+                            <div class="text-lg font-black text-violet-600">${c.on_hands}</div>
+                        </div>
+                        <div class="bg-emerald-50 rounded-xl py-2">
+                            <div class="text-[9px] font-black text-emerald-500 uppercase">Отримано</div>
+                            <div class="text-lg font-black text-emerald-600">${c.received}</div>
+                        </div>
+                    </div>
+                    ${c.problem ? `<div class="text-[11px] text-rose-500 font-bold mt-2"><i class="fa-solid fa-triangle-exclamation mr-1"></i>${c.problem} з проблемою</div>` : ''}
+                </div>`).join('');
+        }
+
+        function renderReturnsTable() {
+            const tbody = document.getElementById('returnsTable');
+            if (!tbody) return;
+            if (!returnsRows.length) {
+                tbody.innerHTML = `<tr><td colspan="8" class="p-10 text-center text-slate-400 font-medium">Немає повернень за фільтром</td></tr>`;
+                returnsUpdateSel();
+                return;
+            }
+            tbody.innerHTML = returnsRows.map(r => {
+                const st = RETURN_STATUS_UI[r.status] || RETURN_STATUS_UI.in_transit;
+                const stale = r.status === 'at_branch' && retDays(r.arrived_at) > 5;
+                const onHandsDays = r.status === 'picked_up' ? retDays(r.picked_up_at) : null;
+                const dates = [
+                    r.arrived_at ? `на відд. ${retDate(r.arrived_at)}` : '',
+                    r.picked_up_at ? `забрав ${retDate(r.picked_up_at)}` : '',
+                    r.received_at ? `отримав ${retDate(r.received_at)}` : ''
+                ].filter(Boolean).join(' · ');
+                const canReceive = r.status !== 'received';
+                return `
+                <tr class="hover:bg-slate-50 transition-all ${r.status === 'picked_up' ? 'bg-violet-50/30' : ''}">
+                    <td class="px-4 py-3"><input type="checkbox" class="returns-cb w-4 h-4 accent-emerald-500" data-id="${r.id}" ${returnsSelected.has(r.id) ? 'checked' : ''} onchange="returnsToggle(${r.id}, this.checked)"></td>
+                    <td class="px-4 py-3 whitespace-nowrap">
+                        <div class="font-bold text-slate-700">${retDate(r.refused_at)}</div>
+                        <div class="text-[10px] text-slate-400">#${r.order_id}</div>
+                    </td>
+                    <td class="px-4 py-3">
+                        <div class="font-bold text-slate-800">${esc(r.customer_name || '—')}</div>
+                        <div class="text-xs text-slate-500">${esc(r.items_text || '')}</div>
+                    </td>
+                    <td class="px-4 py-3 whitespace-nowrap">
+                        <div class="font-mono text-xs text-slate-600">${esc(r.ttn)}</div>
+                        <div class="font-mono text-xs ${r.return_ttn ? 'text-violet-600 font-bold' : 'text-slate-300'}">${r.return_ttn ? '↩ ' + esc(r.return_ttn) : '↩ ще немає'}</div>
+                    </td>
+                    <td class="px-4 py-3">
+                        <div class="font-bold text-slate-700">${esc(r.return_city || '—')}</div>
+                        <div class="text-[10px] text-slate-400 max-w-[180px] truncate" title="${esc(r.return_branch || '')}">${esc(r.return_branch || '')}</div>
+                    </td>
+                    <td class="px-4 py-3">
+                        <span class="inline-flex items-center text-[11px] font-black px-2.5 py-1 rounded-full ${st.cls}">${st.label}${onHandsDays != null ? ` · ${onHandsDays} дн` : ''}${stale ? ' ⚠' : ''}</span>
+                        <div class="text-[10px] text-slate-400 mt-1">${esc(dates || r.np_status_text || '')}</div>
+                    </td>
+                    <td class="px-4 py-3">
+                        <input type="text" value="${esc(r.note || '')}" placeholder="…" onchange="returnsPatch(${r.id}, { note: this.value })"
+                            class="w-full min-w-[120px] px-2 py-1 bg-transparent border-b border-transparent hover:border-slate-200 focus:border-violet-400 outline-none text-xs text-slate-600">
+                    </td>
+                    <td class="px-4 py-3 text-right whitespace-nowrap">
+                        ${canReceive ? `<button onclick="returnsPatch(${r.id}, { status: 'received' })" title="Отримав від кур'єра" class="px-3 py-1.5 rounded-lg text-[11px] font-black bg-emerald-500 text-white hover:bg-emerald-600 transition-all"><i class="fa-solid fa-check"></i></button>` : ''}
+                        <div class="inline-block relative">
+                            <select onchange="if(this.value){returnsPatch(${r.id}, { status: this.value }); this.value='';}" title="Змінити статус вручну" class="ml-1 px-2 py-1.5 rounded-lg text-[11px] font-bold bg-slate-100 text-slate-500 outline-none cursor-pointer">
+                                <option value="">…</option>
+                                ${Object.entries(RETURN_STATUS_UI).filter(([k]) => k !== r.status).map(([k, v]) => `<option value="${k}">${v.label}</option>`).join('')}
+                            </select>
+                        </div>
+                    </td>
+                </tr>`;
+            }).join('');
+            returnsUpdateSel();
+        }
+
+        function returnsToggle(id, on) { on ? returnsSelected.add(id) : returnsSelected.delete(id); returnsUpdateSel(); }
+        function returnsToggleAll(on) {
+            returnsSelected.clear();
+            if (on) returnsRows.filter(r => r.status !== 'received').forEach(r => returnsSelected.add(r.id));
+            document.querySelectorAll('.returns-cb').forEach(cb => { cb.checked = returnsSelected.has(Number(cb.dataset.id)); });
+            returnsUpdateSel();
+        }
+        function returnsUpdateSel() {
+            const n = returnsSelected.size;
+            const c = document.getElementById('returnsSelCount'); if (c) c.textContent = n;
+            const b = document.getElementById('returnsBulkBtn'); if (b) b.disabled = n === 0;
+        }
+
+        async function returnsPatch(id, body) {
+            try {
+                const r = await fetch(`/api/returns/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+                const d = await r.json();
+                if (!r.ok) throw new Error(d.error || 'Помилка');
+                if (body.status) { loadReturns(); updateReturnsBadge(); }
+            } catch (e) { alert('Помилка: ' + e.message); }
+        }
+
+        async function returnsBulk(status) {
+            const ids = [...returnsSelected];
+            if (!ids.length) return;
+            if (!confirm(`Відмітити ${ids.length} повернень як «${RETURN_STATUS_UI[status].label}»?`)) return;
+            try {
+                const r = await fetch('/api/returns/bulk', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids, status }) });
+                const d = await r.json();
+                if (!r.ok) throw new Error(d.error || 'Помилка');
+                loadReturns(); updateReturnsBadge();
+            } catch (e) { alert('Помилка: ' + e.message); }
+        }
+
+        async function returnsSync() {
+            const btn = document.getElementById('returnsSyncBtn');
+            if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-rotate fa-spin mr-1"></i> Оновлюю…'; }
+            try {
+                const r = await fetch('/api/returns/sync', { method: 'POST' });
+                const d = await r.json();
+                if (!r.ok) throw new Error(d.error || 'Помилка');
+                loadReturns(); updateReturnsBadge();
+            } catch (e) { alert('Помилка: ' + e.message); }
+            finally { if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-rotate mr-1"></i> Оновити з НП'; } }
+        }
+
+        // Текстовий список для звірки з кур'єром (у буфер)
+        function copyReturnsList() {
+            const rows = returnsSelected.size ? returnsRows.filter(r => returnsSelected.has(r.id)) : returnsRows;
+            if (!rows.length) return alert('Немає рядків');
+            const byCity = {};
+            rows.forEach(r => { (byCity[r.return_city || '—'] = byCity[r.return_city || '—'] || []).push(r); });
+            const lines = [];
+            Object.entries(byCity).forEach(([city, list]) => {
+                lines.push(`${city} — ${list.length} шт`);
+                list.forEach((r, i) => {
+                    const st = (RETURN_STATUS_UI[r.status] || {}).label || r.status;
+                    lines.push(`${i + 1}. ${r.return_ttn || r.ttn} — ${r.items_text || ''} — ${r.customer_name || ''} — ${st}${r.picked_up_at ? ' ' + retDate(r.picked_up_at) : ''}`);
+                });
+                lines.push('');
+            });
+            navigator.clipboard.writeText(lines.join('\n')).then(() => alert('Скопійовано')).catch(() => alert('Не вдалося скопіювати'));
+        }
+
+        // Бейдж у меню: скільки посилок у кур'єра на руках
+        async function updateReturnsBadge() {
+            try {
+                const r = await fetch('/api/returns/summary');
+                const d = await r.json();
+                const n = ((d && d.byCity) || []).reduce((s, c) => s + (Number(c.on_hands) || 0), 0);
+                const b = document.getElementById('returnsBadge');
+                if (b) { b.textContent = n; b.classList.toggle('hidden', n === 0); }
             } catch (e) { /* мовчки */ }
         }
 

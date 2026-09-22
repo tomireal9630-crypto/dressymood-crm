@@ -214,6 +214,30 @@ async function updateDatabaseSchema() {
         await pool.query(`ALTER TABLE fb_spend_daily DROP CONSTRAINT IF EXISTS fb_spend_daily_ad_account_id_date_campaign_id_key;`).catch(()=>{});
         await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_fb_spend_adset ON fb_spend_daily(ad_account_id, date, adset_id);`).catch(()=>{});
 
+        // === ПОВЕРНЕННЯ (відмови, що їдуть назад до кур'єра) ===
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS returns (
+                id SERIAL PRIMARY KEY,
+                order_id INTEGER NOT NULL UNIQUE REFERENCES orders(id) ON DELETE CASCADE,
+                ttn VARCHAR(255) DEFAULT '',
+                return_ttn VARCHAR(255) DEFAULT '',                -- зворотна ЕН від НП
+                status VARCHAR(16) NOT NULL DEFAULT 'in_transit',  -- in_transit | at_branch | picked_up | received | problem
+                return_city VARCHAR(100) DEFAULT '',               -- Одеса / Харків (з НП)
+                return_branch TEXT DEFAULT '',
+                refused_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                arrived_at TIMESTAMP WITH TIME ZONE,               -- прибула на відділення
+                picked_up_at TIMESTAMP WITH TIME ZONE,             -- кур'єр забрав (НП: одержано)
+                received_at TIMESTAMP WITH TIME ZONE,              -- я отримав від кур'єра (вручну)
+                np_status_code VARCHAR(16) DEFAULT '',
+                np_status_text VARCHAR(255) DEFAULT '',
+                np_return_cost NUMERIC DEFAULT 0,
+                np_updated_at TIMESTAMP WITH TIME ZONE,
+                note TEXT DEFAULT ''
+            );
+        `);
+        await pool.query(`CREATE INDEX IF NOT EXISTS idx_returns_status ON returns(status);`);
+        await pool.query(`CREATE INDEX IF NOT EXISTS idx_returns_refused_at ON returns(refused_at);`);
+
         // === АВТОПРАВИЛА РЕКЛАМИ ===
         await pool.query(`
             CREATE TABLE IF NOT EXISTS fb_rules (
@@ -637,6 +661,10 @@ app.patch('/api/orders/:id', checkAuth, async (req, res) => {
     const values = keys.map(k => req.body[k]);
     values.push(req.params.id);
     await pool.query(`UPDATE orders SET ${setClause}${extraSet} WHERE id = $${values.length}`, values);
+    // Відмова/повернення → заводимо повернення для обліку з кур'єром
+    if (RETURN_TRIGGER_STATUSES.includes(req.body.status)) {
+      try { await ensureReturnForOrder(req.params.id); } catch (e) {}
+    }
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -2404,6 +2432,9 @@ async function refreshNpStatuses() {
       sets.push(`np_updated_at=now()`);
       vals.push(row.id);
       await pool.query(`UPDATE orders SET ${sets.join(', ')} WHERE id=$${vals.length}`, vals);
+      if (newStatus && RETURN_TRIGGER_STATUSES.includes(newStatus)) {
+        try { await ensureReturnForOrder(row.id); } catch (e) {}
+      }
       updated++;
     }
   }
@@ -2413,6 +2444,239 @@ async function refreshNpStatuses() {
 app.post('/api/np/refresh', checkAuth, async (req, res) => {
   try { res.json({ success: true, ...(await refreshNpStatuses()) }); }
   catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+// ===================== ПОВЕРНЕННЯ (відмови → назад до кур'єра) =====================
+// Кожна відмова = рядок у returns. Життєвий цикл:
+//   in_transit (їде назад) → at_branch (на відділенні НП у місті повернення)
+//   → picked_up (кур'єр забрав з відділення = НП зафіксувала одержання) → received (я отримав від кур'єра, вручну)
+//   → problem (загублено / пошкоджено / інше, вручну)
+// НП веде до picked_up автоматично через зворотну ЕН; received/problem — тільки руками, НП їх не перетирає.
+const RETURN_TRIGGER_STATUSES = ['Отказ', 'Возврат'];
+const RETURN_RANK = { in_transit: 1, at_branch: 2, picked_up: 3, received: 4, problem: 4 };
+
+// Гарантує рядок повернення для замовлення (ідемпотентно)
+async function ensureReturnForOrder(orderId) {
+  const o = await pool.query(`SELECT id, ttn, status FROM orders WHERE id = $1`, [orderId]);
+  if (!o.rows.length) return null;
+  const row = o.rows[0];
+  if (!row.ttn) return null; // без ТТН нічого не їхало
+  const r = await pool.query(
+    `INSERT INTO returns (order_id, ttn) VALUES ($1, $2)
+     ON CONFLICT (order_id) DO NOTHING RETURNING id`, [row.id, row.ttn]);
+  return r.rows.length ? r.rows[0].id : null;
+}
+
+// Бекфіл: усі замовлення зі статусом відмови й ТТН, у яких ще немає повернення
+async function backfillReturns() {
+  const r = await pool.query(`
+    INSERT INTO returns (order_id, ttn, refused_at)
+    SELECT o.id, o.ttn, COALESCE(o.np_updated_at, o.created_at)
+    FROM orders o
+    WHERE o.status = ANY($1) AND o.ttn <> '' AND o.ttn IS NOT NULL
+      AND NOT EXISTS (SELECT 1 FROM returns rt WHERE rt.order_id = o.id)
+    RETURNING id`, [RETURN_TRIGGER_STATUSES]);
+  return r.rowCount;
+}
+
+// Код статусу НП по зворотній ЕН → статус повернення
+function npCodeToReturnStatus(code) {
+  code = String(code || '');
+  if (['7', '8', '12'].includes(code)) return 'at_branch';
+  if (['9', '10', '11', '106'].includes(code)) return 'picked_up';
+  if (['102', '103', '105'].includes(code)) return 'problem';
+  if (['1', '2', '3', '4', '5', '6', '41', '101', '104', '111', '112'].includes(code)) return 'in_transit';
+  return null;
+}
+
+// Витягуємо з відповіді НП дату (у НП формат 'DD.MM.YYYY HH:MI:SS' або 'YYYY-MM-DD HH:MI:SS')
+function npDateToIso(v) {
+  if (!v) return null;
+  const s = String(v).trim();
+  let m = s.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?/);
+  if (m) return `${m[1]}-${m[2]}-${m[3]} ${m[4] || '00'}:${m[5] || '00'}:${m[6] || '00'}`;
+  m = s.match(/^(\d{2})\.(\d{2})\.(\d{4})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?/);
+  if (m) return `${m[3]}-${m[2]}-${m[1]} ${m[4] || '00'}:${m[5] || '00'}:${m[6] || '00'}`;
+  return null;
+}
+
+// Синк повернень з НП: спершу дізнаємось зворотну ЕН по оригінальній ТТН, далі трекаємо її
+async function syncReturns() {
+  const created = await backfillReturns();
+  const s = await getNpSettings();
+  if (!s.apiKey) return { created, tracked: 0, skipped: 'no api key' };
+
+  const q = await pool.query(
+    `SELECT id, ttn, return_ttn, status, arrived_at, picked_up_at
+     FROM returns WHERE status NOT IN ('received', 'problem')`);
+  if (!q.rows.length) return { created, tracked: 0 };
+
+  // Трекаємо зворотну ЕН якщо є, інакше оригінальну (щоб дізнатись номер зворотної)
+  const docs = q.rows.map(r => ({ DocumentNumber: r.return_ttn || r.ttn, Phone: '' }));
+  const byNumber = {};
+  q.rows.forEach(r => { byNumber[r.return_ttn || r.ttn] = r; });
+
+  let tracked = 0;
+  for (let i = 0; i < docs.length; i += 100) {
+    let data;
+    try { data = await npCall('TrackingDocument', 'getStatusDocuments', { Documents: docs.slice(i, i + 100) }); }
+    catch (e) { continue; }
+    for (const st of data) {
+      const row = byNumber[st.Number];
+      if (!row) continue;
+      const trackingReturnDoc = !!row.return_ttn;
+      const sets = [], vals = [];
+      const set = (k, v) => { vals.push(v); sets.push(`${k}=$${vals.length}`); };
+
+      // Оригінальна ТТН: НП дає номер зворотної ЕН у LastCreatedOnTheBasisNumber
+      if (!trackingReturnDoc) {
+        const retNum = String(st.LastCreatedOnTheBasisNumber || '').trim();
+        if (retNum && retNum !== row.ttn) set('return_ttn', retNum);
+        // Місто повернення = місто відправника оригіналу (посилка їде назад туди)
+        if (st.CitySender) set('return_city', String(st.CitySender));
+        if (st.WarehouseSender) set('return_branch', String(st.WarehouseSender));
+        // Поки зворотна ЕН невідома — по оригіналу лише фіксуємо факт; статуси 9-11 по оригіналу
+        // означають "повернення одержано відправником" (коли НП не створює окрему ЕН)
+        const code = String(st.StatusCode || '');
+        if (['9', '10', '11', '106'].includes(code) && RETURN_RANK[row.status] < RETURN_RANK.picked_up) {
+          set('status', 'picked_up');
+          if (!row.picked_up_at) set('picked_up_at', npDateToIso(st.RecipientDateTime) || new Date());
+        }
+        set('np_status_code', code);
+        set('np_status_text', String(st.Status || ''));
+      } else {
+        // Зворотна ЕН: одержувач = ми (місто/відділення повернення), її статус = де посилка
+        if (st.CityRecipient) set('return_city', String(st.CityRecipient));
+        if (st.WarehouseRecipient) set('return_branch', String(st.WarehouseRecipient));
+        const cost = Number(st.DocumentCost) || 0;
+        if (cost > 0) set('np_return_cost', cost);
+        const code = String(st.StatusCode || '');
+        set('np_status_code', code);
+        set('np_status_text', String(st.Status || ''));
+        const next = npCodeToReturnStatus(code);
+        // Статус лише вперед; received/problem НП не чіпає
+        if (next && next !== 'problem' && RETURN_RANK[next] > RETURN_RANK[row.status]) {
+          set('status', next);
+          if (next === 'at_branch' && !row.arrived_at) set('arrived_at', npDateToIso(st.RecipientDateTime) || new Date());
+          if (next === 'picked_up') {
+            if (!row.arrived_at) set('arrived_at', npDateToIso(st.ScheduledDeliveryDate) || new Date());
+            if (!row.picked_up_at) set('picked_up_at', npDateToIso(st.RecipientDateTime) || new Date());
+          }
+        } else if (next === 'at_branch' && !row.arrived_at) {
+          set('arrived_at', npDateToIso(st.RecipientDateTime) || new Date());
+        }
+      }
+      sets.push('np_updated_at=now()');
+      vals.push(row.id);
+      await pool.query(`UPDATE returns SET ${sets.join(', ')} WHERE id=$${vals.length}`, vals);
+      tracked++;
+    }
+  }
+  return { created, tracked };
+}
+
+const RETURNS_SELECT = `
+  SELECT rt.*, o.status AS order_status, o.city AS order_city, o.price AS order_price,
+         c.full_name AS customer_name, c.phone AS customer_phone,
+         COALESCE((SELECT string_agg(trim(oi.article || ' ' || oi.size || ' ' || oi.color), ', ')
+                   FROM order_items oi WHERE oi.order_id = o.id), '') AS items_text,
+         COALESCE((SELECT string_agg(oi.article, ',') FROM order_items oi WHERE oi.order_id = o.id), '') AS articles
+  FROM returns rt
+  JOIN orders o ON o.id = rt.order_id
+  LEFT JOIN customers c ON c.id = o.customer_id`;
+
+// Список повернень з фільтрами
+app.get('/api/returns', checkAuth, async (req, res) => {
+  const { status, city, dateFrom, dateTo, q } = req.query;
+  try {
+    const p = [], c = [];
+    if (status) { p.push(status); c.push(`rt.status = $${p.length}`); }
+    if (city) { p.push(city); c.push(`rt.return_city = $${p.length}`); }
+    if (dateFrom) { p.push(dateFrom); c.push(`rt.refused_at >= $${p.length}::date`); }
+    if (dateTo) { p.push(dateTo); c.push(`rt.refused_at < ($${p.length}::date + interval '1 day')`); }
+    if (q) {
+      p.push('%' + String(q).trim() + '%');
+      c.push(`(rt.ttn ILIKE $${p.length} OR rt.return_ttn ILIKE $${p.length} OR c.full_name ILIKE $${p.length} OR c.phone ILIKE $${p.length}
+               OR EXISTS (SELECT 1 FROM order_items oi WHERE oi.order_id = o.id AND oi.article ILIKE $${p.length}))`);
+    }
+    const where = c.length ? 'WHERE ' + c.join(' AND ') : '';
+    const r = await pool.query(`${RETURNS_SELECT} ${where} ORDER BY rt.refused_at DESC, rt.id DESC`, p);
+    res.json(r.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Зведення по містах: скільки де, і головне — "у кур'єра на руках" (забрав, а мені не віддав)
+app.get('/api/returns/summary', checkAuth, async (req, res) => {
+  const { dateFrom, dateTo } = req.query;
+  try {
+    const p = [], c = [];
+    if (dateFrom) { p.push(dateFrom); c.push(`refused_at >= $${p.length}::date`); }
+    if (dateTo) { p.push(dateTo); c.push(`refused_at < ($${p.length}::date + interval '1 day')`); }
+    const where = c.length ? 'WHERE ' + c.join(' AND ') : '';
+    const r = await pool.query(`
+      SELECT COALESCE(NULLIF(return_city, ''), '— не визначено') AS city,
+             COUNT(*)::int AS total,
+             COUNT(*) FILTER (WHERE status = 'in_transit')::int AS in_transit,
+             COUNT(*) FILTER (WHERE status = 'at_branch')::int AS at_branch,
+             COUNT(*) FILTER (WHERE status = 'at_branch' AND arrived_at < now() - interval '5 days')::int AS at_branch_stale,
+             COUNT(*) FILTER (WHERE status = 'picked_up')::int AS on_hands,
+             COUNT(*) FILTER (WHERE status = 'received')::int AS received,
+             COUNT(*) FILTER (WHERE status = 'problem')::int AS problem,
+             COALESCE(SUM(np_return_cost), 0)::numeric AS np_return_cost
+      FROM returns ${where}
+      GROUP BY 1 ORDER BY total DESC`, p);
+    // Список міст для фільтра — по всій таблиці, не лише по періоду
+    const cities = await pool.query(`SELECT DISTINCT return_city FROM returns WHERE return_city <> '' ORDER BY 1`);
+    res.json({ byCity: r.rows, cities: cities.rows.map(x => x.return_city) });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Синк з НП вручну (кнопка)
+app.post('/api/returns/sync', checkAuth, async (req, res) => {
+  try { res.json({ success: true, ...(await syncReturns()) }); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+// Ручна зміна: статус / нотатка / зворотна ТТН / місто
+app.patch('/api/returns/:id(\\d+)', checkAuth, async (req, res) => {
+  const b = req.body || {};
+  const sets = [], vals = [];
+  const set = (k, v) => { vals.push(v); sets.push(`${k}=$${vals.length}`); };
+  try {
+    if (b.status !== undefined) {
+      if (!RETURN_RANK[b.status]) return res.status(400).json({ error: 'Невірний статус' });
+      set('status', b.status);
+      if (b.status === 'received') set('received_at', b.received_at ? new Date(b.received_at) : new Date());
+      if (b.status === 'picked_up') sets.push(`picked_up_at = COALESCE(picked_up_at, now())`);
+      if (b.status === 'at_branch') sets.push(`arrived_at = COALESCE(arrived_at, now())`);
+      if (b.status !== 'received') set('received_at', null);
+    }
+    if (b.note !== undefined) set('note', String(b.note));
+    if (b.return_ttn !== undefined) set('return_ttn', String(b.return_ttn).trim());
+    if (b.return_city !== undefined) set('return_city', String(b.return_city).trim());
+    if (!sets.length) return res.status(400).json({ error: 'Нічого оновлювати' });
+    vals.push(req.params.id);
+    await pool.query(`UPDATE returns SET ${sets.join(', ')} WHERE id=$${vals.length}`, vals);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Масово: кур'єр приніс пачку — відмітив усі як отримані
+app.post('/api/returns/bulk', checkAuth, async (req, res) => {
+  const ids = (Array.isArray(req.body.ids) ? req.body.ids : []).map(Number).filter(Boolean);
+  const status = req.body.status;
+  if (!ids.length || !RETURN_RANK[status]) return res.status(400).json({ error: 'ids/status' });
+  try {
+    const extra = status === 'received' ? `, received_at = now()`
+      : status === 'picked_up' ? `, picked_up_at = COALESCE(picked_up_at, now())` : '';
+    const r = await pool.query(`UPDATE returns SET status=$1${extra} WHERE id = ANY($2)`, [status, ids]);
+    res.json({ success: true, updated: r.rowCount });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/returns/:id(\\d+)', checkAuth, async (req, res) => {
+  try { await pool.query(`DELETE FROM returns WHERE id=$1`, [req.params.id]); res.json({ success: true }); }
+  catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // ===================== TURBOSMS ИНТЕГРАЦИЯ =====================
@@ -2626,9 +2890,10 @@ app.post('/api/orders/:id(\\d+)/sms/:kind(\\d+)', checkAuth, async (req, res) =>
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
 
-// Авто-опитування кожні 30 хв (НП + SMS)
+// Авто-опитування кожні 30 хв (НП + повернення + SMS)
 setInterval(async () => {
   try { await refreshNpStatuses(); } catch (e) {}
+  try { await syncReturns(); } catch (e) { console.error('[returns sync]', e.message); }
   try { await autoSendSms(); } catch (e) {}
 }, 30 * 60 * 1000);
 
