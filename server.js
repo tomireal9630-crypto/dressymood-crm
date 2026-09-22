@@ -811,7 +811,7 @@ app.get('/api/stats/roi', checkAuth, async (req, res) => {
     // Повернення (для returns cost) — лише ВІДПРАВЛЕНІ посилки (є ТТН): тільки за них НП бере
     // за зворотну доставку і кур'єр — за відправку. Без ТТН нічого не їхало.
     const refusedParams = [];
-    const refusedConds = [`o.status IN ('Отказ','Возврат','Ошибка в ТТН')`, `o.ttn <> ''`, `o.ttn IS NOT NULL`];
+    const refusedConds = [`o.status IN ('Отказ','Возврат')`, `o.ttn <> ''`, `o.ttn IS NOT NULL`];
     if (dateFrom) { refusedParams.push(dateFrom); refusedConds.push(`${dateExpr} >= $${refusedParams.length}::date`); }
     if (dateTo)   { refusedParams.push(dateTo);   refusedConds.push(`${dateExpr} < ($${refusedParams.length}::date + interval '1 day')`); }
     const refusedWhere = 'WHERE ' + refusedConds.join(' AND ');
@@ -1214,7 +1214,9 @@ app.get('/api/products/:id(\\d+)/economics', checkAuth, async (req, res) => {
     const lookback = Number(settings.lookback_days) || 30;
     const APPROVED = `('В работе','Доставка','В пути','На почте','Продажа','Отказ','Возврат','Ошибка в ТТН','Переадресация')`;
     const SOLD = `('Продажа')`;
-    const REFUSED_AFTER_APPROVE = `('Отказ','Возврат','Ошибка в ТТН')`;
+    // «Ошибка в ТТН» не рахується: накладну видалено/не знайдено — посилка не їхала,
+    // ні НП, ні кур'єр за неї не беруть, і це не рішення клієнта
+    const REFUSED_AFTER_APPROVE = `('Отказ','Возврат')`;
     const dateExpr = `COALESCE(o.original_created_at, o.created_at)`;
 
     const statsQ = `
@@ -1529,7 +1531,7 @@ async function articleRoiMap(dateFrom, dateTo) {
     FROM orders o JOIN order_items oi ON oi.order_id=o.id
     WHERE ${sc.join(' AND ')} AND oi.article IS NOT NULL AND oi.article <> ''
     GROUP BY oi.article`, sp);
-  const rp = [], rc = [`o.status IN ('Отказ','Возврат','Ошибка в ТТН')`];
+  const rp = [], rc = [`o.status IN ('Отказ','Возврат')`];
   if (dateFrom) { rp.push(dateFrom); rc.push(`${lead} >= $${rp.length}::date`); }
   if (dateTo)   { rp.push(dateTo);   rc.push(`${lead} < ($${rp.length}::date + interval '1 day')`); }
   const refs = await pool.query(`
@@ -1560,7 +1562,7 @@ async function articleCplMap(dateFrom, dateTo) {
            COUNT(*)::int total_leads,
            COUNT(*) FILTER (WHERE status IN ${APPROVED})::int approved,
            COUNT(*) FILTER (WHERE status IN ('Продажа'))::int sold,
-           COUNT(*) FILTER (WHERE status IN ('Отказ','Возврат','Ошибка в ТТН'))::int refused_after,
+           COUNT(*) FILTER (WHERE status IN ('Отказ','Возврат'))::int refused_after,
            MAX(pr.price)::numeric price, MAX(pr.cost)::numeric cost, MAX(pr.target_roi_pct) target_roi
     FROM leads l LEFT JOIN products pr ON pr.article = l.article
     GROUP BY l.article`, p);
@@ -2309,7 +2311,7 @@ app.get('/api/stats/unit-economics', checkAuth, async (req, res) => {
 
     const APPROVED = `('В работе','Доставка','В пути','На почте','Продажа','Отказ','Возврат','Ошибка в ТТН','Переадресация')`;
     const SOLD = `('Продажа')`;
-    const REFUSED_AFTER = `('Отказ','Возврат','Ошибка в ТТН')`;
+    const REFUSED_AFTER = `('Отказ','Возврат')`;
     const dateExpr = `COALESCE(o.original_created_at, o.created_at)`;
 
     const sql = `
@@ -3998,7 +4000,7 @@ async function computedFinanceStreams(dateFrom, dateTo, gran) {
     GROUP BY 1`;
 
   const rp = [];
-  const rConds = [`o.status IN ('Отказ','Возврат','Ошибка в ТТН')`];
+  const rConds = [`o.status IN ('Отказ','Возврат')`, `o.ttn <> ''`, `o.ttn IS NOT NULL`];
   if (dateFrom) { rp.push(dateFrom); rConds.push(`${leadExpr} >= $${rp.length}::date`); }
   if (dateTo)   { rp.push(dateTo);   rConds.push(`${leadExpr} < ($${rp.length}::date + interval '1 day')`); }
   const refQ = `
