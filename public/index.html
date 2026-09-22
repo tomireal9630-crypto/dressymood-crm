@@ -84,6 +84,9 @@
                     <button onclick="switchView('fbcontrol')" id="btn-fbcontrol" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
                         <i class="fa-solid fa-bullhorn w-5 text-center"></i> Реклама
                     </button>
+                    <button onclick="switchView('adlaunch')" id="btn-adlaunch" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
+                        <i class="fa-solid fa-rocket w-5 text-center"></i> Запуск реклами
+                    </button>
                     <button onclick="switchView('landing')" id="btn-landing" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
                         <i class="fa-solid fa-wand-magic-sparkles w-5 text-center"></i> Лендінги
                     </button>
@@ -1747,6 +1750,129 @@
                     style="width:100%;height:calc(100vh - 5rem);border:0;border-radius:0;display:block"></iframe>
             </div>
 
+            <div id="view-adlaunch" class="view-content h-full">
+                <div class="flex justify-between items-start mb-6 gap-4 flex-wrap">
+                    <div>
+                        <h2 class="text-3xl font-black text-slate-800 uppercase italic tracking-tighter">Запуск реклами</h2>
+                        <p class="text-slate-400 font-medium text-sm">Схема 1-N-1: кампанія → група на кожен креатив → оголошення. Створюється <b>на паузі</b> — перевіряєш і вмикаєш в Ads Manager</p>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+                    <!-- ФОРМА -->
+                    <div class="xl:col-span-2 space-y-5">
+                        <!-- 1. Товар і лінк -->
+                        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+                            <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">1. Товар і лендінг</div>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <div>
+                                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-1">Товар (артикул)</label>
+                                    <select id="alProduct" onchange="alOnProductChange()" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none text-sm font-bold text-slate-700">
+                                        <option value="">— Оберіть товар —</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-1">Посилання на лендінг</label>
+                                    <input type="text" id="alLink" list="alLinkList" placeholder="https://…" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none text-sm font-bold text-slate-700">
+                                    <datalist id="alLinkList"></datalist>
+                                </div>
+                                <div class="md:col-span-2">
+                                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-1">Назва кампанії <span class="normal-case font-medium">(артикул у [ ] — щоб ROI рахувався автоматично)</span></label>
+                                    <input type="text" id="alCampaignName" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none text-sm font-bold text-slate-700">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 2. Кабінети -->
+                        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+                            <div class="flex justify-between items-center mb-3">
+                                <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest">2. Кабінети</div>
+                                <button onclick="alToggleAllAccounts()" class="text-[11px] font-bold text-violet-600 hover:underline">обрати всі</button>
+                            </div>
+                            <div id="alAccounts" class="space-y-2"></div>
+                        </div>
+
+                        <!-- 3. Креативи -->
+                        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+                            <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">3. Креативи <span class="normal-case font-medium">— кожен файл = окрема група</span></div>
+                            <label id="alDrop" class="block border-2 border-dashed border-slate-200 rounded-2xl p-6 text-center cursor-pointer hover:border-violet-300 hover:bg-violet-50/30 transition-all">
+                                <input type="file" id="alFiles" multiple accept="image/*,video/mp4,video/quicktime" class="hidden" onchange="alAddFiles(this.files); this.value='';">
+                                <i class="fa-solid fa-cloud-arrow-up text-2xl text-slate-300 mb-2"></i>
+                                <div class="text-sm font-bold text-slate-600">Клацни або перетягни фото / відео</div>
+                                <div class="text-[11px] text-slate-400">jpg, png, mp4, mov · до 300 МБ</div>
+                            </label>
+                            <div id="alCreatives" class="mt-3 space-y-2"></div>
+                        </div>
+
+                        <!-- 4. Налаштування -->
+                        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+                            <div class="flex justify-between items-center mb-3">
+                                <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest">4. Бюджет, аудиторія, тексти</div>
+                                <button onclick="alSaveDefaults()" class="text-[11px] font-bold text-violet-600 hover:underline"><i class="fa-solid fa-floppy-disk mr-1"></i>зберегти як типові</button>
+                            </div>
+                            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                                <div>
+                                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-1">Бюджет $/день на групу</label>
+                                    <input type="number" id="alBudget" min="1" step="0.5" value="8" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none text-sm font-bold text-slate-700">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-1">Стать</label>
+                                    <select id="alGender" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none text-sm font-bold text-slate-700">
+                                        <option value="2">Жінки</option>
+                                        <option value="1">Чоловіки</option>
+                                        <option value="">Всі</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-1">Вік від</label>
+                                    <input type="number" id="alAgeMin" min="18" max="65" value="18" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none text-sm font-bold text-slate-700">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-1">Вік до</label>
+                                    <input type="number" id="alAgeMax" min="18" max="65" value="65" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none text-sm font-bold text-slate-700">
+                                </div>
+                            </div>
+                            <div class="text-[11px] text-slate-400 mb-4">Гео: Україна · Advantage+ аудиторія та плейсменти · ціль «Ліди» → сайт → піксель, подія Lead · старт одразу, без дати завершення</div>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <div class="md:col-span-2">
+                                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-1">Основний текст</label>
+                                    <textarea id="alMessage" rows="4" placeholder="🌟Стильна сукня зі знижкою -40%…" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none text-sm font-medium text-slate-700"></textarea>
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-1">Заголовок</label>
+                                    <input type="text" id="alTitle" placeholder="🌟🌟🌟🌟4.9/5👉" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none text-sm font-bold text-slate-700">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-1">Опис (необов'язково)</label>
+                                    <input type="text" id="alDescription" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none text-sm font-bold text-slate-700">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-1">Кнопка (CTA)</label>
+                                    <select id="alCta" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none text-sm font-bold text-slate-700"></select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="flex items-center gap-3">
+                            <button onclick="alLaunch()" id="alLaunchBtn" class="px-8 py-4 rounded-2xl font-black text-sm uppercase tracking-widest text-white transition-all shadow-lg shadow-violet-200 disabled:opacity-40 disabled:shadow-none" style="background:linear-gradient(135deg,#8b5cf6,#ec4899)">
+                                <i class="fa-solid fa-rocket mr-2"></i> Створити кампанії (на паузі)
+                            </button>
+                            <div id="alLaunchHint" class="text-xs text-slate-400 font-medium"></div>
+                        </div>
+                    </div>
+
+                    <!-- ІСТОРІЯ -->
+                    <div class="space-y-4">
+                        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+                            <div class="flex justify-between items-center mb-3">
+                                <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Історія запусків</div>
+                                <button onclick="alLoadHistory()" class="text-slate-400 hover:text-violet-600"><i class="fa-solid fa-rotate"></i></button>
+                            </div>
+                            <div id="alHistory" class="space-y-2 max-h-[80vh] overflow-y-auto"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
             <div id="view-fbcontrol" class="view-content h-full">
                 <div class="mb-4">
                     <h2 class="text-3xl font-black text-slate-800 uppercase italic tracking-tighter">Керування рекламою</h2>
@@ -2357,7 +2483,7 @@
             const btn = document.getElementById(`btn-${view}`);
             if (btn) btn.classList.add('active');
 
-            const titles = { 'orders': 'ЗАМОВЛЕННЯ', 'warehouse': 'СКЛАД', 'callbacks': 'НЕ ДОЗВОНИ', 'statistics': 'СТАТИСТИКА', 'dashboard': 'ДАШБОРД', 'finance': 'ФІНАНСИ', 'landing': 'ЛЕНДІНГИ', 'fbcontrol': 'РЕКЛАМА', 'returns': 'ПОВЕРНЕННЯ' };
+            const titles = { 'orders': 'ЗАМОВЛЕННЯ', 'warehouse': 'СКЛАД', 'callbacks': 'НЕ ДОЗВОНИ', 'statistics': 'СТАТИСТИКА', 'dashboard': 'ДАШБОРД', 'finance': 'ФІНАНСИ', 'landing': 'ЛЕНДІНГИ', 'fbcontrol': 'РЕКЛАМА', 'returns': 'ПОВЕРНЕННЯ', 'adlaunch': 'ЗАПУСК РЕКЛАМИ' };
             document.getElementById('current-view-title').innerText = titles[view] || view.toUpperCase();
 
             document.querySelectorAll('.view-content').forEach(el => el.classList.remove('active'));
@@ -2373,6 +2499,7 @@
             if (view === 'dashboard') { if (!dashInit) initDashboard(); else loadDashboard(); }
             if (view === 'finance') { if (!finInit) initFinance(); else { loadFinBalances(); switchFinanceTab(finCurrentTab); } }
             if (view === 'fbcontrol') { if (!fbCtlInit) initFbControl(); else loadFbControl(); }
+            if (view === 'adlaunch') { if (!alInit) initAdLaunch(); else alLoadHistory(); }
             refreshData();
         }
 
@@ -5250,6 +5377,262 @@
 
         // ===== КЕРУВАННЯ РЕКЛАМОЮ =====
         let fbCtlInit = false;
+        // --- ЗАПУСК РЕКЛАМИ З CRM ---
+        let alInit = false;
+        let alProducts = [];
+        let alAccounts = [];
+        let alDefaults = {};
+        let alCreativesList = []; // {file_id,name,kind,size,adset_name,preview,uploading}
+        let alHistoryTimer = null;
+        const alSelectedAccounts = new Set();
+
+        async function initAdLaunch() {
+            alInit = true;
+            try {
+                const [pr, ar, dr] = await Promise.all([fetch('/api/warehouse/products'), fetch('/api/fb/launch/accounts'), fetch('/api/fb/launch/defaults')]);
+                alProducts = await pr.json(); if (!Array.isArray(alProducts)) alProducts = [];
+                alAccounts = await ar.json(); if (!Array.isArray(alAccounts)) alAccounts = [];
+                const d = await dr.json();
+                alDefaults = d.defaults || {};
+                const cta = document.getElementById('alCta');
+                cta.innerHTML = (d.cta_types || ['SHOP_NOW']).map(t => `<option value="${t}">${t.replace(/_/g, ' ')}</option>`).join('');
+                alApplyDefaults();
+                const sel = document.getElementById('alProduct');
+                sel.innerHTML = `<option value="">— Оберіть товар —</option>` + alProducts.map(p => `<option value="${esc(p.article)}">${esc(p.article)} — ${esc(p.name || '')}</option>`).join('');
+                alRenderAccounts();
+                alRenderCreatives();
+                alLoadHistory();
+                // drag & drop
+                const drop = document.getElementById('alDrop');
+                ['dragenter', 'dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('border-violet-400'); }));
+                ['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('border-violet-400'); }));
+                drop.addEventListener('drop', e => alAddFiles(e.dataTransfer.files));
+            } catch (e) { alert('Помилка завантаження: ' + e.message); }
+        }
+
+        function alApplyDefaults() {
+            const d = alDefaults;
+            if (d.daily_budget != null) document.getElementById('alBudget').value = d.daily_budget;
+            document.getElementById('alGender').value = Array.isArray(d.genders) && d.genders.length ? String(d.genders[0]) : '';
+            if (d.age_min) document.getElementById('alAgeMin').value = d.age_min;
+            if (d.age_max) document.getElementById('alAgeMax').value = d.age_max;
+            if (d.cta) document.getElementById('alCta').value = d.cta;
+            document.getElementById('alMessage').value = d.message || '';
+            document.getElementById('alTitle').value = d.title || '';
+            document.getElementById('alDescription').value = d.description || '';
+            alUpdateCampaignName();
+        }
+
+        function alCollectDefaults() {
+            const g = document.getElementById('alGender').value;
+            return {
+                daily_budget: Number(document.getElementById('alBudget').value) || 8,
+                genders: g ? [Number(g)] : [],
+                age_min: Number(document.getElementById('alAgeMin').value) || 18,
+                age_max: Number(document.getElementById('alAgeMax').value) || 65,
+                cta: document.getElementById('alCta').value,
+                message: document.getElementById('alMessage').value,
+                title: document.getElementById('alTitle').value,
+                description: document.getElementById('alDescription').value
+            };
+        }
+
+        async function alSaveDefaults() {
+            try {
+                const r = await fetch('/api/fb/launch/defaults', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(alCollectDefaults()) });
+                const d = await r.json();
+                if (!r.ok) throw new Error(d.error || 'Помилка');
+                alDefaults = d.defaults;
+                alert('Збережено як типові');
+            } catch (e) { alert('Помилка: ' + e.message); }
+        }
+
+        function alOnProductChange() {
+            const art = document.getElementById('alProduct').value;
+            const p = alProducts.find(x => x.article === art);
+            const links = p && p.links ? String(p.links).split(/\s+/).filter(l => /^https?:\/\//i.test(l)) : [];
+            document.getElementById('alLinkList').innerHTML = links.map(l => `<option value="${esc(l)}">`).join('');
+            if (links.length) document.getElementById('alLink').value = links[0];
+            alUpdateCampaignName();
+        }
+
+        function alUpdateCampaignName() {
+            const art = document.getElementById('alProduct').value;
+            const p = alProducts.find(x => x.article === art);
+            const date = new Date().toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit' });
+            const tpl = alDefaults.campaign_name_tpl || '[{article}] {name} {date}';
+            const name = tpl.replace(/\{article\}/g, art || '').replace(/\{name\}/g, p ? (p.name || '') : '').replace(/\{date\}/g, date).replace(/\s+/g, ' ').trim();
+            document.getElementById('alCampaignName').value = art ? name : '';
+        }
+
+        // --- кабінети ---
+        function alRenderAccounts() {
+            const wrap = document.getElementById('alAccounts');
+            if (!alAccounts.length) { wrap.innerHTML = `<div class="text-sm text-slate-400">Немає активних кабінетів — додай у Налаштуваннях</div>`; return; }
+            wrap.innerHTML = alAccounts.map(a => {
+                const ok = a.page_id && a.pixel_id;
+                const sel = alSelectedAccounts.has(a.id);
+                return `
+                <div class="border ${sel ? 'border-violet-300 bg-violet-50/30' : 'border-slate-100'} rounded-xl p-3">
+                    <div class="flex items-center gap-3">
+                        <input type="checkbox" ${sel ? 'checked' : ''} onchange="alToggleAccount(${a.id}, this.checked)" class="w-4 h-4 accent-violet-500">
+                        <div class="flex-1 min-w-0">
+                            <div class="font-bold text-slate-800 text-sm truncate">${esc(a.name)} <span class="text-slate-400 font-medium">${esc(a.currency || '')}</span></div>
+                            <div class="text-[11px] ${ok ? 'text-emerald-600' : 'text-rose-500'} font-bold">
+                                ${ok ? `<i class="fa-solid fa-check mr-1"></i>сторінка ${esc(a.page_name || a.page_id)} · піксель ${esc(a.pixel_id)}${a.instagram_id ? ' · IG' : ''}` : '<i class="fa-solid fa-triangle-exclamation mr-1"></i>не налаштовано: потрібні сторінка і піксель'}
+                            </div>
+                        </div>
+                        <button onclick="alDetect(${a.id})" class="px-3 py-1.5 rounded-lg text-[11px] font-bold bg-slate-100 text-slate-600 hover:bg-slate-200" title="Взяти піксель і сторінку з існуючих оголошень кабінету"><i class="fa-solid fa-wand-magic-sparkles mr-1"></i>Визначити</button>
+                        <button onclick="document.getElementById('alAccCfg${a.id}').classList.toggle('hidden')" class="px-3 py-1.5 rounded-lg text-[11px] font-bold bg-slate-100 text-slate-600 hover:bg-slate-200"><i class="fa-solid fa-gear"></i></button>
+                    </div>
+                    <div id="alAccCfg${a.id}" class="hidden grid grid-cols-1 md:grid-cols-3 gap-2 mt-3 pt-3 border-t border-slate-100">
+                        <div><label class="block text-[9px] font-black text-slate-400 uppercase mb-1">Page ID (сторінка FB)</label><input type="text" id="alPage${a.id}" value="${esc(a.page_id || '')}" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs font-bold"></div>
+                        <div><label class="block text-[9px] font-black text-slate-400 uppercase mb-1">Instagram ID (необов'язково)</label><input type="text" id="alIg${a.id}" value="${esc(a.instagram_id || '')}" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs font-bold"></div>
+                        <div><label class="block text-[9px] font-black text-slate-400 uppercase mb-1">Pixel ID</label><input type="text" id="alPx${a.id}" value="${esc(a.pixel_id || '')}" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs font-bold"></div>
+                        <div class="md:col-span-3 text-right"><button onclick="alSaveAccount(${a.id})" class="px-4 py-2 rounded-lg text-[11px] font-black uppercase bg-violet-500 text-white hover:bg-violet-600">Зберегти</button></div>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+        function alToggleAccount(id, on) { on ? alSelectedAccounts.add(id) : alSelectedAccounts.delete(id); alRenderAccounts(); }
+        function alToggleAllAccounts() {
+            if (alSelectedAccounts.size === alAccounts.length) alSelectedAccounts.clear();
+            else alAccounts.forEach(a => alSelectedAccounts.add(a.id));
+            alRenderAccounts();
+        }
+        async function alSaveAccount(id) {
+            const body = { page_id: document.getElementById('alPage' + id).value, instagram_id: document.getElementById('alIg' + id).value, pixel_id: document.getElementById('alPx' + id).value };
+            try {
+                const r = await fetch('/api/fb/launch/accounts/' + id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+                const d = await r.json(); if (!r.ok) throw new Error(d.error || 'Помилка');
+                const a = alAccounts.find(x => x.id === id); if (a) Object.assign(a, body, { page_name: body.page_id === a.page_id ? a.page_name : '' });
+                alRenderAccounts();
+            } catch (e) { alert('Помилка: ' + e.message); }
+        }
+        async function alDetect(id) {
+            try {
+                const r = await fetch(`/api/fb/launch/accounts/${id}/detect`, { method: 'POST' });
+                const d = await r.json(); if (!r.ok) throw new Error(d.error || 'Помилка');
+                const a = alAccounts.find(x => x.id === id);
+                if (a) { if (d.page_id) a.page_id = d.page_id; if (d.instagram_id) a.instagram_id = d.instagram_id; if (d.pixel_id) a.pixel_id = d.pixel_id; if (d.page_name) a.page_name = d.page_name; }
+                alRenderAccounts();
+                if (!d.page_id && !d.pixel_id) alert('У кабінеті немає оголошень і пікселів, з яких можна взяти дані. Введи Page ID і Pixel ID вручну (⚙).');
+                else if (!d.page_id) alert('Піксель знайдено, сторінку — ні (немає оголошень). Введи Page ID вручну (⚙).');
+            } catch (e) { alert('Помилка: ' + e.message); }
+        }
+
+        // --- креативи ---
+        async function alAddFiles(files) {
+            for (const f of Array.from(files || [])) {
+                const item = { file_id: null, name: f.name, kind: f.type.startsWith('video') ? 'video' : 'image', size: f.size, adset_name: f.name.replace(/\.[a-z0-9]+$/i, ''), preview: f.type.startsWith('image') ? URL.createObjectURL(f) : '', uploading: true, error: '' };
+                alCreativesList.push(item);
+                alRenderCreatives();
+                try {
+                    const r = await fetch('/api/fb/launch/upload', { method: 'POST', headers: { 'x-filename': encodeURIComponent(f.name) }, body: f });
+                    const d = await r.json(); if (!r.ok) throw new Error(d.error || 'Помилка');
+                    item.file_id = d.id; item.kind = d.kind;
+                } catch (e) { item.error = e.message; }
+                item.uploading = false;
+                alRenderCreatives();
+            }
+        }
+        function alRemoveCreative(i) {
+            const c = alCreativesList[i];
+            if (c && c.file_id) fetch('/api/fb/launch/upload/' + c.file_id, { method: 'DELETE' }).catch(() => {});
+            alCreativesList.splice(i, 1);
+            alRenderCreatives();
+        }
+        function alRenderCreatives() {
+            const wrap = document.getElementById('alCreatives');
+            if (!alCreativesList.length) { wrap.innerHTML = ''; alUpdateHint(); return; }
+            wrap.innerHTML = alCreativesList.map((c, i) => `
+                <div class="flex items-center gap-3 border border-slate-100 rounded-xl p-2">
+                    <div class="w-14 h-14 rounded-lg bg-slate-100 overflow-hidden flex items-center justify-center shrink-0">
+                        ${c.preview ? `<img src="${c.preview}" class="w-full h-full object-cover">` : `<i class="fa-solid fa-film text-slate-400"></i>`}
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <div class="text-xs text-slate-400 truncate">${esc(c.name)} · ${(c.size / 1048576).toFixed(1)} МБ · ${c.kind === 'video' ? 'відео' : 'фото'}</div>
+                        <input type="text" value="${esc(c.adset_name)}" onchange="alCreativesList[${i}].adset_name = this.value" placeholder="Назва групи" class="w-full mt-1 px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg outline-none text-sm font-bold text-slate-700">
+                        ${c.uploading ? `<div class="text-[11px] text-violet-500 font-bold mt-1"><i class="fa-solid fa-spinner fa-spin mr-1"></i>завантажую…</div>` : c.error ? `<div class="text-[11px] text-rose-500 font-bold mt-1">${esc(c.error)}</div>` : `<div class="text-[11px] text-emerald-600 font-bold mt-1"><i class="fa-solid fa-check mr-1"></i>група ${i + 1}</div>`}
+                    </div>
+                    <button onclick="alRemoveCreative(${i})" class="text-slate-300 hover:text-rose-500 px-2"><i class="fa-solid fa-xmark"></i></button>
+                </div>`).join('');
+            alUpdateHint();
+        }
+        function alUpdateHint() {
+            const n = alCreativesList.filter(c => c.file_id).length;
+            const k = alSelectedAccounts.size;
+            const h = document.getElementById('alLaunchHint');
+            if (h) h.textContent = n && k ? `Буде створено: ${k} кампан. × ${n} груп × 1 оголошення` : '';
+        }
+
+        // --- запуск ---
+        async function alLaunch() {
+            const creatives = alCreativesList.filter(c => c.file_id && !c.uploading);
+            if (alCreativesList.some(c => c.uploading)) return alert('Зачекай, креативи ще завантажуються');
+            if (!creatives.length) return alert('Додай хоча б один креатив');
+            if (!alSelectedAccounts.size) return alert('Обери кабінет(и)');
+            const bad = alAccounts.filter(a => alSelectedAccounts.has(a.id) && !(a.page_id && a.pixel_id));
+            if (bad.length) return alert('Не налаштовано сторінку/піксель: ' + bad.map(a => a.name).join(', '));
+            const link = document.getElementById('alLink').value.trim();
+            if (!/^https?:\/\//i.test(link)) return alert('Вкажи посилання на лендінг (https://…)');
+            const campaign_name = document.getElementById('alCampaignName').value.trim();
+            if (!campaign_name) return alert('Вкажи назву кампанії');
+            const d = alCollectDefaults();
+            if (!confirm(`Створити ${alSelectedAccounts.size} кампанію(ї) «${campaign_name}» з ${creatives.length} групами по $${d.daily_budget}/день?\n\nВсе буде НА ПАУЗІ — увімкнеш в Ads Manager.`)) return;
+            const btn = document.getElementById('alLaunchBtn'); btn.disabled = true;
+            try {
+                const body = { ...d, account_ids: [...alSelectedAccounts], article: document.getElementById('alProduct').value, link, campaign_name,
+                    creatives: creatives.map(c => ({ file_id: c.file_id, name: c.name, kind: c.kind, adset_name: c.adset_name })) };
+                const r = await fetch('/api/fb/launch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+                const res = await r.json(); if (!r.ok) throw new Error(res.error || 'Помилка');
+                alCreativesList = []; alRenderCreatives();
+                alLoadHistory();
+            } catch (e) { alert('Помилка: ' + e.message); }
+            finally { btn.disabled = false; }
+        }
+
+        // --- історія ---
+        const AL_STATUS = {
+            pending: { label: 'в черзі', cls: 'bg-slate-100 text-slate-500' },
+            running: { label: 'створюю…', cls: 'bg-violet-50 text-violet-600' },
+            done: { label: 'готово · на паузі', cls: 'bg-emerald-50 text-emerald-600' },
+            error: { label: 'помилка', cls: 'bg-rose-50 text-rose-600' }
+        };
+        async function alLoadHistory() {
+            const wrap = document.getElementById('alHistory');
+            if (!wrap) return;
+            try {
+                const r = await fetch('/api/fb/launches');
+                const rows = await r.json();
+                if (!Array.isArray(rows) || !rows.length) { wrap.innerHTML = `<div class="text-sm text-slate-400">Ще нічого не запускали</div>`; return; }
+                wrap.innerHTML = rows.map(l => {
+                    const st = AL_STATUS[l.status] || AL_STATUS.pending;
+                    const log = Array.isArray(l.log) ? l.log : [];
+                    const last = log.length ? log[log.length - 1].msg : '';
+                    const amUrl = l.fb_campaign_id ? `https://adsmanager.facebook.com/adsmanager/manage/adsets?act=${l.fb_account_id}&selected_campaign_ids=${l.fb_campaign_id}` : '';
+                    return `
+                    <div class="border border-slate-100 rounded-xl p-3">
+                        <div class="flex justify-between items-start gap-2">
+                            <div class="min-w-0">
+                                <div class="text-sm font-bold text-slate-800 truncate">${esc(l.campaign_name || '')}</div>
+                                <div class="text-[11px] text-slate-400">${esc(l.account_name || '')} · ${l.creatives_count} груп · ${new Date(l.created_at).toLocaleString('uk-UA', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</div>
+                            </div>
+                            <span class="shrink-0 inline-flex text-[10px] font-black px-2 py-1 rounded-full ${st.cls}">${st.label}</span>
+                        </div>
+                        <div class="text-[11px] ${l.status === 'error' ? 'text-rose-500' : 'text-slate-500'} mt-1">${esc(l.status === 'error' ? (l.error || last) : last)}</div>
+                        <div class="flex gap-3 mt-2">
+                            ${amUrl ? `<a href="${amUrl}" target="_blank" class="text-[11px] font-bold text-violet-600 hover:underline"><i class="fa-solid fa-arrow-up-right-from-square mr-1"></i>Відкрити в Ads Manager</a>` : ''}
+                            ${log.length ? `<button onclick="this.nextElementSibling.classList.toggle('hidden')" class="text-[11px] font-bold text-slate-400 hover:text-slate-600">лог (${log.length})</button>
+                            <pre class="hidden w-full text-[10px] text-slate-500 bg-slate-50 rounded-lg p-2 mt-1 whitespace-pre-wrap">${esc(log.map(x => x.msg).join('\n'))}</pre>` : ''}
+                        </div>
+                    </div>`;
+                }).join('');
+                clearTimeout(alHistoryTimer);
+                if (rows.some(l => l.status === 'pending' || l.status === 'running') && currentView === 'adlaunch') alHistoryTimer = setTimeout(alLoadHistory, 4000);
+            } catch (e) { wrap.innerHTML = `<div class="text-sm text-rose-500">${esc(e.message)}</div>`; }
+        }
+
         function initFbControl() {
             fbCtlInit = true;
             const iso = d => d.toISOString().slice(0, 10);

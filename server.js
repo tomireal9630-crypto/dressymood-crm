@@ -3,6 +3,7 @@ require('dotenv').config();
 const express = require('express');
 const { Pool } = require('pg');
 const path = require('path');
+const fs = require('fs');
 const session = require('express-session');
 const PgSession = require('connect-pg-simple')(session);
 const crypto = require('crypto');
@@ -185,6 +186,30 @@ async function updateDatabaseSchema() {
         `);
         await pool.query(`ALTER TABLE fb_ad_accounts ADD COLUMN IF NOT EXISTS currency VARCHAR(8);`);
         await pool.query(`ALTER TABLE fb_ad_accounts ADD COLUMN IF NOT EXISTS fx_rate NUMERIC;`);
+        // Для запуску реклами з CRM: сторінка FB, Instagram-акаунт, піксель
+        await pool.query(`ALTER TABLE fb_ad_accounts ADD COLUMN IF NOT EXISTS page_id VARCHAR(64) DEFAULT '';`);
+        await pool.query(`ALTER TABLE fb_ad_accounts ADD COLUMN IF NOT EXISTS page_name VARCHAR(255) DEFAULT '';`);
+        await pool.query(`ALTER TABLE fb_ad_accounts ADD COLUMN IF NOT EXISTS instagram_id VARCHAR(64) DEFAULT '';`);
+        await pool.query(`ALTER TABLE fb_ad_accounts ADD COLUMN IF NOT EXISTS pixel_id VARCHAR(64) DEFAULT '';`);
+
+        // === ЗАПУСКИ РЕКЛАМИ З CRM ===
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS fb_launches (
+                id SERIAL PRIMARY KEY,
+                ad_account_id INTEGER REFERENCES fb_ad_accounts(id) ON DELETE SET NULL,
+                article VARCHAR(255) DEFAULT '',
+                config JSONB NOT NULL DEFAULT '{}',        -- назва, бюджет, таргет, тексти, лінк
+                creatives JSONB NOT NULL DEFAULT '[]',     -- [{file_id,name,kind,adset_name,image_hash|video_id}]
+                status VARCHAR(16) NOT NULL DEFAULT 'pending', -- pending | running | done | error
+                fb_campaign_id VARCHAR(64) DEFAULT '',
+                fb_ids JSONB DEFAULT '{}',
+                log JSONB DEFAULT '[]',
+                error TEXT DEFAULT '',
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                started_at TIMESTAMP WITH TIME ZONE,
+                finished_at TIMESTAMP WITH TIME ZONE
+            );
+        `);
 
         await pool.query(`
             CREATE TABLE IF NOT EXISTS fb_spend_daily (
@@ -1585,6 +1610,369 @@ app.post('/api/fb/entity/:level(campaign|adset)/:id/status', checkAuth, async (r
     }
     res.json({ success: true, level, id, status });
   } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+// ===================== ЗАПУСК РЕКЛАМИ З CRM (FB Marketing API) =====================
+// Схема 1-N-1: 1 кампанія → N груп (по креативу) → 1 оголошення в групі.
+// Все створюється зі статусом PAUSED — у Ads Manager перевіряєш і вмикаєш.
+// Файли креативів тимчасово лежать у uploads/ (Railway: диск ефемерний — цього досить, бо запуск триває хвилини).
+const UPLOAD_DIR = path.join(__dirname, 'uploads');
+try { fs.mkdirSync(UPLOAD_DIR, { recursive: true }); } catch (e) {}
+
+const FB_CTA_TYPES = ['SHOP_NOW', 'ORDER_NOW', 'BUY_NOW', 'LEARN_MORE', 'GET_OFFER', 'SIGN_UP', 'CONTACT_US', 'MESSAGE_PAGE'];
+
+const AD_LAUNCH_DEFAULTS = {
+  daily_budget: 8,          // $ на групу на день
+  genders: [2],             // 1 = чоловіки, 2 = жінки, [] = всі
+  age_min: 18,
+  age_max: 65,
+  countries: ['UA'],
+  cta: 'SHOP_NOW',
+  message: '',
+  title: '',
+  description: '',
+  campaign_name_tpl: '[{article}] {name} {date}',
+  adset_name_tpl: '{creative}'
+};
+
+async function getAdLaunchDefaults() {
+  const r = await pool.query(`SELECT value FROM app_settings WHERE key = 'fb_launch_defaults'`);
+  return { ...AD_LAUNCH_DEFAULTS, ...(r.rows.length ? r.rows[0].value : {}) };
+}
+
+app.get('/api/fb/launch/defaults', checkAuth, async (req, res) => {
+  try { res.json({ defaults: await getAdLaunchDefaults(), cta_types: FB_CTA_TYPES }); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/fb/launch/defaults', checkAuth, async (req, res) => {
+  try {
+    const cur = await getAdLaunchDefaults();
+    const b = req.body || {};
+    const next = { ...cur };
+    for (const k of Object.keys(AD_LAUNCH_DEFAULTS)) if (b[k] !== undefined) next[k] = b[k];
+    await pool.query(`INSERT INTO app_settings (key, value) VALUES ('fb_launch_defaults', $1)
+                      ON CONFLICT (key) DO UPDATE SET value = $1`, [next]);
+    res.json({ success: true, defaults: next });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// --- Налаштування кабінету для запуску: сторінка / Instagram / піксель ---
+app.get('/api/fb/launch/accounts', checkAuth, async (req, res) => {
+  try {
+    const r = await pool.query(`SELECT id, name, fb_account_id, currency, is_active, page_id, instagram_id, pixel_id, page_name
+                                FROM fb_ad_accounts WHERE is_active = true ORDER BY id`);
+    res.json(r.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.patch('/api/fb/launch/accounts/:id(\\d+)', checkAuth, async (req, res) => {
+  const b = req.body || {};
+  const sets = [], vals = [];
+  for (const k of ['page_id', 'instagram_id', 'pixel_id', 'page_name']) {
+    if (b[k] !== undefined) { vals.push(String(b[k] || '').trim()); sets.push(`${k}=$${vals.length}`); }
+  }
+  if (!sets.length) return res.status(400).json({ error: 'Нічого оновлювати' });
+  vals.push(req.params.id);
+  try { await pool.query(`UPDATE fb_ad_accounts SET ${sets.join(', ')} WHERE id=$${vals.length}`, vals); res.json({ success: true }); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Автовизначення: піксель з adspixels, сторінка/Instagram — з останніх оголошень кабінету
+app.post('/api/fb/launch/accounts/:id(\\d+)/detect', checkAuth, async (req, res) => {
+  try {
+    const acc = (await pool.query(`SELECT * FROM fb_ad_accounts WHERE id=$1`, [req.params.id])).rows[0];
+    if (!acc) return res.status(404).json({ error: 'Кабінет не знайдено' });
+    const tok = encodeURIComponent(acc.access_token);
+    const base = `https://graph.facebook.com/${FB_API_VERSION}`;
+    const found = { page_id: '', instagram_id: '', pixel_id: '', page_name: '', pixels: [], pages: [] };
+    try {
+      const px = await fbGet(`${base}/act_${acc.fb_account_id}/adspixels?fields=id,name,last_fired_time&access_token=${tok}`);
+      found.pixels = px.data || [];
+      if (found.pixels.length) found.pixel_id = found.pixels[0].id;
+    } catch (e) {}
+    try {
+      const ads = await fbGet(`${base}/act_${acc.fb_account_id}/ads?fields=creative{object_story_spec}&limit=25&access_token=${tok}`);
+      const seen = {};
+      for (const a of (ads.data || [])) {
+        const s = a.creative && a.creative.object_story_spec;
+        if (s && s.page_id && !seen[s.page_id]) { seen[s.page_id] = true; found.pages.push({ id: s.page_id, instagram_id: s.instagram_user_id || '' }); }
+      }
+      if (found.pages.length) { found.page_id = found.pages[0].id; found.instagram_id = found.pages[0].instagram_id; }
+    } catch (e) {}
+    // Назва сторінки (може не дати без pages_* прав — тоді лишаємо id)
+    if (found.page_id) {
+      try { const pg = await fbGet(`${base}/${found.page_id}?fields=name&access_token=${tok}`); found.page_name = pg.name || ''; } catch (e) {}
+    }
+    const sets = [], vals = [];
+    for (const k of ['page_id', 'instagram_id', 'pixel_id', 'page_name']) {
+      if (found[k]) { vals.push(found[k]); sets.push(`${k}=$${vals.length}`); }
+    }
+    if (sets.length) { vals.push(acc.id); await pool.query(`UPDATE fb_ad_accounts SET ${sets.join(', ')} WHERE id=$${vals.length}`, vals); }
+    res.json({ success: true, ...found });
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+// --- Завантаження креативів (тимчасово на диск) ---
+// Файл іде сирим тілом; ім'я — у заголовку x-filename (URL-encoded)
+app.post('/api/fb/launch/upload', checkAuth, express.raw({ type: () => true, limit: '300mb' }), async (req, res) => {
+  try {
+    const name = decodeURIComponent(req.headers['x-filename'] || 'file');
+    const buf = req.body;
+    if (!buf || !buf.length) return res.status(400).json({ error: 'Порожній файл' });
+    const ext = (name.match(/\.([a-z0-9]+)$/i) || [, ''])[1].toLowerCase();
+    const isVideo = ['mp4', 'mov', 'm4v', 'webm'].includes(ext);
+    const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext);
+    if (!isVideo && !isImage) return res.status(400).json({ error: 'Підтримуються jpg/png/gif/webp і mp4/mov' });
+    const id = crypto.randomBytes(12).toString('hex') + '.' + ext;
+    fs.writeFileSync(path.join(UPLOAD_DIR, id), buf);
+    res.json({ id, name, size: buf.length, kind: isVideo ? 'video' : 'image' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/fb/launch/upload/:id', checkAuth, (req, res) => {
+  const id = String(req.params.id).replace(/[^a-z0-9.]/gi, '');
+  try { fs.unlinkSync(path.join(UPLOAD_DIR, id)); } catch (e) {}
+  res.json({ success: true });
+});
+
+// --- FB helpers для створення ---
+async function fbPost(url, body) {
+  const resp = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const j = await resp.json();
+  if (!resp.ok || j.error) {
+    const e = j.error || {};
+    throw new Error((e.error_user_msg || e.message || ('HTTP ' + resp.status)) + (e.error_subcode ? ` [${e.code}/${e.error_subcode}]` : ''));
+  }
+  return j;
+}
+
+async function fbUploadImage(acc, filePath, filename) {
+  const bytes = fs.readFileSync(filePath).toString('base64');
+  const j = await fbPost(`https://graph.facebook.com/${FB_API_VERSION}/act_${acc.fb_account_id}/adimages`,
+    { bytes, name: filename, access_token: acc.access_token });
+  const img = j.images && Object.values(j.images)[0];
+  if (!img || !img.hash) throw new Error('FB не повернув hash зображення');
+  return { image_hash: img.hash, image_url: img.url };
+}
+
+async function fbUploadVideo(acc, filePath, filename) {
+  const fd = new FormData();
+  fd.append('access_token', acc.access_token);
+  fd.append('name', filename);
+  fd.append('source', new Blob([fs.readFileSync(filePath)]), filename);
+  const resp = await fetch(`https://graph.facebook.com/${FB_API_VERSION}/act_${acc.fb_account_id}/advideos`, { method: 'POST', body: fd });
+  const j = await resp.json();
+  if (!resp.ok || j.error) throw new Error((j.error && (j.error.error_user_msg || j.error.message)) || ('HTTP ' + resp.status));
+  if (!j.id) throw new Error('FB не повернув id відео');
+  return j.id;
+}
+
+// Чекаємо поки FB обробить відео і віддасть прев'ю (потрібне для креативу)
+async function fbWaitVideoReady(acc, videoId, log, maxMs = 6 * 60 * 1000) {
+  const started = Date.now();
+  const tok = encodeURIComponent(acc.access_token);
+  while (Date.now() - started < maxMs) {
+    const v = await fbGet(`https://graph.facebook.com/${FB_API_VERSION}/${videoId}?fields=status,thumbnails{uri,is_preferred}&access_token=${tok}`);
+    const st = v.status && v.status.video_status;
+    const thumbs = (v.thumbnails && v.thumbnails.data) || [];
+    if (st === 'error') throw new Error('FB: помилка обробки відео');
+    if (st === 'ready' && thumbs.length) {
+      const t = thumbs.find(x => x.is_preferred) || thumbs[0];
+      return t.uri;
+    }
+    await new Promise(r => setTimeout(r, 5000));
+  }
+  throw new Error('Відео обробляється надто довго — спробуй запустити пізніше');
+}
+
+function fillTpl(tpl, vars) {
+  return String(tpl || '').replace(/\{(\w+)\}/g, (_, k) => (vars[k] != null ? String(vars[k]) : ''));
+}
+
+// --- Головне: створити кампанію в кабінеті ---
+async function runAdLaunch(launchId) {
+  const L = (await pool.query(`SELECT * FROM fb_launches WHERE id=$1`, [launchId])).rows[0];
+  if (!L) return;
+  const acc = (await pool.query(`SELECT * FROM fb_ad_accounts WHERE id=$1`, [L.ad_account_id])).rows[0];
+  const cfg = L.config || {};
+  const creatives = L.creatives || [];
+  const log = [];
+  const ids = { campaign_id: '', adsets: [] };
+  const say = async (msg, level = 'info') => {
+    log.push({ t: new Date().toISOString(), level, msg });
+    await pool.query(`UPDATE fb_launches SET log=$1, fb_ids=$2 WHERE id=$3`, [JSON.stringify(log), JSON.stringify(ids), launchId]);
+  };
+  const base = `https://graph.facebook.com/${FB_API_VERSION}`;
+  const actUrl = `${base}/act_${acc.fb_account_id}`;
+
+  await pool.query(`UPDATE fb_launches SET status='running', started_at=now() WHERE id=$1`, [launchId]);
+  try {
+    if (!acc) throw new Error('Кабінет не знайдено');
+    if (!acc.page_id) throw new Error('У кабінету не вказано сторінку FB (page_id) — заповни в налаштуваннях запуску');
+    if (!acc.pixel_id) throw new Error('У кабінету не вказано піксель — заповни в налаштуваннях запуску');
+    if (!creatives.length) throw new Error('Немає креативів');
+    if (!cfg.link) throw new Error('Не вказано посилання на лендінг');
+
+    // 1. Креативи → FB
+    await say(`Завантажую ${creatives.length} креатив(ів) у act_${acc.fb_account_id}…`);
+    for (const c of creatives) {
+      const fp = path.join(UPLOAD_DIR, String(c.file_id).replace(/[^a-z0-9.]/gi, ''));
+      if (!fs.existsSync(fp)) throw new Error(`Файл ${c.name} не знайдено на сервері (перезавантаж креативи)`);
+      if (c.kind === 'video') {
+        c.video_id = await fbUploadVideo(acc, fp, c.name);
+        await say(`Відео «${c.name}» → ${c.video_id}, чекаю обробку…`);
+        c.image_url = await fbWaitVideoReady(acc, c.video_id, say);
+        await say(`Відео «${c.name}» готове`);
+      } else {
+        const r = await fbUploadImage(acc, fp, c.name);
+        c.image_hash = r.image_hash; c.image_url = r.image_url;
+        await say(`Зображення «${c.name}» → ${c.image_hash}`);
+      }
+    }
+
+    // 2. Кампанія (бюджет на рівні груп, тому без daily_budget тут)
+    const camp = await fbPost(`${actUrl}/campaigns`, {
+      name: cfg.campaign_name,
+      objective: 'OUTCOME_LEADS',
+      buying_type: 'AUCTION',
+      status: 'PAUSED',
+      special_ad_categories: [],
+      access_token: acc.access_token
+    });
+    ids.campaign_id = camp.id;
+    await say(`Кампанія «${cfg.campaign_name}» → ${camp.id}`);
+
+    // 3. Групи + оголошення
+    const budgetMinor = Math.round(Number(cfg.daily_budget) * 100); // USD → центи
+    const genders = Array.isArray(cfg.genders) ? cfg.genders.map(Number).filter(Boolean) : [];
+    const targeting = {
+      geo_locations: { countries: cfg.countries && cfg.countries.length ? cfg.countries : ['UA'], location_types: ['home', 'recent'] },
+      age_min: Number(cfg.age_min) || 18,
+      age_max: Number(cfg.age_max) || 65,
+      targeting_automation: { advantage_audience: 1, individual_setting: { age: 1, gender: genders.length ? 1 : 0 } }
+    };
+    if (genders.length) targeting.genders = genders;
+
+    for (let i = 0; i < creatives.length; i++) {
+      const c = creatives[i];
+      const adsetName = c.adset_name || c.name;
+      const adset = await fbPost(`${actUrl}/adsets`, {
+        name: adsetName,
+        campaign_id: ids.campaign_id,
+        daily_budget: budgetMinor,
+        billing_event: 'IMPRESSIONS',
+        optimization_goal: 'OFFSITE_CONVERSIONS',
+        bid_strategy: 'LOWEST_COST_WITHOUT_CAP',
+        promoted_object: { pixel_id: acc.pixel_id, custom_event_type: 'LEAD' },
+        targeting,
+        start_time: new Date().toISOString(),
+        status: 'PAUSED',
+        access_token: acc.access_token
+      });
+      await say(`Група «${adsetName}» → ${adset.id}`);
+
+      const cta = { type: cfg.cta || 'SHOP_NOW', value: { link: cfg.link } };
+      const spec = { page_id: acc.page_id };
+      if (acc.instagram_id) spec.instagram_user_id = acc.instagram_id;
+      if (c.kind === 'video') {
+        spec.video_data = { video_id: c.video_id, image_url: c.image_url, message: cfg.message || '', title: cfg.title || '', link_description: cfg.description || '', call_to_action: cta };
+      } else {
+        spec.link_data = { image_hash: c.image_hash, link: cfg.link, message: cfg.message || '', name: cfg.title || '', description: cfg.description || '', call_to_action: cta };
+      }
+      const creative = await fbPost(`${actUrl}/adcreatives`, { name: `${adsetName} — creative`, object_story_spec: spec, access_token: acc.access_token });
+      const ad = await fbPost(`${actUrl}/ads`, { name: adsetName, adset_id: adset.id, creative: { creative_id: creative.id }, status: 'PAUSED', access_token: acc.access_token });
+      ids.adsets.push({ adset_id: adset.id, creative_id: creative.id, ad_id: ad.id, name: adsetName });
+      await say(`Оголошення «${adsetName}» → ${ad.id}`);
+    }
+
+    await say(`Готово: кампанія ${ids.campaign_id}, ${ids.adsets.length} груп. Статус PAUSED — увімкни в Ads Manager.`, 'ok');
+    await pool.query(`UPDATE fb_launches SET status='done', finished_at=now(), fb_campaign_id=$2, creatives=$3 WHERE id=$1`,
+      [launchId, ids.campaign_id, JSON.stringify(creatives)]);
+  } catch (e) {
+    await say('ПОМИЛКА: ' + e.message, 'error');
+    // Прибираємо недороблену кампанію, щоб не лишати сміття в кабінеті
+    if (ids.campaign_id) {
+      try {
+        await fetch(`${base}/${ids.campaign_id}?access_token=${encodeURIComponent(acc.access_token)}`, { method: 'DELETE' });
+        await say(`Недороблену кампанію ${ids.campaign_id} видалено`, 'warn');
+      } catch (e2) { await say(`Не вдалося видалити кампанію ${ids.campaign_id}: ${e2.message} — видали вручну`, 'warn'); }
+    }
+    await pool.query(`UPDATE fb_launches SET status='error', finished_at=now(), error=$2 WHERE id=$1`, [launchId, e.message]);
+  }
+}
+
+// Запуск: по одному fb_launches на кожен кабінет, виконуються послідовно у фоні
+app.post('/api/fb/launch', checkAuth, async (req, res) => {
+  const b = req.body || {};
+  const accountIds = (Array.isArray(b.account_ids) ? b.account_ids : []).map(Number).filter(Boolean);
+  const creatives = (Array.isArray(b.creatives) ? b.creatives : []).filter(c => c && c.file_id);
+  if (!accountIds.length) return res.status(400).json({ error: 'Обери хоча б один кабінет' });
+  if (!creatives.length) return res.status(400).json({ error: 'Додай хоча б один креатив' });
+  if (!b.link) return res.status(400).json({ error: 'Вкажи посилання на лендінг' });
+  if (!(Number(b.daily_budget) > 0)) return res.status(400).json({ error: 'Вкажи денний бюджет' });
+  if (!FB_CTA_TYPES.includes(b.cta || 'SHOP_NOW')) return res.status(400).json({ error: 'Невірний CTA' });
+
+  const d = await getAdLaunchDefaults();
+  const article = String(b.article || '').trim();
+  const product = article ? (await pool.query(`SELECT name FROM products WHERE article=$1 LIMIT 1`, [article])).rows[0] : null;
+  const dateStr = new Date().toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit' });
+  const vars = { article, name: product ? product.name : '', date: dateStr };
+  const campaignName = fillTpl(b.campaign_name || d.campaign_name_tpl, vars).replace(/\s+/g, ' ').trim();
+  const cfg = {
+    campaign_name: campaignName,
+    link: String(b.link).trim(),
+    daily_budget: Number(b.daily_budget),
+    genders: Array.isArray(b.genders) ? b.genders : d.genders,
+    age_min: Number(b.age_min) || d.age_min,
+    age_max: Number(b.age_max) || d.age_max,
+    countries: Array.isArray(b.countries) && b.countries.length ? b.countries : d.countries,
+    cta: b.cta || d.cta,
+    message: String(b.message || ''),
+    title: String(b.title || ''),
+    description: String(b.description || '')
+  };
+  const crs = creatives.map((c, i) => ({
+    file_id: String(c.file_id), name: String(c.name || `creative ${i + 1}`), kind: c.kind === 'video' ? 'video' : 'image',
+    adset_name: fillTpl(b.adset_name_tpl || d.adset_name_tpl, { ...vars, creative: String(c.name || '').replace(/\.[a-z0-9]+$/i, ''), n: i + 1 }).trim() || `creative ${i + 1}`
+  }));
+
+  try {
+    const ids = [];
+    for (const accId of accountIds) {
+      const r = await pool.query(
+        `INSERT INTO fb_launches (ad_account_id, article, config, creatives, status) VALUES ($1,$2,$3,$4,'pending') RETURNING id`,
+        [accId, article, JSON.stringify(cfg), JSON.stringify(crs)]);
+      ids.push(r.rows[0].id);
+    }
+    // У фоні, послідовно (не навантажуємо FB паралельно)
+    (async () => {
+      for (const id of ids) { try { await runAdLaunch(id); } catch (e) { console.error('[ad launch]', id, e.message); } }
+      // Файли більше не потрібні
+      for (const c of crs) { try { fs.unlinkSync(path.join(UPLOAD_DIR, c.file_id)); } catch (e) {} }
+    })();
+    res.json({ success: true, launch_ids: ids });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/fb/launches', checkAuth, async (req, res) => {
+  try {
+    const r = await pool.query(`
+      SELECT l.id, l.ad_account_id, a.name AS account_name, a.fb_account_id, l.article, l.status, l.error,
+             l.config->>'campaign_name' AS campaign_name, l.fb_campaign_id, l.fb_ids, l.log,
+             jsonb_array_length(l.creatives) AS creatives_count, l.created_at, l.finished_at
+      FROM fb_launches l LEFT JOIN fb_ad_accounts a ON a.id = l.ad_account_id
+      ORDER BY l.id DESC LIMIT 100`);
+    res.json(r.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/fb/launches/:id(\\d+)', checkAuth, async (req, res) => {
+  try {
+    const r = await pool.query(`SELECT l.*, a.name AS account_name, a.fb_account_id FROM fb_launches l LEFT JOIN fb_ad_accounts a ON a.id=l.ad_account_id WHERE l.id=$1`, [req.params.id]);
+    if (!r.rows.length) return res.status(404).json({ error: 'Не знайдено' });
+    res.json(r.rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // ===== АВТОПРАВИЛА РЕКЛАМИ =====
