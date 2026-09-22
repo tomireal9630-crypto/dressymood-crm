@@ -788,6 +788,7 @@ app.get('/api/stats/roi', checkAuth, async (req, res) => {
     const totalsQ = `
       SELECT
         COUNT(DISTINCT o.id)::int AS orders,
+        COUNT(DISTINCT o.id) FILTER (WHERE o.ttn <> '' AND o.ttn IS NOT NULL)::int AS orders_shipped,
         COALESCE(SUM(oi.quantity), 0)::int AS units,
         COALESCE(SUM(oi.price * oi.quantity), 0)::numeric AS revenue,
         COALESCE(SUM(COALESCE((SELECT MAX(cost) FROM products p WHERE p.article = oi.article), 0) * oi.quantity), 0)::numeric AS cost
@@ -799,6 +800,7 @@ app.get('/api/stats/roi', checkAuth, async (req, res) => {
       SELECT
         oi.article,
         COUNT(DISTINCT o.id)::int AS orders,
+        COUNT(DISTINCT o.id) FILTER (WHERE o.ttn <> '' AND o.ttn IS NOT NULL)::int AS orders_shipped,
         COALESCE(SUM(oi.quantity), 0)::int AS units,
         COALESCE(SUM(oi.price * oi.quantity), 0)::numeric AS revenue,
         COALESCE(SUM(COALESCE((SELECT MAX(cost) FROM products p WHERE p.article = oi.article), 0) * oi.quantity), 0)::numeric AS cost
@@ -881,8 +883,8 @@ app.get('/api/stats/roi', checkAuth, async (req, res) => {
     const approvedTotal = Number(appT.rows[0].approved) || 0;
     const smsTotal = approvedTotal * smsCost;
     const overheadTotal = (Number(tr.orders) || 0) * overheadPerSale;
-    // Кур'єр — за кожну відправлену посилку: продані + відмови (відмова теж їхала до клієнта)
-    const courierTotal = ((Number(tr.orders) || 0) + refusedTotal) * courierCost;
+    // Кур'єр — за кожну ВІДПРАВЛЕНУ посилку (є ТТН): продані + відмови
+    const courierTotal = ((Number(tr.orders_shipped) || 0) + refusedTotal) * courierCost;
     const netProfit = grossProfit - adSpend - returnsCost - smsTotal - courierTotal - overheadTotal;
     const approvedMap = {};
     appA.rows.forEach(r => { approvedMap[r.article] = Number(r.approved) || 0; });
@@ -906,7 +908,7 @@ app.get('/api/stats/roi', checkAuth, async (req, res) => {
     a.rows.forEach(r => { salesByArt[r.article] = r; });
 
     const byArticle = [...articleSet].map(article => {
-      const r = salesByArt[article] || { orders: 0, units: 0, revenue: 0, cost: 0 };
+      const r = salesByArt[article] || { orders: 0, orders_shipped: 0, units: 0, revenue: 0, cost: 0 };
       const rev = Number(r.revenue) || 0;
       const c = Number(r.cost) || 0;
       const gross = rev - c;
@@ -916,7 +918,7 @@ app.get('/api/stats/roi', checkAuth, async (req, res) => {
       const ld = (spendMap[article] && spendMap[article].leads) || 0;
       const smsC = (approvedMap[article] || 0) * smsCost;
       const ovhC = (Number(r.orders) || 0) * overheadPerSale;
-      const courC = ((Number(r.orders) || 0) + refused) * courierCost;
+      const courC = ((Number(r.orders_shipped) || 0) + refused) * courierCost;
       const net = gross - sp - ret - smsC - courC - ovhC;
       return {
         article,
@@ -3983,7 +3985,8 @@ async function computedFinanceStreams(dateFrom, dateTo, gran) {
     SELECT to_char(date_trunc('${gran}', ${leadExpr}), 'YYYY-MM-DD') AS period,
            COALESCE(SUM(oi.price * oi.quantity),0)::numeric AS revenue,
            COALESCE(SUM(COALESCE((SELECT MAX(cost) FROM products p WHERE p.article = oi.article),0) * oi.quantity),0)::numeric AS cogs,
-           COUNT(DISTINCT o.id)::int AS orders
+           COUNT(DISTINCT o.id)::int AS orders,
+           COUNT(DISTINCT o.id) FILTER (WHERE o.ttn <> '' AND o.ttn IS NOT NULL)::int AS orders_shipped
     FROM orders o JOIN order_items oi ON oi.order_id = o.id
     WHERE ${sConds.join(' AND ')}
     GROUP BY 1`;
@@ -4015,12 +4018,12 @@ async function computedFinanceStreams(dateFrom, dateTo, gran) {
   ]);
 
   const map = {};
-  const ensure = p => (map[p] = map[p] || { period: p, revenue: 0, cogs: 0, ads: 0, returns: 0, courier: 0, refused: 0, orders: 0 });
-  sales.rows.forEach(r => { const m = ensure(r.period); m.revenue = Number(r.revenue) || 0; m.cogs = Number(r.cogs) || 0; m.orders = Number(r.orders) || 0; });
+  const ensure = p => (map[p] = map[p] || { period: p, revenue: 0, cogs: 0, ads: 0, returns: 0, courier: 0, refused: 0, orders: 0, shipped: 0 });
+  sales.rows.forEach(r => { const m = ensure(r.period); m.revenue = Number(r.revenue) || 0; m.cogs = Number(r.cogs) || 0; m.orders = Number(r.orders) || 0; m.shipped = Number(r.orders_shipped) || 0; });
   ads.rows.forEach(r => { ensure(r.period).ads = Number(r.spend) || 0; });
   refs.rows.forEach(r => { const m = ensure(r.period); m.refused = Number(r.refused) || 0; m.returns = m.refused * returnCost; });
   // Кур'єр — за кожну відправлену посилку (продані + відмови)
-  Object.values(map).forEach(m => { m.courier = (m.orders + m.refused) * courierCost; });
+  Object.values(map).forEach(m => { m.courier = (m.shipped + m.refused) * courierCost; });
   return map;
 }
 
