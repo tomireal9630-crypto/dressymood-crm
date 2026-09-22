@@ -1632,16 +1632,30 @@
                                     class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-bold text-sm">
                                 <div class="text-[10px] text-slate-400 font-medium mt-1">За кожну відправлену посилку (продажі + відмови). Не входить у собівартість — окрема стаття у ROI, юніт-економіці й Фінансах</div>
                             </div>
+                            <div class="col-span-2">
+                                <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Джерело курсу валют</label>
+                                <div class="flex items-center gap-2 flex-wrap">
+                                    <select name="fx_source" onchange="econFxSourceChanged()" class="px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-bold text-sm">
+                                        <option value="mono">Monobank (курс продажу)</option>
+                                        <option value="privat">ПриватБанк (курс продажу)</option>
+                                        <option value="nbu">НБУ (офіційний)</option>
+                                        <option value="manual">Вручну</option>
+                                    </select>
+                                    <button type="button" onclick="econFxRefresh()" id="econFxRefreshBtn" class="px-4 py-3 rounded-xl text-xs font-black uppercase tracking-wider bg-slate-100 text-slate-600 hover:bg-slate-200 transition-all"><i class="fa-solid fa-rotate mr-1"></i>Оновити зараз</button>
+                                    <span id="econFxInfo" class="text-[11px] text-slate-400 font-medium"></span>
+                                </div>
+                                <div class="text-[10px] text-slate-400 font-medium mt-1">Авто-оновлення при старті та кожні 6 годин. Банк списує $ за рекламу з картки по курсу продажу — він точніший за НБУ</div>
+                            </div>
                             <div>
                                 <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Курс USD → грн</label>
                                 <input type="number" step="0.01" min="0" name="fx_usd" placeholder="41"
-                                    class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-bold text-sm">
+                                    class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-bold text-sm disabled:text-slate-400">
                                 <div class="text-[10px] text-slate-400 font-medium mt-1">Витрати FB-кабінетів у $ конвертуються в грн по цьому курсу</div>
                             </div>
                             <div>
                                 <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Курс EUR → грн</label>
                                 <input type="number" step="0.01" min="0" name="fx_eur" placeholder="45"
-                                    class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-bold text-sm">
+                                    class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-bold text-sm disabled:text-slate-400">
                                 <div class="text-[10px] text-slate-400 font-medium mt-1">Для кабінетів у євро</div>
                             </div>
                             <div class="col-span-2">
@@ -2932,6 +2946,41 @@
         }
 
         // --- НАЛАШТУВАННЯ: ЕКОНОМІКА ---
+        function econFxSourceChanged() {
+            const f = document.getElementById('econSettingsForm');
+            if (!f || !f.fx_source) return;
+            const manual = f.fx_source.value === 'manual';
+            if (f.fx_usd) f.fx_usd.disabled = !manual;
+            if (f.fx_eur) f.fx_eur.disabled = !manual;
+            const b = document.getElementById('econFxRefreshBtn');
+            if (b) b.style.display = manual ? 'none' : '';
+        }
+        function econFxShowInfo(s) {
+            const el = document.getElementById('econFxInfo');
+            if (!el) return;
+            if (!s || s.fx_source === 'manual') { el.textContent = ''; return; }
+            const names = { nbu: 'НБУ', mono: 'Monobank', privat: 'ПриватБанк' };
+            const fb = s.fx_used_source && s.fx_used_source !== s.fx_source ? ` (${names[s.fx_source] || s.fx_source} не відповів — взято ${names[s.fx_used_source] || s.fx_used_source})` : '';
+            el.textContent = s.fx_updated_at ? `оновлено ${new Date(s.fx_updated_at).toLocaleString('uk-UA', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}${fb}` : 'ще не оновлювалось';
+        }
+        async function econFxRefresh() {
+            const b = document.getElementById('econFxRefreshBtn');
+            const f = document.getElementById('econSettingsForm');
+            if (b) b.disabled = true;
+            try {
+                // Спершу зберігаємо обране джерело, потім тягнемо курс
+                if (f && f.fx_source) {
+                    await fetch('/api/settings/economics', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fx_source: f.fx_source.value }) });
+                }
+                const r = await fetch('/api/settings/fx/refresh', { method: 'POST' });
+                const d = await r.json();
+                if (!r.ok) throw new Error(d.error || 'Помилка');
+                if (f) { if (f.fx_usd) f.fx_usd.value = d.usd ?? ''; if (f.fx_eur && d.eur) f.fx_eur.value = d.eur; }
+                econFxShowInfo({ fx_source: d.requested || d.source, fx_used_source: d.source, fx_updated_at: d.updated_at });
+            } catch (e) { alert('Не вдалося оновити курс: ' + e.message); }
+            finally { if (b) b.disabled = false; }
+        }
+
         async function loadEconSettings() {
             try {
                 const r = await fetch('/api/settings/economics');
@@ -2950,6 +2999,9 @@
                 if (f.courier_cost) f.courier_cost.value = s.courier_cost ?? '';
                 if (f.fx_usd) f.fx_usd.value = s.fx_usd ?? '';
                 if (f.fx_eur) f.fx_eur.value = s.fx_eur ?? '';
+                if (f.fx_source) f.fx_source.value = s.fx_source || 'mono';
+                econFxSourceChanged();
+                econFxShowInfo(s);
             } catch (e) { /* мовчки */ }
         }
 
@@ -2975,7 +3027,8 @@
                     sms_price: f.sms_price ? f.sms_price.value : '',
                     courier_cost: f.courier_cost ? f.courier_cost.value : '',
                     fx_usd: f.fx_usd ? f.fx_usd.value : '',
-                    fx_eur: f.fx_eur ? f.fx_eur.value : ''
+                    fx_eur: f.fx_eur ? f.fx_eur.value : '',
+                    fx_source: f.fx_source ? f.fx_source.value : ''
                 };
                 try {
                     const r = await fetch('/api/settings/economics', {

@@ -192,6 +192,18 @@ async function updateDatabaseSchema() {
         await pool.query(`ALTER TABLE fb_ad_accounts ADD COLUMN IF NOT EXISTS instagram_id VARCHAR(64) DEFAULT '';`);
         await pool.query(`ALTER TABLE fb_ad_accounts ADD COLUMN IF NOT EXISTS pixel_id VARCHAR(64) DEFAULT '';`);
 
+        // === КУРСИ ВАЛЮТ (історія авто-оновлень) ===
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS fx_rates (
+                date DATE NOT NULL,
+                source VARCHAR(16) NOT NULL,
+                usd NUMERIC NOT NULL,
+                eur NUMERIC,
+                fetched_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                PRIMARY KEY (date, source)
+            );
+        `);
+
         // === ЗАПУСКИ РЕКЛАМИ З CRM ===
         await pool.query(`
             CREATE TABLE IF NOT EXISTS fb_launches (
@@ -1026,7 +1038,8 @@ const ECONOMICS_DEFAULTS = {
   sms_price: 0,   // ціна однієї SMS, ₴
   courier_cost: 40, // кур'єр за одну відправку, ₴ (на кожну відправлену посилку: продаж + відмови)
   fx_usd: 41,     // курс USD→UAH для конвертації витрат FB
-  fx_eur: 45      // курс EUR→UAH
+  fx_eur: 45,     // курс EUR→UAH
+  fx_source: 'mono' // nbu | mono | privat | manual — звідки авто-оновлюється курс
 };
 
 async function getEconomicsSettings() {
@@ -1064,21 +1077,108 @@ app.get('/api/settings/economics', checkAuth, async (req, res) => {
 });
 
 app.post('/api/settings/economics', checkAuth, async (req, res) => {
-  const allowed = ['return_cost', 'lookback_days', 'settlement_days', 'target_roi_pct', 'campaign_regex', 'new_approval_pct', 'new_buyout_pct', 'sms_count', 'sms_price', 'courier_cost', 'fx_usd', 'fx_eur'];
+  const allowed = ['return_cost', 'lookback_days', 'settlement_days', 'target_roi_pct', 'campaign_regex', 'new_approval_pct', 'new_buyout_pct', 'sms_count', 'sms_price', 'courier_cost', 'fx_usd', 'fx_eur', 'fx_source'];
   const current = await getEconomicsSettings();
   const next = { ...current };
+  const STR_KEYS = ['campaign_regex', 'fx_source'];
   for (const k of allowed) {
     if (req.body[k] !== undefined && req.body[k] !== '') {
-      next[k] = k === 'campaign_regex' ? String(req.body[k]) : Number(req.body[k]);
+      next[k] = STR_KEYS.includes(k) ? String(req.body[k]) : Number(req.body[k]);
     }
   }
+  if (!FX_SOURCES[next.fx_source]) next.fx_source = 'mono';
+  // Курс з форми приймаємо лише в ручному режимі — інакше його веде авто-оновлення
+  if (next.fx_source !== 'manual') { next.fx_usd = current.fx_usd; next.fx_eur = current.fx_eur; }
   try {
     await pool.query(
       `INSERT INTO app_settings (key, value) VALUES ('economics', $1)
        ON CONFLICT (key) DO UPDATE SET value = $1`, [next]);
-    res.json({ success: true, settings: next });
+    // Змінили джерело → одразу підтягнути курс
+    let fx = null;
+    if (next.fx_source !== 'manual' && next.fx_source !== current.fx_source) {
+      try { fx = await updateFxRates(true); } catch (e) { fx = { error: e.message }; }
+    }
+    res.json({ success: true, settings: fx && !fx.error ? { ...next, fx_usd: fx.usd, fx_eur: fx.eur } : next, fx });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
+
+// ===================== КУРС ВАЛЮТ (авто) =====================
+// Джерела: НБУ (офіційний), Monobank / ПриватБанк (курс продажу — по ньому банк списує $ з картки за рекламу).
+// Оновлюється при старті і кожні 6 годин; історія в fx_rates.
+const FX_SOURCES = {
+  nbu: 'НБУ (офіційний)',
+  mono: 'Monobank (продаж)',
+  privat: 'ПриватБанк (продаж)',
+  manual: 'Вручну'
+};
+
+async function fetchFxRates(source) {
+  const get = async (url) => {
+    const r = await fetch(url, { signal: AbortSignal.timeout(15000) });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return r.json();
+  };
+  if (source === 'nbu') {
+    const d = await get('https://bank.gov.ua/NBUStatService/v1/statdirectory/exchange?json');
+    const usd = (d.find(x => x.cc === 'USD') || {}).rate, eur = (d.find(x => x.cc === 'EUR') || {}).rate;
+    if (!usd) throw new Error('НБУ не віддав USD');
+    return { usd: Number(usd), eur: Number(eur) || 0 };
+  }
+  if (source === 'mono') {
+    const d = await get('https://api.monobank.ua/bank/currency');
+    const usd = d.find(x => x.currencyCodeA === 840 && x.currencyCodeB === 980);
+    const eur = d.find(x => x.currencyCodeA === 978 && x.currencyCodeB === 980);
+    if (!usd || !usd.rateSell) throw new Error('Monobank не віддав USD');
+    return { usd: Number(usd.rateSell), eur: eur ? Number(eur.rateSell || eur.rateCross) || 0 : 0 };
+  }
+  if (source === 'privat') {
+    const d = await get('https://api.privatbank.ua/p24api/pubinfo?exchange&coursid=11');
+    const usd = d.find(x => x.ccy === 'USD'), eur = d.find(x => x.ccy === 'EUR');
+    if (!usd || !usd.sale) throw new Error('ПриватБанк не віддав USD');
+    return { usd: Number(usd.sale), eur: eur ? Number(eur.sale) || 0 : 0 };
+  }
+  throw new Error('Невідоме джерело курсу: ' + source);
+}
+
+async function updateFxRates(force) {
+  const s = await getEconomicsSettings();
+  const source = s.fx_source || 'mono';
+  if (source === 'manual' && !force) return { skipped: 'manual' };
+  if (source === 'manual') return { skipped: 'manual' };
+  // Обране джерело не відповіло (ліміт/збій) → пробуємо інші, щоб курс не завис
+  let rates = null, used = source, firstErr = null;
+  for (const src of [source, ...['privat', 'nbu', 'mono'].filter(x => x !== source)]) {
+    try { rates = await fetchFxRates(src); used = src; break; }
+    catch (e) { if (!firstErr) firstErr = e; }
+  }
+  if (!rates) throw firstErr || new Error('Жодне джерело курсу не відповіло');
+  const next = { ...s, fx_usd: Math.round(rates.usd * 100) / 100, fx_updated_at: new Date().toISOString(), fx_source: source, fx_used_source: used };
+  if (rates.eur) next.fx_eur = Math.round(rates.eur * 100) / 100;
+  await pool.query(`INSERT INTO app_settings (key, value) VALUES ('economics', $1)
+                    ON CONFLICT (key) DO UPDATE SET value = $1`, [next]);
+  await pool.query(`INSERT INTO fx_rates (date, source, usd, eur) VALUES (CURRENT_DATE, $1, $2, $3)
+                    ON CONFLICT (date, source) DO UPDATE SET usd = EXCLUDED.usd, eur = EXCLUDED.eur, fetched_at = now()`,
+    [used, next.fx_usd, next.fx_eur || null]);
+  return { source: used, requested: source, fallback: used !== source, usd: next.fx_usd, eur: next.fx_eur, updated_at: next.fx_updated_at };
+}
+
+app.get('/api/settings/fx', checkAuth, async (req, res) => {
+  try {
+    const s = await getEconomicsSettings();
+    const hist = await pool.query(`SELECT date, source, usd, eur FROM fx_rates ORDER BY date DESC, fetched_at DESC LIMIT 30`);
+    res.json({ source: s.fx_source || 'mono', used_source: s.fx_used_source || null, usd: s.fx_usd, eur: s.fx_eur, updated_at: s.fx_updated_at || null, sources: FX_SOURCES, history: hist.rows });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/settings/fx/refresh', checkAuth, async (req, res) => {
+  try { res.json({ success: true, ...(await updateFxRates(true)) }); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+setTimeout(() => { updateFxRates().catch(e => console.error('[fx]', e.message)); }, 15 * 1000);
+setInterval(() => { updateFxRates().catch(e => console.error('[fx]', e.message)); }, 6 * 60 * 60 * 1000);
+
+
 
 // --- ЕКОНОМІКА ТОВАРУ (CPL_max, CPL_recommended) ---
 app.get('/api/products/:id(\\d+)/economics', checkAuth, async (req, res) => {
