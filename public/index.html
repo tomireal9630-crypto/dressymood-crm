@@ -5748,10 +5748,15 @@
         function fbUah2(n) { return (Number(n) || 0).toLocaleString('uk-UA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₴'; }
         function fbCurSym(cur) { return cur === 'USD' ? '$' : cur === 'EUR' ? '€' : '₴'; }
         function fbMoney(n, cur, dec) {
-            const s = fbCurSym(cur || 'UAH');
-            const v = (Number(n) || 0).toLocaleString('uk-UA', { minimumFractionDigits: dec || 0, maximumFractionDigits: dec || 0 });
+            const c = String(cur || 'UAH').toUpperCase();
+            const s = fbCurSym(c);
+            // Долар/євро форматуємо як в Ads Manager ($17.51), гривню — по-українськи
+            const locale = c === 'UAH' ? 'uk-UA' : 'en-US';
+            const v = (Number(n) || 0).toLocaleString(locale, { minimumFractionDigits: dec || 0, maximumFractionDigits: dec || 0 });
             return s === '₴' ? v + ' ₴' : s + v;
         }
+        // Витрата: у валюті кабінету — з копійками, як в Ads Manager ($2.88); гривню лишаємо цілою
+        function fbSpendDec(cur) { return String(cur || 'UAH').toUpperCase() === 'UAH' ? 0 : 2; }
         function fbStatusBadge(s) {
             const map = { ACTIVE: ['✅', 'text-emerald-600 bg-emerald-50'], PAUSED: ['⏸', 'text-slate-500 bg-slate-100'] };
             const m = map[s] || ['⚠️', 'text-amber-600 bg-amber-50'];
@@ -5843,7 +5848,7 @@
                     <div class="bg-white rounded-2xl border border-slate-100 p-4"><div class="text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-1">🟢 Масштабувати</div><div class="text-2xl font-black text-slate-800">${cScale}</div><div class="text-[10px] text-slate-400 font-medium">CPL у цілі</div></div>
                     <div class="bg-white rounded-2xl border border-slate-100 p-4"><div class="text-[10px] font-black text-amber-500 uppercase tracking-widest mb-1">🟡 Тримати</div><div class="text-2xl font-black text-slate-800">${cHold}</div><div class="text-[10px] text-slate-400 font-medium">в плюсі, нижче цілі</div></div>
                     <div class="bg-white rounded-2xl border border-slate-100 p-4"><div class="text-[10px] font-black text-rose-500 uppercase tracking-widest mb-1">🔴 Вимкнути</div><div class="text-2xl font-black text-slate-800">${cOff}</div><div class="text-[10px] text-slate-400 font-medium">CPL вище беззбитку</div></div>
-                    <div class="bg-rose-50 rounded-2xl border border-rose-100 p-4"><div class="text-[10px] font-black text-rose-500 uppercase tracking-widest mb-1">Злив під ризиком</div><div class="text-2xl font-black text-rose-600">${fbMoney(spendRisk, riskCur, 0)}</div><div class="text-[10px] text-rose-400 font-medium">трата 🔴-кампаній</div></div>
+                    <div class="bg-rose-50 rounded-2xl border border-rose-100 p-4"><div class="text-[10px] font-black text-rose-500 uppercase tracking-widest mb-1">Злив під ризиком</div><div class="text-2xl font-black text-rose-600">${fbMoney(spendRisk, riskCur, fbSpendDec(riskCur))}</div><div class="text-[10px] text-rose-400 font-medium">трата 🔴-кампаній</div></div>
                 </div>
                 <div class="text-[11px] text-slate-400 font-medium mb-4">Суми — у валюті кабінету (як у Ads Manager). У Статистиці й Фінансах перераховуються в грн за курсом (Налаштування → Економіка). Вердикт — за CPL проти порогів моделі (🟢 ≤ рекоменд. · 🟡 ≤ беззбитк. · 🔴 вище), судимо лише де ≥ ${FB_MIN_LEADS} лідів.</div>`;
             body.innerHTML = errBar + summary + articles.map(A => {
@@ -5859,7 +5864,7 @@
                             <span class="text-sm font-black">${roiTxt}</span>${fbModelVerdict(A)}</div>
                         <div class="flex items-center gap-4 text-xs font-bold text-slate-500 flex-wrap">
                             ${target}
-                            <span>Σтрата <b class="text-slate-700">${fbMoney(A.spend, A.currency, 0)}</b></span>
+                            <span>Σтрата <b class="text-slate-700">${fbMoney(A.spend, A.currency, fbSpendDec(A.currency))}</b></span>
                             <span>Σліди <b class="text-slate-700">${A.leads}</b></span>
                             <span>CPL <b class="${fbCplClass(A.cpl, A.cpl_recommended, A.cpl_max)}">${fbMoney(A.cpl, A.currency, 2)}</b></span>
                             <button onclick='fbPauseArticle(${JSON.stringify(A.campaigns).replace(/'/g, "&#39;")})' class="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase bg-rose-500 text-white hover:bg-rose-600 transition-all">⏸ Пауза всіх</button>
@@ -5876,7 +5881,7 @@
                                     </div>
                                     <div class="flex items-center gap-3 text-[11px] font-bold text-slate-500 shrink-0">
                                         ${C.status === 'ACTIVE' ? fbCampVerdict(C.cpl, A.cpl_recommended, A.cpl_max, C.leads, A.cpl_provisional) : ''}
-                                        <span>${fbMoney(C.spend, A.currency, 0)}</span><span>${C.leads} лід.</span>
+                                        <span>${fbMoney(C.spend, A.currency, fbSpendDec(A.currency))}</span><span>${C.leads} лід.</span>
                                         <span class="${fbCplClass(C.cpl, A.cpl_recommended, A.cpl_max)}">CPL ${fbMoney(C.cpl, A.currency, 2)}</span>
                                         ${fbActionBtn('campaign', C.campaign_id, C.ad_account_id, C.status)}
                                     </div>
@@ -5889,7 +5894,7 @@
                                                 <span class="text-xs font-medium text-slate-600 truncate">${esc(G.adset_name || G.adset_id)}</span>
                                             </div>
                                             <div class="flex items-center gap-3 text-[11px] font-bold text-slate-400 shrink-0">
-                                                <span>${fbMoney(G.spend, A.currency, 0)}</span><span>${G.leads} лід.</span>
+                                                <span>${fbMoney(G.spend, A.currency, fbSpendDec(A.currency))}</span><span>${G.leads} лід.</span>
                                                 <span class="${fbCplClass(G.cpl, A.cpl_recommended, A.cpl_max)}">CPL ${fbMoney(G.cpl, A.currency, 2)}</span><span>CTR ${G.ctr.toFixed(1)}%</span>
                                                 ${fbActionBtn('adset', G.adset_id, G.ad_account_id, G.status)}
                                             </div>
