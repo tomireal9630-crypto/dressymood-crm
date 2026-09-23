@@ -1315,16 +1315,24 @@ function extractArticleFromCampaign(campaignName, pattern) {
   return null;
 }
 
+// FB віддає ОДНУ й ту саму конверсію під кількома action_type одночасно
+// (lead, offsite_conversion.fb_pixel_lead, onsite_web_lead, offsite_lead_add_20_s_calls).
+// Їх не можна додавати — виходить подвійний/потрійний рахунок.
+// Беремо агрегат 'lead' — саме його показує Ads Manager; якщо його немає,
+// беремо максимум із конкретних типів, а не суму.
 function getLeadCountFromActions(actions) {
   if (!Array.isArray(actions)) return 0;
-  let leads = 0;
-  for (const a of actions) {
-    const t = String(a.action_type || '');
-    if (t === 'lead' || t === 'onsite_conversion.lead_grouped' || t === 'offsite_conversion.fb_pixel_lead') {
-      leads += Number(a.value) || 0;
-    }
-  }
-  return Math.round(leads);
+  const val = (type) => {
+    const a = actions.find(x => String(x.action_type || '') === type);
+    return a ? (Number(a.value) || 0) : 0;
+  };
+  const lead = val('lead');
+  if (lead > 0) return Math.round(lead);
+  return Math.round(Math.max(
+    val('offsite_conversion.fb_pixel_lead'),
+    val('onsite_conversion.lead_grouped'),
+    val('onsite_web_lead')
+  ));
 }
 
 async function fbGet(url) {
