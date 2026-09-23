@@ -450,7 +450,9 @@ function rateLimit({ windowMs, max, message }) {
 }
 
 const loginLimiter = rateLimit({ windowMs: 5 * 60 * 1000, max: 5, message: 'Забагато спроб входу. Спробуйте за 5 хв.' });
-const landingLimiter = rateLimit({ windowMs: 60 * 1000, max: 10, message: 'Too many requests' });
+// Усі заявки з одного лендінга приходять з IP хостингу, тож ліміт спільний для сайту.
+// 10/хв було замало на сплеск трафіку — зайві заявки просто губились.
+const landingLimiter = rateLimit({ windowMs: 60 * 1000, max: 60, message: 'Too many requests' });
 
 function safeEqual(a, b) {
   const bufA = Buffer.from(String(a));
