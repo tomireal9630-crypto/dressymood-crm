@@ -171,6 +171,8 @@ async function updateDatabaseSchema() {
         // Уніфікація legacy 'Новий' (укр і) → 'Новый' (рос ы) — щоб збігалось з фільтрами
         await pool.query(`UPDATE orders SET status = 'Новый' WHERE status = 'Новий'`);
         await pool.query(`ALTER TABLE orders ALTER COLUMN status SET DEFAULT 'Новый'`);
+        // source зберігає повний URL переходу, а реклама додає ?fbclid=... (~200 символів)
+        await pool.query(`ALTER TABLE orders ALTER COLUMN source TYPE TEXT`).catch(() => {});
 
         await pool.query(`
             CREATE TABLE IF NOT EXISTS fb_ad_accounts (
@@ -2619,18 +2621,20 @@ app.post('/api/landing/order', landingLimiter, async (req, res) => {
     return res.status(401).json({ error: 'Invalid key' });
   }
 
-  const name = String(req.body.name || '').trim();
+  const name = String(req.body.name || '').trim().slice(0, 255);
   const phoneRaw = String(req.body.phone || '').trim();
   if (!name || !phoneRaw) return res.status(400).json({ error: 'name and phone required' });
 
+  // Обрізаємо під реальні ліміти колонок — інакше довге значення валить весь запит
+  const cut = (v, n) => String(v || '').trim().slice(0, n);
   const phone = normalizeUaPhone(phoneRaw);
-  const article = String(req.body.article || '').trim();
-  const product = String(req.body.product || '').trim();
+  const article = cut(req.body.article, 255);
+  const product = cut(req.body.product, 255);
   const price = Number(String(req.body.price || '0').replace(',', '.')) || 0;
-  const supplier = String(req.body.supplier || '').trim();
-  const size = String(req.body.size || '').trim();
-  const color = String(req.body.color || '').trim();
-  const source = String(req.body.source || req.get('referer') || 'Лендінг').trim().slice(0, 255);
+  const supplier = cut(req.body.supplier, 255);
+  const size = cut(req.body.size, 50);
+  const color = cut(req.body.color, 50);
+  const source = cut(req.body.source || req.get('referer') || 'Лендінг', 2000);
 
   const client = await pool.connect();
   try {
