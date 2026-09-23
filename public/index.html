@@ -11,6 +11,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/css/style.css">
     <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 </head>
 <body class="bg-[#f8fafc] flex h-screen overflow-hidden text-slate-700">
 
@@ -3997,26 +3998,45 @@
             );
         }
 
-        function exportToExcel() {
-            if (typeof XLSX === 'undefined') { alert('Бібліотека Excel ще завантажується, спробуйте за секунду.'); return; }
+        // Один аркуш: ліворуч список посилок для кур'єра (з ТТН), праворуч — групування постачальнику.
+        // Замовлення з кількома позиціями займає кілька рядків: номер/ПІБ/ТТН лише в першому,
+        // у примітці — «N в одному».
+        async function exportToExcel() {
+            if (typeof ExcelJS === 'undefined') { alert('Бібліотека Excel ще завантажується, спробуйте за секунду.'); return; }
             const selected = exportRows.filter(r => exportSelected.has(exportRowKey(r)));
             if (!selected.length) { alert('Нічого не вибрано'); return; }
 
-            const detailRows = selected.map((r, i) => ({
-                '№': i + 1,
-                'Артикул': r.article || '',
-                'Розмір': r.size || '',
-                'Колір': r.color || '',
-                'Товар': r.name || '',
-                'Кіл-ть': r.quantity || 1,
-                'Джерело': r.from_stock ? 'Склад' : 'Постачальник',
-                'ФІО': r.fullName || '',
-                'Телефон': r.phone || '',
-                'ТТН': r.ttn || '',
-                'Постачальник': r.supplier_name || '',
-                'Статус': r.status || ''
-            }));
+            // --- ЛІВОРУЧ: позиції, згруповані по замовленню (одне замовлення = одна посилка) ---
+            const byOrder = new Map();
+            selected.forEach(r => {
+                const g = byOrder.get(r.orderId) || { orderId: r.orderId, fullName: r.fullName, ttn: r.ttn, items: [] };
+                g.items.push(r);
+                byOrder.set(r.orderId, g);
+            });
+            const cmp = (a, b) => (a || '').localeCompare(b || '', 'uk');
+            // Кур'єру віддаємо лише те, на що вже є ТТН — решта ще не готова до відправки
+            const orders = [...byOrder.values()].filter(o => o.ttn).sort((a, b) => {
+                const x = a.items[0], y = b.items[0];
+                return cmp(x.article, y.article) || cmp(x.color, y.color) || cmp(x.size, y.size);
+            });
+            const courier = [];
+            let n = 0;
+            orders.forEach(o => {
+                n++;
+                o.items.forEach((it, i) => courier.push({
+                    n: i === 0 ? n : '',
+                    article: it.article || '',
+                    size: it.size || '',
+                    color: it.color || '',
+                    name: i === 0 ? (it.name || '') : '',
+                    fullName: i === 0 ? (o.fullName || '') : '',
+                    ttn: i === 0 ? (o.ttn || '') : '',
+                    note: (i === 0 && o.items.length > 1) ? `${o.items.length} в одному` : '',
+                    firstOfOrder: i === 0
+                }));
+            });
 
+            // --- ПРАВОРУЧ: групування для постачальника ---
             const groups = new Map();
             selected.forEach(r => {
                 const key = `${r.article}|${r.size}|${r.color}`;
@@ -4024,37 +4044,162 @@
                 g.qty += r.quantity;
                 groups.set(key, g);
             });
-            const groupArr = [...groups.values()].sort((a, b) =>
-                (a.article || '').localeCompare(b.article || '') ||
-                (a.size || '').localeCompare(b.size || '') ||
-                (a.color || '').localeCompare(b.color || '')
-            );
-            const groupRows = groupArr.map((g, i) => ({
-                '№': i + 1,
-                'Модель': g.article || '',
-                'Розмір': g.size || '',
-                'Колір': g.color || '',
-                'Кіл-ть': g.qty
-            }));
+            const groupArr = [...groups.values()]
+                .sort((a, b) => cmp(a.article, b.article) || cmp(a.size, b.size) || cmp(a.color, b.color))
+                .map((g, i) => ({ n: i + 1, ...g }));
 
-            const wb = XLSX.utils.book_new();
-            const wsGroup = XLSX.utils.json_to_sheet(groupRows);
-            wsGroup['!cols'] = [{ wch: 5 }, { wch: 12 }, { wch: 10 }, { wch: 14 }, { wch: 8 }];
-            XLSX.utils.book_append_sheet(wb, wsGroup, 'Групування');
+            // --- Книга ---
+            const wb = new ExcelJS.Workbook();
+            wb.creator = 'CRM';
+            wb.created = new Date();
+            const ws = wb.addWorksheet('Вигрузка', {
+                views: [{ state: 'frozen', ySplit: 2 }],
+                pageSetup: { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, margins: { left: 0.3, right: 0.3, top: 0.4, bottom: 0.4, header: 0.2, footer: 0.2 } }
+            });
 
-            const wsDetail = XLSX.utils.json_to_sheet(detailRows);
-            wsDetail['!cols'] = [
-                { wch: 5 }, { wch: 12 }, { wch: 10 }, { wch: 14 }, { wch: 24 },
-                { wch: 7 }, { wch: 12 }, { wch: 24 }, { wch: 14 }, { wch: 18 }, { wch: 16 }, { wch: 14 }
+            const L = { from: 1, to: 8 };    // A..H — кур'єру
+            const GAP = 9;                   // I — роздільник
+            const R = { from: 10, to: 14 };  // J..N — постачальнику
+
+            ws.columns = [
+                { width: 5 }, { width: 11 }, { width: 9 }, { width: 15 }, { width: 11 },
+                { width: 26 }, { width: 17 }, { width: 13 },
+                { width: 2.5 },
+                { width: 5 }, { width: 11 }, { width: 9 }, { width: 15 }, { width: 8 }
             ];
-            XLSX.utils.book_append_sheet(wb, wsDetail, 'Замовлення');
 
+            const NAVY = 'FF1E293B', SLATE = 'FF475569', ZEBRA = 'FFF8FAFC';
+            const VIOLET = 'FF7C3AED', EMERALD = 'FF059669';
+            const thin = { style: 'thin', color: { argb: 'FFCBD5E1' } };
+            const box = { top: thin, left: thin, bottom: thin, right: thin };
+
+            // Рядок 1 — заголовки блоків
+            ws.mergeCells(1, L.from, 1, L.to);
+            ws.mergeCells(1, R.from, 1, R.to);
+            const titleL = ws.getCell(1, L.from), titleR = ws.getCell(1, R.from);
+            titleL.value = `ДЛЯ КУР'ЄРА — ${orders.length} посилок`;
+            titleR.value = `ПОСТАЧАЛЬНИКУ — ${groupArr.reduce((s, g) => s + g.qty, 0)} шт`;
+            [[titleL, VIOLET], [titleR, EMERALD]].forEach(([c, color]) => {
+                c.font = { bold: true, size: 12, color: { argb: 'FFFFFFFF' }, name: 'Calibri' };
+                c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: color } };
+                c.alignment = { horizontal: 'center', vertical: 'middle' };
+            });
+            ws.getRow(1).height = 24;
+
+            // Рядок 2 — шапки колонок
+            const headL = ['№', 'Модель', 'Розмір', 'Колір', 'Товар', 'ПІБ', 'ТТН', 'Примітка'];
+            const headR = ['№', 'Модель', 'Розмір', 'Колір', 'Кіл-ть'];
+            headL.forEach((t, i) => { ws.getCell(2, L.from + i).value = t; });
+            headR.forEach((t, i) => { ws.getCell(2, R.from + i).value = t; });
+            ws.getRow(2).eachCell(c => {
+                if (!c.value) return;
+                c.font = { bold: true, size: 10, color: { argb: 'FFFFFFFF' }, name: 'Calibri' };
+                c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: NAVY } };
+                c.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+                c.border = box;
+            });
+            ws.getRow(2).height = 20;
+
+            // Дані
+            const rowsCount = Math.max(courier.length, groupArr.length);
+            for (let i = 0; i < rowsCount; i++) {
+                const rowIdx = 3 + i;
+                const row = ws.getRow(rowIdx);
+                row.height = 17;
+                const c = courier[i];
+                if (c) {
+                    const v = [c.n, c.article, c.size, c.color, c.name, c.fullName, c.ttn, c.note];
+                    v.forEach((val, k) => {
+                        const cell = ws.getCell(rowIdx, L.from + k);
+                        cell.value = val === '' ? null : val;
+                        cell.border = box;
+                        cell.font = { size: 10, name: 'Calibri', bold: k === 6 && !!val };
+                        cell.alignment = { horizontal: (k === 0 || k === 2) ? 'center' : 'left', vertical: 'middle' };
+                        if (k === 6 && val) { cell.numFmt = '@'; cell.font = { size: 10, name: 'Calibri', bold: true, color: { argb: SLATE } }; }
+                        if (!c.firstOfOrder) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: ZEBRA } };
+                        if (k === 7 && val) cell.font = { size: 9, name: 'Calibri', italic: true, color: { argb: 'FFB91C1C' } };
+                    });
+                }
+                const g = groupArr[i];
+                if (g) {
+                    const v = [g.n, g.article, g.size, g.color, g.qty];
+                    v.forEach((val, k) => {
+                        const cell = ws.getCell(rowIdx, R.from + k);
+                        cell.value = val === '' ? null : val;
+                        cell.border = box;
+                        cell.font = { size: 10, name: 'Calibri', bold: k === 4 };
+                        cell.alignment = { horizontal: (k === 0 || k === 2 || k === 4) ? 'center' : 'left', vertical: 'middle' };
+                    });
+                }
+            }
+
+            // Підсумки
+            const totalRow = 3 + rowsCount;
+            ws.mergeCells(totalRow, L.from, totalRow, L.to - 1);
+            const tl = ws.getCell(totalRow, L.from);
+            tl.value = `Всього посилок: ${orders.length}   ·   позицій: ${orders.reduce((s, o) => s + o.items.reduce((x, it) => x + it.quantity, 0), 0)}`;
+            tl.font = { bold: true, size: 10, name: 'Calibri', color: { argb: VIOLET } };
+            tl.alignment = { horizontal: 'right', vertical: 'middle' };
+            ws.mergeCells(totalRow, R.from, totalRow, R.to - 1);
+            const tr = ws.getCell(totalRow, R.from);
+            tr.value = 'Всього:';
+            tr.font = { bold: true, size: 10, name: 'Calibri', color: { argb: EMERALD } };
+            tr.alignment = { horizontal: 'right', vertical: 'middle' };
+            const trq = ws.getCell(totalRow, R.to);
+            trq.value = groupArr.reduce((s, g) => s + g.qty, 0);
+            trq.font = { bold: true, size: 11, name: 'Calibri', color: { argb: EMERALD } };
+            trq.alignment = { horizontal: 'center', vertical: 'middle' };
+            trq.border = box;
+            ws.getRow(totalRow).height = 20;
+
+            // --- Другий аркуш: повні дані (телефон, статус, постачальник) ---
+            const ws2 = wb.addWorksheet('Замовлення', { views: [{ state: 'frozen', ySplit: 1 }] });
+            ws2.columns = [
+                { header: '№', key: 'n', width: 5 }, { header: 'Артикул', key: 'article', width: 11 },
+                { header: 'Розмір', key: 'size', width: 9 }, { header: 'Колір', key: 'color', width: 15 },
+                { header: 'Товар', key: 'name', width: 22 }, { header: 'Кіл-ть', key: 'qty', width: 7 },
+                { header: 'Джерело', key: 'src', width: 13 }, { header: 'ПІБ', key: 'fullName', width: 24 },
+                { header: 'Телефон', key: 'phone', width: 15 }, { header: 'ТТН', key: 'ttn', width: 17 },
+                { header: 'Постачальник', key: 'supplier', width: 16 }, { header: 'Статус', key: 'status', width: 13 }
+            ];
+            selected.forEach((r, i) => ws2.addRow({
+                n: i + 1, article: r.article || '', size: r.size || '', color: r.color || '',
+                name: r.name || '', qty: r.quantity || 1, src: r.from_stock ? 'Склад' : 'Постачальник',
+                fullName: r.fullName || '', phone: r.phone || '', ttn: r.ttn || '',
+                supplier: r.supplier_name || '', status: r.status || ''
+            }));
+            ws2.getRow(1).eachCell(c => {
+                c.font = { bold: true, size: 10, color: { argb: 'FFFFFFFF' }, name: 'Calibri' };
+                c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: NAVY } };
+                c.alignment = { horizontal: 'center', vertical: 'middle' };
+                c.border = box;
+            });
+            ws2.eachRow((row, i) => {
+                if (i === 1) return;
+                row.height = 16;
+                row.eachCell(c => {
+                    c.border = box;
+                    c.font = { size: 10, name: 'Calibri' };
+                    c.alignment = { vertical: 'middle' };
+                });
+                if (i % 2 === 1) row.eachCell(c => { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: ZEBRA } }; });
+            });
+            ws2.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: 12 } };
+
+            // --- Збереження ---
             const sup = (document.getElementById('exportSupplierFilter') || {}).value || '';
             const d = new Date();
-            const p = n => String(n).padStart(2, '0');
-            const stamp = `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
-            const name = `vigruzka_${sup ? sup.replace(/[^a-z0-9а-яіїєґ_-]+/gi, '_') + '_' : ''}${stamp}.xlsx`;
-            XLSX.writeFile(wb, name);
+            const p = x => String(x).padStart(2, '0');
+            const stamp = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+            const fname = `vigruzka_${sup ? sup.replace(/[^a-z0-9а-яіїєґ_-]+/gi, '_') + '_' : ''}${stamp}.xlsx`;
+
+            const buf = await wb.xlsx.writeBuffer();
+            const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = fname;
+            document.body.appendChild(a); a.click(); a.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
         }
 
         // --- ДАШБОРД ---
