@@ -1583,7 +1583,13 @@
                             </div>
                         </div>
                         <div class="bg-slate-50 border border-slate-100 rounded-xl p-4 text-[11px] text-slate-500 font-medium">
-                            Спосіб оплати — <b>Безготівковий</b>, зміна каси відкривається автоматично при першому чеку.
+                            <b>на счет</b> (післяплата НП) — створюється <b>експрес-накладна</b> по ТТН; Checkbox проводить чек, коли клієнт оплатить, і шле його по SMS. Потрібно: токен НП у кабінеті Checkbox (Каса → Доставка) та «Контроль оплати» на ТТН.<br>
+                            <b>повна оплата</b> — чек продажу одразу, безготівково з назвою оплати нижче.
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Назва оплати для «повна оплата»</label>
+                            <input type="text" name="prepaidLabel" placeholder="Картка"
+                                class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-bold text-sm">
                         </div>
                         <div class="flex items-center gap-3 pt-2 flex-wrap">
                             <button type="submit" class="bg-violet-600 text-white px-8 py-3 rounded-xl font-black text-sm uppercase tracking-widest hover:bg-violet-700 transition-all">Зберегти</button>
@@ -2927,6 +2933,7 @@
                 f.password.value = s.password || '';
                 f.licenseKey.value = s.licenseKey || '';
                 f.pinCode.value = s.pinCode || '';
+                f.prepaidLabel.value = s.prepaidLabel || '';
             } catch (e) { /* тихо */ }
         }
 
@@ -2942,7 +2949,8 @@
                     login: f.login.value.trim(),
                     password: f.password.value,
                     licenseKey: f.licenseKey.value.trim(),
-                    pinCode: f.pinCode.value.trim()
+                    pinCode: f.pinCode.value.trim(),
+                    prepaidLabel: f.prepaidLabel.value.trim()
                 };
                 try {
                     const r = await fetch('/api/settings/checkbox', {
@@ -3181,14 +3189,19 @@
             finally { if (btn) { btn.disabled = false; btn.innerHTML = orig; } }
         }
 
-        async function generateReceipt(id) {
-            if (!confirm('Згенерувати фіскальний чек Checkbox для замовлення #' + id + '?')) return;
+        const ETTN_STATUS_TEXT = {
+            CREATED: 'чекає оплати на НП', DONE: 'чек проведено', DONE_WITHOUT_SMS: 'чек проведено (SMS не надіслано)',
+            RECEIPT_ERROR: 'помилка фіскалізації', CANCELLED: 'скасовано', RETURNED: 'повернення'
+        };
+
+        async function generateReceipt(id, hasEttn) {
+            if (!hasEttn && !confirm('Видати чек Checkbox для замовлення #' + id + '?\n\nПісляплата — експрес-накладна по ТТН, чек проведеться після оплати клієнтом.')) return;
             try {
                 const r = await fetch(`/api/orders/${id}/receipt`, { method: 'POST' });
                 const j = await r.json();
                 if (!r.ok) throw new Error(j.error || 'Помилка');
-                if (j.existed) alert('Чек вже існує: ' + (j.url || j.id));
-                else alert('Чек створено: ' + (j.url || j.id));
+                if (j.url) { if (j.existed) window.open(j.url, '_blank'); else alert('Чек створено: ' + j.url); }
+                else if (j.ettn) alert('Експрес-накладна: ' + (ETTN_STATUS_TEXT[j.status] || j.status));
                 loadOrders();
             } catch (err) { alert('Помилка чека: ' + err.message); loadOrders(); }
         }
@@ -3728,11 +3741,11 @@
                             ${smsHtml}
                             <div class="flex gap-1.5 mt-1.5 items-center">
                                 <button onclick="event.stopPropagation(); generateTtn(${o.id})" title="Згенерувати ТТН Нова Пошта" class="ttn-btn ttn-btn-pink">ТТН</button>
-                                <button onclick="event.stopPropagation(); generateReceipt(${o.id})" title="${o.checkbox_receipt_id ? 'Чек вже створено' : 'Згенерувати фіскальний чек'}" class="ttn-btn ttn-btn-blue">ЧЕК</button>
+                                <button onclick="event.stopPropagation(); generateReceipt(${o.id}, ${o.checkbox_ettn_id ? 'true' : 'false'})" title="${o.checkbox_receipt_id ? 'Чек вже створено' : (o.checkbox_ettn_id ? 'Експрес-накладна: ' + (ETTN_STATUS_TEXT[o.checkbox_ettn_status] || o.checkbox_ettn_status) + ' — оновити статус' : 'Видати чек Checkbox')}" class="ttn-btn ttn-btn-blue">${o.checkbox_ettn_id && !o.checkbox_receipt_id ? 'ЧЕК ⏳' : 'ЧЕК'}</button>
                                 ${o.checkbox_receipt_url
                                     ? `<a href="${esc(o.checkbox_receipt_url)}" target="_blank" onclick="event.stopPropagation()" title="Чек ${esc(o.checkbox_receipt_id)} — відкрити" class="receipt-ok">₴</a>`
                                     : (o.checkbox_receipt_error
-                                        ? `<button onclick="event.stopPropagation(); generateReceipt(${o.id})" title="${esc(o.checkbox_receipt_error)}" class="receipt-err">!</button>`
+                                        ? `<button onclick="event.stopPropagation(); generateReceipt(${o.id}, ${o.checkbox_ettn_id ? 'true' : 'false'})" title="${esc(o.checkbox_receipt_error)}" class="receipt-err">!</button>`
                                         : '')
                                 }
                             </div>

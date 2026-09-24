@@ -77,6 +77,8 @@ async function updateDatabaseSchema() {
             ADD COLUMN IF NOT EXISTS checkbox_receipt_url VARCHAR(255) DEFAULT '',
             ADD COLUMN IF NOT EXISTS checkbox_receipt_at TIMESTAMP WITH TIME ZONE,
             ADD COLUMN IF NOT EXISTS checkbox_receipt_error TEXT DEFAULT '',
+            ADD COLUMN IF NOT EXISTS checkbox_ettn_id VARCHAR(64) DEFAULT '',
+            ADD COLUMN IF NOT EXISTS checkbox_ettn_status VARCHAR(32) DEFAULT '',
             ADD COLUMN IF NOT EXISTS original_created_at TIMESTAMP WITH TIME ZONE;
         `);
 
@@ -537,6 +539,7 @@ app.get('/api/orders', checkAuth, async (req, res) => {
              o.delivery_service, o.city, o.branch, o.payment_type, o.delivery_payment,
              o.np_status_code, o.np_status_text, o.np_doc_ref,
              o.checkbox_receipt_id, o.checkbox_receipt_url, o.checkbox_receipt_error,
+             o.checkbox_ettn_id, o.checkbox_ettn_status,
              o.sms1_sent_at, o.sms2_sent_at, o.sms3_sent_at,
              o.sms1_error, o.sms2_error, o.sms3_error,
              o.created_at AS "createdAt", o.original_created_at AS "originalCreatedAt",
@@ -3462,6 +3465,7 @@ setInterval(async () => {
   try { await refreshNpStatuses(); } catch (e) {}
   try { await syncReturns(); } catch (e) { console.error('[returns sync]', e.message); }
   try { await autoSendSms(); } catch (e) {}
+  try { await refreshAllEttn(); } catch (e) { console.error('[checkbox ettn]', e.message); }
 }, 30 * 60 * 1000);
 
 // ===================== CHECKBOX (е-чек) =====================
@@ -3541,21 +3545,68 @@ async function checkboxEnsureShift(settings) {
   throw new Error('Зміна Checkbox не відкрилась (timeout)');
 }
 
-function buildReceiptGoods(order, items) {
+// Як у ручному чеку: назва = найменування товару, код = артикул
+function buildReceiptGoods(items) {
   return items.map(it => {
-    const name = [it.article, it.name].filter(Boolean).join(' ').trim() || 'Товар';
-    const extras = [it.size, it.color].filter(Boolean).join(', ');
-    const fullName = extras ? `${name} (${extras})` : name;
-    const code = String(it.article || ('SKU-' + (it.id || Math.random().toString(36).slice(2, 8))));
-    const priceKop = Math.round(Number(it.price || 0) * 100);
+    const name = String(it.name || it.article || 'Товар').trim();
+    const code = String(it.article || ('SKU-' + it.id)).trim();
     const qty = Math.max(1, parseInt(it.quantity) || 1);
     return {
-      good: { code: code.slice(0, 64), name: fullName.slice(0, 128) },
+      good: { code: code.slice(0, 64), name: name.slice(0, 128), price: Math.round(Number(it.price || 0) * 100) },
       quantity: qty * 1000,
-      price: priceKop,
       is_return: false
     };
   });
+}
+
+// Checkbox приймає тільки 380XXXXXXXXX
+function checkboxPhone(raw) {
+  const p = normalizeUaPhone(raw).replace(/^\+/, '');
+  return /^380\d{9}$/.test(p) ? p : '';
+}
+
+const receiptUrl = (id) => `https://check.checkbox.ua/${id}`;
+
+// Статуси замовлення ЕТТН, після яких опитувати більше нема сенсу
+const ETTN_FINAL = ['DONE', 'DONE_WITHOUT_SMS', 'CANCELLED', 'RETURNED'];
+
+async function checkboxLogError(orderId, err) {
+  const msg = String(err.message || err).slice(0, 500);
+  await pool.query(`UPDATE orders SET checkbox_receipt_error=$1 WHERE id=$2`, [msg, orderId]);
+  await pool.query(`INSERT INTO checkbox_log (order_id, status, error) VALUES ($1, 'error', $2)`, [orderId, msg]);
+}
+
+// Оновити статус експрес-накладної; коли клієнт оплатив — Checkbox фіскалізує чек сам
+async function refreshEttnOrder(orderId, ettnId, settings, token) {
+  const e = await checkboxFetch('/ettn/' + ettnId, 'GET', null, token, settings.licenseKey);
+  const status = String(e.status || '');
+  if (e.receiptId) {
+    await pool.query(
+      `UPDATE orders SET checkbox_ettn_status=$1, checkbox_receipt_id=$2, checkbox_receipt_url=$3,
+                         checkbox_receipt_at=COALESCE(checkbox_receipt_at, now()), checkbox_receipt_error=''
+       WHERE id=$4`, [status, e.receiptId, receiptUrl(e.receiptId), orderId]);
+  } else {
+    const err = status === 'RECEIPT_ERROR' ? ('Checkbox: помилка фіскалізації ' + (e.rawError || '')).trim() : '';
+    await pool.query(
+      `UPDATE orders SET checkbox_ettn_status=$1, checkbox_receipt_error=$2 WHERE id=$3`,
+      [status, err.slice(0, 500), orderId]);
+  }
+  return { status, receiptId: e.receiptId || '' };
+}
+
+async function refreshAllEttn() {
+  const s = await getCheckboxSettings();
+  if (!s.login || !s.password || !s.licenseKey) return;
+  const q = await pool.query(
+    `SELECT id, checkbox_ettn_id FROM orders
+     WHERE checkbox_ettn_id <> '' AND checkbox_receipt_id = ''
+       AND NOT (checkbox_ettn_status = ANY($1))`, [ETTN_FINAL]);
+  if (!q.rows.length) return;
+  const token = await checkboxGetToken(s);
+  for (const o of q.rows) {
+    try { await refreshEttnOrder(o.id, o.checkbox_ettn_id, s, token); }
+    catch (e) { console.error('[checkbox ettn]', o.id, e.message); }
+  }
 }
 
 // Налаштування Checkbox -------------------------------------------------
@@ -3573,7 +3624,8 @@ app.post('/api/settings/checkbox', checkAuth, async (req, res) => {
       login: (b.login ?? cur.login ?? '').trim(),
       password: (b.password ?? cur.password ?? ''),
       licenseKey: (b.licenseKey ?? cur.licenseKey ?? '').trim(),
-      pinCode: (b.pinCode ?? cur.pinCode ?? '').trim()
+      pinCode: (b.pinCode ?? cur.pinCode ?? '').trim(),
+      prepaidLabel: (b.prepaidLabel ?? cur.prepaidLabel ?? '').trim()
     };
     await saveCheckboxSettings(next);
     // Скинути кеш токена після зміни налаштувань
@@ -3591,7 +3643,10 @@ app.post('/api/checkbox/test', checkAuth, async (req, res) => {
 });
 
 // Генерація е-чека ------------------------------------------------------
-app.post('/api/orders/:id(\\d+)/receipt', checkAuth, async (req, res) => {
+// «на счет» (післяплата НП з контролем оплати) → експрес-накладна: Checkbox
+//   фіскалізує чек сам, коли клієнт оплатить, і шле його по SMS.
+// «повна оплата» (гроші вже отримані) → звичайний чек продажу одразу.
+app.post('/api/orders/:id(\d+)/receipt', checkAuth, async (req, res) => {
   const orderId = req.params.id;
   try {
     const s = await getCheckboxSettings();
@@ -3599,56 +3654,72 @@ app.post('/api/orders/:id(\\d+)/receipt', checkAuth, async (req, res) => {
       throw new Error('Спершу заповніть Налаштування Checkbox');
 
     const oq = await pool.query(
-      `SELECT o.id, o.checkbox_receipt_id
-       FROM orders o WHERE o.id = $1`, [orderId]);
+      `SELECT o.id, o.ttn, o.payment_type, o.checkbox_receipt_id, o.checkbox_receipt_url,
+              o.checkbox_ettn_id, c.phone
+       FROM orders o JOIN customers c ON c.id = o.customer_id WHERE o.id = $1`, [orderId]);
     if (!oq.rows.length) return res.status(404).json({ error: 'Замовлення не знайдено' });
-    if (oq.rows[0].checkbox_receipt_id) {
-      // Уже є чек — повертаємо існуючий
-      const cur = await pool.query(
-        `SELECT checkbox_receipt_id AS id, checkbox_receipt_url AS url FROM orders WHERE id = $1`, [orderId]);
-      return res.json({ success: true, existed: true, ...cur.rows[0] });
+    const o = oq.rows[0];
+
+    if (o.checkbox_receipt_id)
+      return res.json({ success: true, existed: true, id: o.checkbox_receipt_id, url: o.checkbox_receipt_url });
+
+    // Експрес-накладна вже є — лише оновлюємо її статус
+    if (o.checkbox_ettn_id) {
+      const token = await checkboxGetToken(s);
+      const st = await refreshEttnOrder(orderId, o.checkbox_ettn_id, s, token);
+      return res.json({ success: true, existed: true, ettn: true, status: st.status,
+                        id: st.receiptId, url: st.receiptId ? receiptUrl(st.receiptId) : '' });
     }
 
     const itemsQ = await pool.query(
-      `SELECT id, article, name, size, color, price, quantity
+      `SELECT id, article, name, price, quantity
        FROM order_items WHERE order_id = $1 ORDER BY id`, [orderId]);
     if (!itemsQ.rows.length) throw new Error('У замовленні немає товарів');
 
-    await checkboxEnsureShift(s);
+    const goods = buildReceiptGoods(itemsQ.rows);
+    const total = goods.reduce((sum, g) => sum + g.good.price * (g.quantity / 1000), 0);
+    if (total <= 0) throw new Error('Сума чека 0 — перевірте ціни товарів');
+    const phone = checkboxPhone(o.phone);
     const token = await checkboxGetToken(s);
 
-    const goods = buildReceiptGoods({ id: orderId }, itemsQ.rows);
-    const total = goods.reduce((sum, g) => sum + g.price * (g.quantity / 1000), 0);
-    const receiptBody = {
-      goods,
-      payments: [{ type: 'CASHLESS', value: total, label: 'Безготівковий' }],
-      rounding: false
-    };
-
-    let receipt;
-    try {
-      receipt = await checkboxFetch('/receipts/sell', 'POST', receiptBody, token, s.licenseKey);
-    } catch (err) {
+    if (o.payment_type === 'повна оплата') {
+      await checkboxEnsureShift(s);
+      const body = {
+        goods,
+        payments: [{ type: 'CASHLESS', value: total, label: s.prepaidLabel || 'Картка' }]
+      };
+      if (phone) body.delivery = { phone };
+      let receipt;
+      try { receipt = await checkboxFetch('/receipts/sell', 'POST', body, token, s.licenseKey); }
+      catch (err) { await checkboxLogError(orderId, err); throw err; }
       await pool.query(
-        `UPDATE orders SET checkbox_receipt_error=$1 WHERE id=$2`,
-        [String(err.message).slice(0, 500), orderId]);
+        `UPDATE orders SET checkbox_receipt_id=$1, checkbox_receipt_url=$2,
+                           checkbox_receipt_at=now(), checkbox_receipt_error=''
+         WHERE id=$3`, [receipt.id, receiptUrl(receipt.id), orderId]);
       await pool.query(
-        `INSERT INTO checkbox_log (order_id, status, error) VALUES ($1, 'error', $2)`,
-        [orderId, String(err.message).slice(0, 500)]);
-      throw err;
+        `INSERT INTO checkbox_log (order_id, receipt_id, status) VALUES ($1, $2, 'ok')`, [orderId, receipt.id]);
+      return res.json({ success: true, id: receipt.id, url: receiptUrl(receipt.id) });
     }
 
-    const receiptId = receipt.id;
-    const url = `https://check.checkbox.ua/${receiptId}`;
+    const ttn = String(o.ttn || '').replace(/\s/g, '');
+    if (!/^\d{14}$/.test(ttn)) throw new Error('Спершу створіть ТТН Нової Пошти (14 цифр)');
+    const body = {
+      provider: 'novapost',
+      receipt_body: {
+        goods,
+        payments: [{ type: 'ETTN', label: 'Експрес-накладна', value: total, ettn: ttn }],
+        delivery: phone ? { phone } : {}
+      }
+    };
+    let ettn;
+    try { ettn = await checkboxFetch('/ettn', 'POST', body, token, s.licenseKey); }
+    catch (err) { await checkboxLogError(orderId, err); throw err; }
     await pool.query(
-      `UPDATE orders SET checkbox_receipt_id=$1, checkbox_receipt_url=$2,
-                         checkbox_receipt_at=now(), checkbox_receipt_error=''
-       WHERE id=$3`, [receiptId, url, orderId]);
+      `UPDATE orders SET checkbox_ettn_id=$1, checkbox_ettn_status=$2, checkbox_receipt_error='' WHERE id=$3`,
+      [ettn.id, String(ettn.status || 'CREATED'), orderId]);
     await pool.query(
-      `INSERT INTO checkbox_log (order_id, receipt_id, status) VALUES ($1, $2, 'ok')`,
-      [orderId, receiptId]);
-
-    res.json({ success: true, id: receiptId, url });
+      `INSERT INTO checkbox_log (order_id, status) VALUES ($1, 'ettn')`, [orderId]);
+    res.json({ success: true, ettn: true, status: ettn.status || 'CREATED' });
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
 
