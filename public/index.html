@@ -3194,6 +3194,11 @@
             CREATED: 'чекає оплати на НП', DONE: 'чек проведено', DONE_WITHOUT_SMS: 'чек проведено (SMS не надіслано)',
             RECEIPT_ERROR: 'помилка фіскалізації', CANCELLED: 'скасовано', RETURNED: 'повернення'
         };
+        const ettnSt = (o) => String(o.checkbox_ettn_status || '').toUpperCase();
+        function receiptBtnLabel(o) {
+            if (o.checkbox_receipt_id || !o.checkbox_ettn_id) return 'ЧЕК';
+            return ['CANCELLED', 'RETURNED'].includes(ettnSt(o)) ? 'ЧЕК ✕' : 'ЧЕК ⏳';
+        }
 
         async function generateReceipt(id, hasEttn) {
             if (!hasEttn && !confirm('Видати чек Checkbox для замовлення #' + id + '?\n\nПісляплата — експрес-накладна по ТТН, чек проведеться після оплати клієнтом.')) return;
@@ -3742,7 +3747,7 @@
                             ${smsHtml}
                             <div class="flex gap-1.5 mt-1.5 items-center">
                                 <button onclick="event.stopPropagation(); generateTtn(${o.id})" title="Згенерувати ТТН Нова Пошта" class="ttn-btn ttn-btn-pink">ТТН</button>
-                                <button onclick="event.stopPropagation(); generateReceipt(${o.id}, ${o.checkbox_ettn_id ? 'true' : 'false'})" title="${o.checkbox_receipt_id ? 'Чек вже створено' : (o.checkbox_ettn_id ? 'Експрес-накладна: ' + (ETTN_STATUS_TEXT[o.checkbox_ettn_status] || o.checkbox_ettn_status) + ' — оновити статус' : 'Видати чек Checkbox')}" class="ttn-btn ttn-btn-blue">${o.checkbox_ettn_id && !o.checkbox_receipt_id ? 'ЧЕК ⏳' : 'ЧЕК'}</button>
+                                <button onclick="event.stopPropagation(); generateReceipt(${o.id}, ${o.checkbox_ettn_id ? 'true' : 'false'})" title="${o.checkbox_receipt_id ? 'Чек вже створено' : (o.checkbox_ettn_id ? 'Експрес-накладна: ' + (ETTN_STATUS_TEXT[ettnSt(o)] || ettnSt(o)) + ' — оновити статус' : 'Видати чек Checkbox')}" class="ttn-btn ttn-btn-blue">${receiptBtnLabel(o)}</button>
                                 ${o.checkbox_receipt_url
                                     ? `<a href="${esc(o.checkbox_receipt_url)}" target="_blank" onclick="event.stopPropagation()" title="Чек ${esc(o.checkbox_receipt_id)} — відкрити" class="receipt-ok">₴</a>`
                                     : (o.checkbox_receipt_error

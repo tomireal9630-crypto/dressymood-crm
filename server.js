@@ -10,7 +10,8 @@ const crypto = require('crypto');
 
 const app = express();
 const isProduction = process.env.NODE_ENV === 'production';
-if (isProduction) app.set('trust proxy', 1);
+// Railway завжди за одним проксі: req.ip = IP, який дописав проксі (клієнт його не підробить)
+app.set('trust proxy', 1);
 // SSL: увімкнуто для зовнішніх provider'ів (Supabase/Render/AWS). Для внутрішньої Docker-мережі (Coolify/локально) — вимкнено.
 const _dbUrl = process.env.DATABASE_URL || '';
 const _useSsl = /supabase|render\.com|amazonaws|neon\.tech/i.test(_dbUrl) || process.env.PGSSL === 'true';
@@ -81,6 +82,10 @@ async function updateDatabaseSchema() {
             ADD COLUMN IF NOT EXISTS checkbox_ettn_status VARCHAR(32) DEFAULT '',
             ADD COLUMN IF NOT EXISTS original_created_at TIMESTAMP WITH TIME ZONE;
         `);
+
+        // Checkbox віддає статуси ЕТТН малими літерами — код порівнює великими
+        await pool.query(`UPDATE orders SET checkbox_ettn_status = upper(checkbox_ettn_status)
+                          WHERE checkbox_ettn_status <> upper(checkbox_ettn_status)`);
 
         await pool.query(`
             CREATE TABLE IF NOT EXISTS checkbox_log (
@@ -421,18 +426,27 @@ app.use(session({
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(express.static(path.join(__dirname, 'public')));
-
 const checkAuth = (req, res, next) => {
   if (req.session.isLoggedIn) next();
   else req.path.startsWith('/api/') ? res.status(401).json({ error: 'Auth' }) : res.redirect('/login.html');
 };
 
+// Сторінки CRM — лише після входу (static інакше віддав би їх будь-кому)
+const PROTECTED_PAGES = ['/index.html', '/landing-generator.html', '/themes.html'];
+app.use((req, res, next) => (PROTECTED_PAGES.includes(req.path) ? checkAuth(req, res, next) : next()));
+// index: false — «/» обробляє маршрут нижче (з checkAuth); HTML не кешуємо, щоб після деплою
+// одразу відкривалась нова версія без Ctrl+F5
+app.use(express.static(path.join(__dirname, 'public'), {
+  index: false,
+  setHeaders: (res, filePath) => { if (filePath.endsWith('.html')) res.set('Cache-Control', 'no-cache'); }
+}));
+
 // Простий in-memory rate-limit (sliding window per IP)
 function rateLimit({ windowMs, max, message }) {
   const hits = new Map(); // ip -> [timestamp, ...]
   return (req, res, next) => {
-    const ip = (req.headers['x-forwarded-for'] || req.ip || '').split(',')[0].trim() || 'unknown';
+    // req.ip, а не сирий X-Forwarded-For: його перший елемент підставляє сам клієнт → обхід ліміту
+    const ip = req.ip || 'unknown';
     const now = Date.now();
     const arr = (hits.get(ip) || []).filter(t => now - t < windowMs);
     if (arr.length >= max) {
@@ -606,10 +620,12 @@ function readyForWork({ fullName, phone, city_ref, warehouse_ref, itemsCount }) 
 
 app.post('/api/orders/manual', checkAuth, async (req, res) => {
   const {
-    fullName, phone, comment, source, items,
+    fullName, comment, source, items,
     delivery_service, city, branch, payment_type, delivery_payment, ttn, status,
     city_ref, warehouse_ref, warehouse_type
   } = req.body;
+  // Той самий формат, що й з лендінгу (+380…), інакше один клієнт розпадається на двох
+  const phone = normalizeUaPhone(req.body.phone);
 
   if (!fullName || !phone) return res.status(400).json({ error: 'Вкажіть ПІБ та телефон' });
   const list = Array.isArray(items) ? items.filter(i => i && (i.article || i.name)) : [];
@@ -701,6 +717,7 @@ app.patch('/api/orders/:id', checkAuth, async (req, res) => {
         extraSet = `, created_at = NOW()` + (hasOrig ? '' : `, original_created_at = created_at`);
       }
     }
+    if (req.body.ttn !== undefined) await checkboxDropEttnIfTtnChanged(req.params.id, req.body.ttn);
     const setClause = keys.map((key, i) => `${key} = $${i + 1}`).join(', ');
     const values = keys.map(k => req.body[k]);
     values.push(req.params.id);
@@ -1618,10 +1635,10 @@ async function articleCplMap(dateFrom, dateTo) {
 // Дані для панелі: артикул → кампанії → групи, з метриками і статусами
 app.get('/api/fb/control', checkAuth, async (req, res) => {
   const { dateFrom, dateTo } = req.query;
-  const _s = await getEconomicsSettings();
-  const rateFor = (cur) => (String(cur || '').toUpperCase() === 'USD') ? (Number(_s.fx_usd) || 41)
-                        : (String(cur || '').toUpperCase() === 'EUR') ? (Number(_s.fx_eur) || 45) : 1;
   try {
+    const _s = await getEconomicsSettings();
+    const rateFor = (cur) => (String(cur || '').toUpperCase() === 'USD') ? (Number(_s.fx_usd) || 41)
+                          : (String(cur || '').toUpperCase() === 'EUR') ? (Number(_s.fx_eur) || 45) : 1;
     const sp = [], conds = [];
     if (dateFrom) { sp.push(dateFrom); conds.push(`date >= $${sp.length}::date`); }
     if (dateTo)   { sp.push(dateTo);   conds.push(`date <= $${sp.length}::date`); }
@@ -1937,7 +1954,7 @@ async function runAdLaunch(launchId) {
     await pool.query(`UPDATE fb_launches SET log=$1, fb_ids=$2 WHERE id=$3`, [JSON.stringify(log), JSON.stringify(ids), launchId]);
   };
   const base = `https://graph.facebook.com/${FB_API_VERSION}`;
-  const actUrl = `${base}/act_${acc.fb_account_id}`;
+  const actUrl = `${base}/act_${acc ? acc.fb_account_id : ''}`;
 
   await pool.query(`UPDATE fb_launches SET status='running', started_at=now() WHERE id=$1`, [launchId]);
   try {
@@ -2499,10 +2516,13 @@ app.put('/api/orders/:id(\\d+)/full', checkAuth, async (req, res) => {
   const orderId = req.params.id;
   const b = req.body;
   const name = String(b.fullName || '').trim();
-  const phone = String(b.phone || '').trim();
+  const phone = normalizeUaPhone(b.phone);
   if (!name || !phone) return res.status(400).json({ error: 'Вкажіть ПІБ та телефон' });
   const list = Array.isArray(b.items) ? b.items.filter(i => i && (i.article || i.name)) : [];
   if (list.length === 0) return res.status(400).json({ error: 'Додайте хоча б один товар' });
+
+  // Поза транзакцією: звертається в Checkbox і пише в orders сама
+  await checkboxDropEttnIfTtnChanged(orderId, b.ttn || '').catch(e => console.error('[checkbox ettn drop]', e.message));
 
   const client = await pool.connect();
   try {
@@ -2811,6 +2831,8 @@ async function generateTtnForOrder(orderId, s, sender) {
     WHERE o.id=$1 GROUP BY o.id, c.full_name, c.phone`, [orderId]);
   if (!oq.rows.length) throw new Error('Замовлення не знайдено');
   const o = oq.rows[0];
+  // Друга ТТН на ту саму посилку = зайва накладна в кабінеті НП
+  if (String(o.ttn || '').trim()) throw new Error(`У замовленні вже є ТТН ${o.ttn}. Щоб створити нову — спершу очистіть поле ТТН`);
 
   if (!o.city_ref || !o.warehouse_ref) {
     await pool.query(`UPDATE orders SET status='Ошибка в ТТН' WHERE id=$1`, [orderId]);
@@ -2890,14 +2912,18 @@ async function requireNpReady() {
 }
 
 // Генерація ТТН — одне замовлення
+const ttnInFlight = new Set(); // захист від подвійного кліку
 app.post('/api/orders/:id(\\d+)/ttn', checkAuth, async (req, res) => {
+  const id = req.params.id;
+  if (ttnInFlight.has(id)) return res.status(409).json({ error: 'ТТН для цього замовлення вже створюється' });
+  ttnInFlight.add(id);
   try {
     const { s, sender } = await requireNpReady();
-    const ttn = await generateTtnForOrder(req.params.id, s, sender);
+    const ttn = await generateTtnForOrder(id, s, sender);
     res.json({ success: true, ttn });
   } catch (err) {
     res.status(400).json({ error: err.message });
-  }
+  } finally { ttnInFlight.delete(id); }
 });
 
 // Масова генерація ТТН — всі замовлення «В работе» з повними даними і без ТТН
@@ -3481,6 +3507,8 @@ async function saveCheckboxSettings(obj) {
     `INSERT INTO app_settings (key, value) VALUES ('checkbox', $1)
      ON CONFLICT (key) DO UPDATE SET value = $1`, [obj]);
 }
+const checkboxReady = (s) => !!(s.login && s.password && s.licenseKey);
+const upper = (v) => String(v || '').toUpperCase();
 
 async function checkboxFetch(path, method, body, token, licenseKey) {
   const headers = { 'Content-Type': 'application/json' };
@@ -3491,14 +3519,19 @@ async function checkboxFetch(path, method, body, token, licenseKey) {
   const r = await fetch(CHECKBOX_URL + path, {
     method: method || 'GET',
     headers,
-    body: body ? JSON.stringify(body) : undefined
+    body: body ? JSON.stringify(body) : undefined,
+    signal: AbortSignal.timeout(30000)
   });
   const txt = await r.text();
   let j = null;
   try { j = txt ? JSON.parse(txt) : null; } catch (e) { j = { detail: txt }; }
   if (!r.ok) {
-    const msg = (j && (j.message || j.detail)) || ('HTTP ' + r.status);
-    throw new Error('Checkbox: ' + msg);
+    let msg = (j && (j.message || j.detail)) || ('HTTP ' + r.status);
+    // 422: detail — масив помилок валідації
+    if (Array.isArray(msg)) msg = msg.map(d => [(d.loc || []).slice(1).join('.'), d.msg].filter(Boolean).join(': ')).join('; ');
+    const err = new Error('Checkbox: ' + msg);
+    err.status = r.status;
+    throw err;
   }
   return j;
 }
@@ -3506,39 +3539,44 @@ async function checkboxFetch(path, method, body, token, licenseKey) {
 async function checkboxSignin(settings) {
   if (!settings.login || !settings.password) throw new Error('Не вказані логін/пароль кассира Checkbox');
   if (!settings.licenseKey) throw new Error('Не вказано License Key Checkbox');
-  const body = { login: settings.login, password: settings.password };
-  if (settings.pinCode) body.pin_code = settings.pinCode;
-  const j = await checkboxFetch('/cashier/signin', 'POST', body, null, settings.licenseKey);
+  const j = await checkboxFetch('/cashier/signin', 'POST',
+    { login: settings.login, password: settings.password }, null, settings.licenseKey);
   checkboxState.token = j.access_token;
   checkboxState.tokenExpiresAt = Date.now() + 25 * 60 * 1000; // 25 min cache
   return j.access_token;
 }
 
-async function checkboxGetToken(settings) {
-  if (checkboxState.token && Date.now() < checkboxState.tokenExpiresAt) return checkboxState.token;
-  return await checkboxSignin(settings);
+// Запит від імені касира. Токен міг «злетіти» (вхід тим самим касиром в іншому місці) —
+// тоді один раз перелогінюємось і повторюємо.
+async function checkboxApi(settings, path, method, body) {
+  if (!checkboxState.token || Date.now() >= checkboxState.tokenExpiresAt) await checkboxSignin(settings);
+  try {
+    return await checkboxFetch(path, method, body, checkboxState.token, settings.licenseKey);
+  } catch (e) {
+    if (e.status !== 401 && e.status !== 403) throw e;
+    await checkboxSignin(settings);
+    return await checkboxFetch(path, method, body, checkboxState.token, settings.licenseKey);
+  }
+}
+
+async function checkboxCurrentShift(settings) {
+  try {
+    const cur = await checkboxApi(settings, '/cashier/shift', 'GET');
+    return cur && cur.id ? cur : null;
+  } catch (e) {
+    if (e.status === 404) return null;
+    throw e;
+  }
 }
 
 async function checkboxEnsureShift(settings) {
-  const token = await checkboxGetToken(settings);
-  // Спроба отримати поточну зміну кассира
-  try {
-    const cur = await checkboxFetch('/cashier/shift', 'GET', null, token, settings.licenseKey);
-    if (cur && cur.id && cur.status === 'OPENED') {
-      checkboxState.shiftId = cur.id;
-      return cur.id;
-    }
-  } catch (e) { /* немає відкритої — створимо нижче */ }
-  // Створюємо нову зміну
-  const created = await checkboxFetch('/shifts', 'POST', {}, token, settings.licenseKey);
-  let shiftId = created.id;
-  // Чекаємо OPENED
+  const cur = await checkboxCurrentShift(settings);
+  if (cur && cur.status === 'OPENED') { checkboxState.shiftId = cur.id; return cur.id; }
+  // OPENING — зміна вже відкривається, чекаємо; інакше створюємо нову
+  const shiftId = (cur && cur.status === 'OPENING') ? cur.id : (await checkboxApi(settings, '/shifts', 'POST', {})).id;
   for (let i = 0; i < 15; i++) {
-    const st = await checkboxFetch('/shifts/' + shiftId, 'GET', null, token, settings.licenseKey);
-    if (st && st.status === 'OPENED') {
-      checkboxState.shiftId = shiftId;
-      return shiftId;
-    }
+    const st = await checkboxApi(settings, '/shifts/' + shiftId, 'GET');
+    if (st && st.status === 'OPENED') { checkboxState.shiftId = shiftId; return shiftId; }
     if (st && st.status === 'CLOSED') throw new Error('Не вдалось відкрити зміну Checkbox');
     await new Promise(res => setTimeout(res, 1000));
   }
@@ -3567,8 +3605,10 @@ function checkboxPhone(raw) {
 
 const receiptUrl = (id) => `https://check.checkbox.ua/${id}`;
 
-// Статуси замовлення ЕТТН, після яких опитувати більше нема сенсу
-const ETTN_FINAL = ['DONE', 'DONE_WITHOUT_SMS', 'CANCELLED', 'RETURNED'];
+// Статуси експрес-накладної (Checkbox віддає малими літерами — зберігаємо великими).
+// receiptId Checkbox резервує одразу при створенні, тому чек вважаємо проведеним лише за статусом.
+const ETTN_DONE = ['DONE', 'DONE_WITHOUT_SMS'];
+const ETTN_FINAL = [...ETTN_DONE, 'CANCELLED', 'RETURNED'];
 
 async function checkboxLogError(orderId, err) {
   const msg = String(err.message || err).slice(0, 500);
@@ -3577,35 +3617,56 @@ async function checkboxLogError(orderId, err) {
 }
 
 // Оновити статус експрес-накладної; коли клієнт оплатив — Checkbox фіскалізує чек сам
-async function refreshEttnOrder(orderId, ettnId, settings, token) {
-  const e = await checkboxFetch('/ettn/' + ettnId, 'GET', null, token, settings.licenseKey);
-  const status = String(e.status || '');
-  if (e.receiptId) {
+async function refreshEttnOrder(orderId, ettnId, settings) {
+  const e = await checkboxApi(settings, '/ettn/' + ettnId, 'GET');
+  const status = upper(e.status);
+  const done = ETTN_DONE.includes(status) && e.receiptId;
+  if (done) {
     await pool.query(
       `UPDATE orders SET checkbox_ettn_status=$1, checkbox_receipt_id=$2, checkbox_receipt_url=$3,
                          checkbox_receipt_at=COALESCE(checkbox_receipt_at, now()), checkbox_receipt_error=''
        WHERE id=$4`, [status, e.receiptId, receiptUrl(e.receiptId), orderId]);
+    await pool.query(`INSERT INTO checkbox_log (order_id, receipt_id, status) VALUES ($1, $2, 'ok')`, [orderId, e.receiptId]);
   } else {
     const err = status === 'RECEIPT_ERROR' ? ('Checkbox: помилка фіскалізації ' + (e.rawError || '')).trim() : '';
     await pool.query(
       `UPDATE orders SET checkbox_ettn_status=$1, checkbox_receipt_error=$2 WHERE id=$3`,
       [status, err.slice(0, 500), orderId]);
   }
-  return { status, receiptId: e.receiptId || '' };
+  return { status, receiptId: done ? e.receiptId : '' };
 }
 
 async function refreshAllEttn() {
   const s = await getCheckboxSettings();
-  if (!s.login || !s.password || !s.licenseKey) return;
+  if (!checkboxReady(s)) return;
   const q = await pool.query(
     `SELECT id, checkbox_ettn_id FROM orders
      WHERE checkbox_ettn_id <> '' AND checkbox_receipt_id = ''
-       AND NOT (checkbox_ettn_status = ANY($1))`, [ETTN_FINAL]);
-  if (!q.rows.length) return;
-  const token = await checkboxGetToken(s);
+       AND NOT (upper(checkbox_ettn_status) = ANY($1))`, [ETTN_FINAL]);
   for (const o of q.rows) {
-    try { await refreshEttnOrder(o.id, o.checkbox_ettn_id, s, token); }
+    try { await refreshEttnOrder(o.id, o.checkbox_ettn_id, s); }
     catch (e) { console.error('[checkbox ettn]', o.id, e.message); }
+  }
+}
+
+// ТТН у замовленні змінили — стара експрес-накладна вже не про ту посилку.
+// Неоплачену видаляємо в Checkbox і відвʼязуємо, щоб кнопка «ЧЕК» створила нову.
+// Викликати ДО запису нової ТТН у базу.
+async function checkboxDropEttnIfTtnChanged(orderId, newTtn) {
+  const q = await pool.query(
+    `SELECT ttn, checkbox_ettn_id, checkbox_ettn_status, checkbox_receipt_id FROM orders WHERE id=$1`, [orderId]);
+  const o = q.rows[0];
+  if (!o || !o.checkbox_ettn_id || o.checkbox_receipt_id) return;
+  if (String(o.ttn || '').trim() === String(newTtn || '').trim()) return;
+  try {
+    if (upper(o.checkbox_ettn_status) === 'CREATED') {
+      await checkboxApi(await getCheckboxSettings(), '/ettn/' + o.checkbox_ettn_id, 'DELETE');
+    }
+    await pool.query(
+      `UPDATE orders SET checkbox_ettn_id='', checkbox_ettn_status='', checkbox_receipt_error='' WHERE id=$1`, [orderId]);
+    await pool.query(`INSERT INTO checkbox_log (order_id, status, error) VALUES ($1, 'ettn_del', 'ТТН змінено')`, [orderId]);
+  } catch (e) {
+    await checkboxLogError(orderId, new Error('ТТН змінено, а стару експрес-накладну не вдалось видалити — видаліть її в кабінеті Checkbox. ' + e.message));
   }
 }
 
@@ -3613,17 +3674,15 @@ async function refreshAllEttn() {
 // зміна не може бути відкрита довше 24 год
 async function checkboxShiftCron() {
   const s = await getCheckboxSettings();
-  if (!s.login || !s.password || !s.licenseKey) return;
+  if (!checkboxReady(s)) return;
   const now = new Date();
   const min = now.getHours() * 60 + now.getMinutes();
   if (min >= 7 * 60 && min < 23 * 60 + 30) {
     await checkboxEnsureShift(s);
   } else if (min >= 23 * 60 + 45) {
-    const token = await checkboxGetToken(s);
-    let cur = null;
-    try { cur = await checkboxFetch('/cashier/shift', 'GET', null, token, s.licenseKey); } catch (e) { return; }
+    const cur = await checkboxCurrentShift(s);
     if (!cur || cur.status !== 'OPENED') return;
-    await checkboxFetch('/shifts/close', 'POST', { skip_client_name_check: true }, token, s.licenseKey);
+    await checkboxApi(s, '/shifts/close', 'POST', { skip_client_name_check: true });
     checkboxState.shiftId = null;
     console.log('[checkbox] зміну закрито');
   }
@@ -3646,9 +3705,9 @@ app.post('/api/settings/checkbox', checkAuth, async (req, res) => {
       login: (b.login ?? cur.login ?? '').trim(),
       password: (b.password ?? cur.password ?? ''),
       licenseKey: (b.licenseKey ?? cur.licenseKey ?? '').trim(),
-      pinCode: (b.pinCode ?? cur.pinCode ?? '').trim(),
       prepaidLabel: (b.prepaidLabel ?? cur.prepaidLabel ?? '').trim()
     };
+    delete next.pinCode; // вхід по логіну/паролю, PIN не потрібен
     await saveCheckboxSettings(next);
     // Скинути кеш токена після зміни налаштувань
     checkboxState.token = null; checkboxState.tokenExpiresAt = 0; checkboxState.shiftId = null;
@@ -3668,12 +3727,14 @@ app.post('/api/checkbox/test', checkAuth, async (req, res) => {
 // «на счет» (післяплата НП з контролем оплати) → експрес-накладна: Checkbox
 //   фіскалізує чек сам, коли клієнт оплатить, і шле його по SMS.
 // «повна оплата» (гроші вже отримані) → звичайний чек продажу одразу.
+const receiptInFlight = new Set(); // захист від подвійного кліку
 app.post('/api/orders/:id(\\d+)/receipt', checkAuth, async (req, res) => {
   const orderId = req.params.id;
+  if (receiptInFlight.has(orderId)) return res.status(409).json({ error: 'Чек для цього замовлення вже створюється' });
+  receiptInFlight.add(orderId);
   try {
     const s = await getCheckboxSettings();
-    if (!s.login || !s.password || !s.licenseKey)
-      throw new Error('Спершу заповніть Налаштування Checkbox');
+    if (!checkboxReady(s)) throw new Error('Спершу заповніть Налаштування Checkbox');
 
     const oq = await pool.query(
       `SELECT o.id, o.ttn, o.payment_type, o.checkbox_receipt_id, o.checkbox_receipt_url,
@@ -3687,8 +3748,7 @@ app.post('/api/orders/:id(\\d+)/receipt', checkAuth, async (req, res) => {
 
     // Експрес-накладна вже є — лише оновлюємо її статус
     if (o.checkbox_ettn_id) {
-      const token = await checkboxGetToken(s);
-      const st = await refreshEttnOrder(orderId, o.checkbox_ettn_id, s, token);
+      const st = await refreshEttnOrder(orderId, o.checkbox_ettn_id, s);
       return res.json({ success: true, existed: true, ettn: true, status: st.status,
                         id: st.receiptId, url: st.receiptId ? receiptUrl(st.receiptId) : '' });
     }
@@ -3702,7 +3762,6 @@ app.post('/api/orders/:id(\\d+)/receipt', checkAuth, async (req, res) => {
     const total = goods.reduce((sum, g) => sum + g.good.price * (g.quantity / 1000), 0);
     if (total <= 0) throw new Error('Сума чека 0 — перевірте ціни товарів');
     const phone = checkboxPhone(o.phone);
-    const token = await checkboxGetToken(s);
 
     if (o.payment_type === 'повна оплата') {
       await checkboxEnsureShift(s);
@@ -3712,7 +3771,7 @@ app.post('/api/orders/:id(\\d+)/receipt', checkAuth, async (req, res) => {
       };
       if (phone) body.delivery = { phone };
       let receipt;
-      try { receipt = await checkboxFetch('/receipts/sell', 'POST', body, token, s.licenseKey); }
+      try { receipt = await checkboxApi(s, '/receipts/sell', 'POST', body); }
       catch (err) { await checkboxLogError(orderId, err); throw err; }
       await pool.query(
         `UPDATE orders SET checkbox_receipt_id=$1, checkbox_receipt_url=$2,
@@ -3734,15 +3793,17 @@ app.post('/api/orders/:id(\\d+)/receipt', checkAuth, async (req, res) => {
       }
     };
     let ettn;
-    try { ettn = await checkboxFetch('/ettn', 'POST', body, token, s.licenseKey); }
+    try { ettn = await checkboxApi(s, '/ettn', 'POST', body); }
     catch (err) { await checkboxLogError(orderId, err); throw err; }
+    const status = upper(ettn.status) || 'CREATED';
     await pool.query(
       `UPDATE orders SET checkbox_ettn_id=$1, checkbox_ettn_status=$2, checkbox_receipt_error='' WHERE id=$3`,
-      [ettn.id, String(ettn.status || 'CREATED'), orderId]);
+      [ettn.id, status, orderId]);
     await pool.query(
       `INSERT INTO checkbox_log (order_id, status) VALUES ($1, 'ettn')`, [orderId]);
-    res.json({ success: true, ettn: true, status: ettn.status || 'CREATED' });
+    res.json({ success: true, ettn: true, status });
   } catch (err) { res.status(400).json({ error: err.message }); }
+  finally { receiptInFlight.delete(orderId); }
 });
 
 // --- API СКЛАДУ ---
