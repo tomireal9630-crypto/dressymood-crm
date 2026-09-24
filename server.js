@@ -3609,6 +3609,28 @@ async function refreshAllEttn() {
   }
 }
 
+// Зміна каси: тримаємо відкритою 07:00–23:30, о 23:45+ закриваємо (Z-звіт) —
+// зміна не може бути відкрита довше 24 год
+async function checkboxShiftCron() {
+  const s = await getCheckboxSettings();
+  if (!s.login || !s.password || !s.licenseKey) return;
+  const now = new Date();
+  const min = now.getHours() * 60 + now.getMinutes();
+  if (min >= 7 * 60 && min < 23 * 60 + 30) {
+    await checkboxEnsureShift(s);
+  } else if (min >= 23 * 60 + 45) {
+    const token = await checkboxGetToken(s);
+    let cur = null;
+    try { cur = await checkboxFetch('/cashier/shift', 'GET', null, token, s.licenseKey); } catch (e) { return; }
+    if (!cur || cur.status !== 'OPENED') return;
+    await checkboxFetch('/shifts/close', 'POST', { skip_client_name_check: true }, token, s.licenseKey);
+    checkboxState.shiftId = null;
+    console.log('[checkbox] зміну закрито');
+  }
+}
+setInterval(() => { checkboxShiftCron().catch(e => console.error('[checkbox shift]', e.message)); }, 10 * 60 * 1000);
+setTimeout(() => { checkboxShiftCron().catch(e => console.error('[checkbox shift]', e.message)); }, 60 * 1000);
+
 // Налаштування Checkbox -------------------------------------------------
 app.get('/api/settings/checkbox', checkAuth, async (req, res) => {
   try { res.json(await getCheckboxSettings()); }
