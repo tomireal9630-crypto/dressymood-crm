@@ -3668,7 +3668,7 @@ app.post('/api/checkbox/test', checkAuth, async (req, res) => {
 // «на счет» (післяплата НП з контролем оплати) → експрес-накладна: Checkbox
 //   фіскалізує чек сам, коли клієнт оплатить, і шле його по SMS.
 // «повна оплата» (гроші вже отримані) → звичайний чек продажу одразу.
-app.post('/api/orders/:id(\d+)/receipt', checkAuth, async (req, res) => {
+app.post('/api/orders/:id(\\d+)/receipt', checkAuth, async (req, res) => {
   const orderId = req.params.id;
   try {
     const s = await getCheckboxSettings();

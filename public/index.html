@@ -3199,7 +3199,7 @@
             if (!hasEttn && !confirm('Видати чек Checkbox для замовлення #' + id + '?\n\nПісляплата — експрес-накладна по ТТН, чек проведеться після оплати клієнтом.')) return;
             try {
                 const r = await fetch(`/api/orders/${id}/receipt`, { method: 'POST' });
-                const j = await r.json();
+                const j = await r.json().catch(() => ({ error: 'сервер відповів HTTP ' + r.status }));
                 if (!r.ok) throw new Error(j.error || 'Помилка');
                 if (j.url) { if (j.existed) window.open(j.url, '_blank'); else alert('Чек створено: ' + j.url); }
                 else if (j.ettn) alert('Експрес-накладна: ' + (ETTN_STATUS_TEXT[j.status] || j.status));
