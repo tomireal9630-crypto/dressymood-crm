@@ -551,7 +551,7 @@ app.get('/api/orders', checkAuth, async (req, res) => {
       SELECT o.id, COALESCE(NULLIF(o.full_name, ''), c.full_name) AS "fullName", c.phone,
              o.status, o.ttn, o.comment, o.source,
              o.delivery_service, o.city, o.branch, o.payment_type, o.delivery_payment,
-             o.np_status_code, o.np_status_text, o.np_doc_ref,
+             o.np_status_code, o.np_status_text, o.np_doc_ref, o.np_arrival_date,
              o.checkbox_receipt_id, o.checkbox_receipt_url, o.checkbox_receipt_error,
              o.checkbox_ettn_id, o.checkbox_ettn_status,
              o.sms1_sent_at, o.sms2_sent_at, o.sms3_sent_at,

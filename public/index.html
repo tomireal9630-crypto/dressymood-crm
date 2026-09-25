@@ -3271,6 +3271,25 @@
             return { from: '', to: '' };
         }
 
+        // Скільки днів посилка лежить на відділенні (null — якщо не «На почте» або немає дати прибуття)
+        function daysAtBranch(o) {
+            if (o.status !== 'На почте' || !o.np_arrival_date) return null;
+            const s = String(o.np_arrival_date);
+            let d;
+            const m = s.match(/^(\d{2})\.(\d{2})\.(\d{4})/);
+            if (m) d = new Date(+m[3], +m[2] - 1, +m[1]);
+            else d = new Date(s.slice(0, 19).replace(' ', 'T'));
+            if (isNaN(d)) return null;
+            const day = x => new Date(x.getFullYear(), x.getMonth(), x.getDate());
+            return Math.max(0, Math.round((day(new Date()) - day(d)) / 86400000));
+        }
+        // Колір «На почте» за терміном: щойно приїхала / лежить / довго лежить
+        function branchAgeStyle(days) {
+            if (days >= 5) return { pill: 'bg-red-500 text-white ring-red-600', text: 'text-red-600' };
+            if (days >= 3) return { pill: 'bg-yellow-200 text-yellow-800 ring-yellow-300', text: 'text-yellow-700' };
+            return { pill: statusConfig['На почте'], text: 'text-cyan-600' };
+        }
+
         function fmtDate(iso) {
             if (!iso) return '';
             const d = new Date(iso);
@@ -3700,6 +3719,9 @@
                     };
                     const smsHtml = `<div class="flex gap-1 mt-1.5">${smsBadge(1)}${smsBadge(2)}${smsBadge(3)}</div>`;
 
+                    const branchDays = daysAtBranch(o);
+                    const branchAge = branchDays === null ? null : branchAgeStyle(branchDays);
+
                     const dt = fmtDate(o.createdAt);
                     const [dPart, tPart] = (dt || '').split(' ');
                     const origTip = o.originalCreatedAt ? `Оригінально: ${fmtDate(o.originalCreatedAt)}` : '';
@@ -3721,9 +3743,10 @@
                         </td>
                         <td class="px-4 py-5">
                             <select onchange="updateOrder(${o.id}, 'status', this.value)"
-                                class="text-[11px] font-black px-3 py-1.5 rounded-full ring-1 ring-inset cursor-pointer ${statusConfig[o.status] || 'bg-slate-100'}">
+                                class="text-[11px] font-black px-3 py-1.5 rounded-full ring-1 ring-inset cursor-pointer ${branchAge ? branchAge.pill : (statusConfig[o.status] || 'bg-slate-100')}">
                                 ${STATUSES.map(s => `<option value="${s}" ${o.status === s ? 'selected' : ''}>${s.toUpperCase()}</option>`).join('')}
                             </select>
+                            ${branchAge ? `<div class="text-[10px] font-bold mt-1 pl-3 ${branchAge.text}" title="Прибула на відділення: ${esc(o.np_arrival_date)}">${branchDays === 0 ? 'прибула сьогодні' : `${branchDays} дн. на пошті`}</div>` : ''}
                         </td>
                         <td class="px-4 py-5">${itemsHtml}</td>
                         <td class="px-4 py-5">${charHtml}</td>
