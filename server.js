@@ -730,6 +730,14 @@ app.patch('/api/orders/:id', checkAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Кількість необроблених замовлень (статус «Новый») — для бейджа в меню
+app.get('/api/orders/new-count', checkAuth, async (req, res) => {
+  try {
+    const r = await pool.query(`SELECT COUNT(*)::int AS cnt FROM orders WHERE status = 'Новый'`);
+    res.json({ count: r.rows[0].cnt });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // Постачальники, що реально зустрічаються в замовленнях (для фільтра)
 app.get('/api/orders/suppliers', checkAuth, async (req, res) => {
   try {

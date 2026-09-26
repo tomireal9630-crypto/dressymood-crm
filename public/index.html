@@ -32,6 +32,7 @@
                 <nav class="space-y-1">
                     <button onclick="switchView('orders')" id="btn-orders" class="sidebar-item active w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
                         <i class="fa-solid fa-layer-group w-5 text-center"></i> Замовлення
+                        <span id="newOrdersBadge" class="ml-auto bg-red-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full hidden" title="Нові необроблені замовлення">0</span>
                     </button>
                     <button onclick="switchView('dashboard')" id="btn-dashboard" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
                         <i class="fa-solid fa-chart-pie w-5 text-center"></i> Дашборд
@@ -3626,7 +3627,20 @@
             } catch (e) { /* мовчки */ }
         }
 
+        async function updateNewOrdersBadge() {
+            try {
+                const r = await fetch('/api/orders/new-count');
+                const d = await r.json();
+                const cnt = Number(d && d.count) || 0;
+                const b = document.getElementById('newOrdersBadge');
+                if (!b) return;
+                b.textContent = String(cnt);
+                b.classList.toggle('hidden', cnt === 0);
+            } catch (e) { /* мовчки */ }
+        }
+
         async function updateCallbacksBadge() {
+            updateNewOrdersBadge();
             try {
                 const r = await fetch('/api/orders?view=callbacks');
                 const d = await r.json();
@@ -7224,6 +7238,7 @@
 
         // Автооновлення списку замовлень кожні 15 c (без перешкод під час редагування)
         setInterval(() => {
+            updateNewOrdersBadge();
             if (!['orders', 'archive', 'deleted', 'callbacks'].includes(currentView)) return;
             if (document.querySelector('.modal-active')) return;
             // Якщо відкрита панель масових дій — не оновлюємо (інакше виділення зникне)
