@@ -2832,7 +2832,7 @@ function isAfterpayment(paymentType) {
 // s — налаштування НП, sender — { senderRef, contactSenderRef }.
 async function generateTtnForOrder(orderId, s, sender) {
   const oq = await pool.query(`
-    SELECT o.*, c.full_name AS "fullName", c.phone,
+    SELECT o.*, COALESCE(NULLIF(o.full_name, ''), c.full_name) AS "fullName", c.phone,
            COALESCE(SUM(oi.price * oi.quantity),0) AS total
     FROM orders o JOIN customers c ON o.customer_id=c.id
     LEFT JOIN order_items oi ON oi.order_id=o.id
@@ -2849,6 +2849,11 @@ async function generateTtnForOrder(orderId, s, sender) {
 
   const phone = String(o.phone || '').replace(/\D/g, '');
   const nameParts = String(o.fullName || '').trim().split(/\s+/);
+  // НП вимагає прізвище + ім'я, інакше «RecipientName incorrect»
+  if (nameParts.length < 2) {
+    await pool.query(`UPDATE orders SET status='Ошибка в ТТН' WHERE id=$1`, [orderId]);
+    throw new Error(`Вкажіть прізвище та ім'я отримувача (зараз: «${o.fullName || ''}»)`);
+  }
   const cost = Math.round(Number(o.total) || 0) || 1;
   const payer = (o.delivery_payment === 'Відправник') ? 'Sender' : 'Recipient';
   const afterpay = isAfterpayment(o.payment_type);
@@ -3366,7 +3371,7 @@ async function turboSmsSend(token, sender, phone, text) {
 // Завантажити заказ з позиціями (для рендера шаблона)
 async function loadOrderForSms(orderId) {
   const r = await pool.query(`
-    SELECT o.*, c.full_name AS "fullName", c.phone,
+    SELECT o.*, COALESCE(NULLIF(o.full_name, ''), c.full_name) AS "fullName", c.phone,
       COALESCE(json_agg(json_build_object(
         'article', oi.article, 'name', oi.name,
         'size', oi.size, 'color', oi.color,
