@@ -866,6 +866,7 @@
                                             <span><input type="number" id="calcCpl" oninput="calcSyncCpl(); calcRecompute()" class="w-24 text-right text-sm font-black bg-blue-50 text-blue-600 border border-blue-100 rounded px-2 py-1 outline-none"> ₴</span>
                                         </div>
                                         <input type="range" id="calcCplRange" min="0" max="1000" step="5" oninput="calcSyncCplRange(); calcRecompute()" class="w-full accent-blue-500">
+                                        <div id="calcFactCpl" class="flex gap-1.5 flex-wrap items-center mt-2 text-[11px] empty:hidden"></div>
                                     </div>
                                     <div>
                                         <div class="flex justify-between items-baseline mb-2">
@@ -4958,6 +4959,7 @@
             if (calcSettings.sms_count != null) document.getElementById('calcSmsCount').value = calcSettings.sms_count;
             if (calcSettings.sms_price != null) document.getElementById('calcSmsPrice').value = calcSettings.sms_price;
             document.getElementById('calcCourier').value = calcSettings.courier_cost != null ? calcSettings.courier_cost : 40;
+            renderCalcFactCpl(null);
             document.getElementById('calcHistoryNote').innerHTML =
                 `🆕 <b>Планування до запуску.</b> Впиши ціну й закупку, постав очікувані апрув/викуп — калькулятор покаже <b>рекомендований CPL</b> під ціль ROI. Апрув/викуп за замовч. — орієнтир з налаштувань (${apriv}% / ${buyout}%).`;
             calcRecompute();
@@ -4987,11 +4989,35 @@
             if (calcSettings.sms_price != null) document.getElementById('calcSmsPrice').value = calcSettings.sms_price;
             document.getElementById('calcCourier').value = calcSettings.courier_cost != null ? calcSettings.courier_cost : 40;
 
+            renderCalcFactCpl(calcCurrentProduct.fact_cpl);
+
             const note = h.total_leads > 0
                 ? `📊 Історія (за ${h.lookback_days || 30} днів): ${h.total_leads} заявок, апрув ${h.approval_pct}%, викуп ${h.buyout_pct}%${h.in_flight > 0 ? `, ${h.in_flight} в дорозі` : ''}.`
                 : `⚠ Ще немає історії по цьому товару — використано дефолтні значення.`;
             document.getElementById('calcHistoryNote').textContent = note;
 
+            calcRecompute();
+        }
+
+        // Фактичний CPL з FB під повзунком; клік по плашці — підставити в калькулятор
+        function renderCalcFactCpl(list) {
+            const box = document.getElementById('calcFactCpl');
+            if (!box) return;
+            const rows = (Array.isArray(list) ? list : []).filter(x => x.cpl != null);
+            if (!rows.length) {
+                box.innerHTML = Array.isArray(list) ? `<span class="text-slate-400">Факт CPL: немає даних з FB</span>` : '';
+                return;
+            }
+            box.innerHTML = `<span class="text-slate-400 font-bold">Факт CPL:</span>` + rows.map(x =>
+                `<button type="button" onclick="calcSetCpl(${Math.round(x.cpl)})" title="${x.leads} лідів · ${x.spend_uah.toLocaleString('uk-UA')} ₴ витрат — клікни, щоб підставити"
+                    class="px-2 py-0.5 rounded-md bg-blue-50 text-blue-600 font-bold hover:bg-blue-100 transition-all">${x.days} дн: ${Math.round(x.cpl)} ₴</button>`
+            ).join('');
+        }
+        function calcSetCpl(v) {
+            const range = document.getElementById('calcCplRange');
+            document.getElementById('calcCpl').value = v;
+            if (Number(range.max) < v) range.max = v * 2;
+            range.value = v;
             calcRecompute();
         }
 

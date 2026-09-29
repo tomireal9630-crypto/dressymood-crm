@@ -1341,7 +1341,22 @@ app.get('/api/products/:id(\\d+)/economics', checkAuth, async (req, res) => {
     const cpl_max = grossProfit / 100;
     const cpl_recommended = cpl_max / (1 + targetRoi);
 
+    // Фактичний CPL з FB (витрата в грн ÷ ліди FB) за 3 / 7 / lookback днів
+    const factWindows = [...new Set([3, 7, lookback])];
+    const fr = await pool.query(`
+      SELECT w.days,
+             COALESCE(SUM(${fxSpendSql(settings)}) FILTER (WHERE fb_spend_daily.date > CURRENT_DATE - w.days), 0)::numeric AS spend_uah,
+             COALESCE(SUM(fb_spend_daily.leads) FILTER (WHERE fb_spend_daily.date > CURRENT_DATE - w.days), 0)::int AS leads
+      FROM unnest($2::int[]) AS w(days)
+      LEFT JOIN fb_spend_daily ON fb_spend_daily.article = $1
+      GROUP BY w.days ORDER BY w.days`, [article, factWindows]);
+    const fact_cpl = fr.rows.map(x => {
+      const spend = Number(x.spend_uah) || 0;
+      return { days: x.days, spend_uah: Math.round(spend), leads: x.leads, cpl: x.leads ? Math.round(spend / x.leads * 100) / 100 : null };
+    });
+
     res.json({
+      fact_cpl,
       product: { id: p.id, article, name: p.name, cost: productCost, price: sellPrice, margin, target_roi_pct: Math.round(targetRoi * 100) },
       history: {
         lookback_days: lookback,
