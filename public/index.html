@@ -198,6 +198,7 @@
                     </div>
                     <button onclick="resetOrderFilters()" class="px-3 py-2 rounded-lg text-xs font-bold bg-rose-50 text-rose-500 hover:bg-rose-100 transition-all">Скинути</button>
                 </div>
+                <div id="statusCounts" class="flex gap-2 flex-wrap mb-6 empty:hidden"></div>
                 <div class="bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/40 border border-slate-100 overflow-x-auto">
                     <table class="w-full text-left min-w-[1100px]">
                         <thead>
@@ -3656,6 +3657,37 @@
             } catch (e) { /* мовчки */ }
         }
 
+        // Плашки-лічильники над таблицею замовлень; клік — фільтр по статусу, повторний клік — скинути
+        async function loadStatusCounts(params) {
+            const box = document.getElementById('statusCounts');
+            if (!box) return;
+            try {
+                const p = new URLSearchParams(params);
+                p.delete('status'); p.delete('view');
+                const r = await fetch('/api/orders/status-counts?' + p.toString());
+                const rows = await r.json();
+                if (!Array.isArray(rows)) return;
+                const byStatus = Object.fromEntries(rows.map(x => [x.status, x]));
+                const current = (document.getElementById('statusFilter') || {}).value || '';
+                const money = n => Math.round(n).toLocaleString('uk-UA') + ' ₴';
+                box.innerHTML = STATUSES.filter(s => byStatus[s]).map(s => {
+                    const x = byStatus[s];
+                    const active = s === current;
+                    return `<button type="button" onclick="toggleStatusChip('${s}')" title="${x.count} шт · ${money(x.total)}"
+                        class="px-3 py-2 rounded-xl text-xs font-bold ring-1 transition-all ${statusConfig[s]} ${active ? 'ring-2 shadow-md scale-105' : 'opacity-80 hover:opacity-100'}">
+                        ${esc(s)} <span class="font-black ml-1">${x.count}</span>
+                        <span class="font-medium opacity-70 ml-1">${money(x.total)}</span>
+                    </button>`;
+                }).join('');
+            } catch (e) { /* мовчки */ }
+        }
+        function toggleStatusChip(s) {
+            const f = document.getElementById('statusFilter');
+            if (!f) return;
+            f.value = f.value === s ? '' : s;
+            loadOrders();
+        }
+
         // Архів: '' — продажі й відмови, 'Отбой' — тільки відбої
         let archiveKind = '';
         function setArchiveKind(kind) {
@@ -3706,6 +3738,7 @@
                     const { from, to } = ordersDateRange();
                     if (from) params.set('dateFrom', from);
                     if (to) params.set('dateTo', to);
+                    loadStatusCounts(params);
                 }
                 if (view === 'callbacks') {
                     const sup = (document.getElementById('callbacksSupplierFilter') || {}).value || '';

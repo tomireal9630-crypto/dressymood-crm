@@ -751,6 +751,37 @@ app.get('/api/orders/suppliers', checkAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Лічильники поточних замовлень по статусах (плашки над таблицею) — з тими ж фільтрами, що й список, крім статусу
+app.get('/api/orders/status-counts', checkAuth, async (req, res) => {
+  const { search, dateFrom, dateTo, supplier } = req.query;
+  try {
+    const params = [[...ARCHIVE_STATUSES, DELETED_STATUS]];
+    const conditions = [`o.status <> ALL($1)`];
+    if (search) {
+      params.push(`%${search}%`);
+      const p = `$${params.length}`;
+      conditions.push(`(c.full_name ILIKE ${p} OR c.phone ILIKE ${p} OR o.ttn ILIKE ${p}
+        OR EXISTS (SELECT 1 FROM order_items oi2 WHERE oi2.order_id = o.id
+                   AND (oi2.article ILIKE ${p} OR oi2.name ILIKE ${p})))`);
+    }
+    if (supplier) {
+      params.push(supplier);
+      conditions.push(`EXISTS (SELECT 1 FROM order_items oi3 WHERE oi3.order_id = o.id AND oi3.supplier_name = $${params.length})`);
+    }
+    if (dateFrom) { params.push(dateFrom); conditions.push(`o.created_at >= $${params.length}::date`); }
+    if (dateTo)   { params.push(dateTo);   conditions.push(`o.created_at < ($${params.length}::date + interval '1 day')`); }
+
+    const r = await pool.query(`
+      SELECT o.status, COUNT(*)::int AS count, COALESCE(SUM(t.total), 0)::numeric AS total
+      FROM orders o
+      JOIN customers c ON o.customer_id = c.id
+      LEFT JOIN (SELECT order_id, SUM(price * quantity) AS total FROM order_items GROUP BY order_id) t ON t.order_id = o.id
+      WHERE ${conditions.join(' AND ')}
+      GROUP BY o.status`, params);
+    res.json(r.rows.map(x => ({ status: x.status, count: x.count, total: Number(x.total) || 0 })));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.get('/api/stats/dashboard', checkAuth, async (req, res) => {
   const { dateFrom, dateTo, status } = req.query;
   try {
