@@ -921,7 +921,9 @@
 
                             <!-- Результат -->
                             <div class="bg-white rounded-2xl border border-slate-100 p-6 shadow-sm">
-                                <div class="text-xs font-black text-slate-400 uppercase tracking-widest mb-5">Результат на 100 лідів</div>
+                                <div class="text-xs font-black text-slate-400 uppercase tracking-widest mb-5 flex items-center gap-2">Результат на
+                                    <input type="number" id="calcLeads" min="1" value="100" oninput="calcRecompute()" class="w-20 text-center text-sm font-black bg-blue-50 text-blue-600 border border-blue-100 rounded px-2 py-1 outline-none">
+                                    лідів</div>
 
                                 <div class="space-y-2 text-sm">
                                     <div class="flex justify-between">
@@ -5017,8 +5019,9 @@
             const retCost = Number(document.getElementById('calcReturn').value) || 0;
             const targetRoi = ((calcCurrentProduct && calcCurrentProduct.product.target_roi_pct) || calcSettings.target_roi_pct || 30) / 100;
 
-            // На 100 лідів:
-            const approved = 100 * apriv;
+            // На N лідів (поле «Результат на … лідів», за замовчуванням 100):
+            const leads = Math.max(1, Number(document.getElementById('calcLeads').value) || 100);
+            const approved = leads * apriv;
             const sold = approved * buyout;
             const refused = approved * (1 - buyout);
 
@@ -5035,20 +5038,20 @@
             const smsPerApproved = smsCount * smsPrice;
             const courierPerShip = Number(document.getElementById('calcCourier').value) || 0;
 
-            const adSpend = 100 * cpl;
+            const adSpend = leads * cpl;
             const revenue = sold * price;
             const cogs = sold * cost;
             const returns = refused * retCost;
             const smsCost = approved * smsPerApproved; // SMS шлються всім підтвердженим
             const courier = (sold + refused) * courierPerShip; // кур'єр — за кожну відправлену посилку
-            const overhead = sold * overheadPerSale; // накладні на 100 лідів
+            const overhead = sold * overheadPerSale; // накладні на N лідів
             const netProfit = revenue - cogs - returns - smsCost - courier - overhead - adSpend;
             const roi = adSpend > 0 ? netProfit / adSpend * 100 : 0;
             const margin = revenue > 0 ? (revenue - cogs - returns - smsCost - courier - overhead) / revenue * 100 : 0;
 
             // CPL_max і Рек з урахуванням усіх змінних витрат
-            const grossPer100 = revenue - cogs - returns - smsCost - courier - overhead;
-            const cplMax = grossPer100 / 100;
+            const grossTotal = revenue - cogs - returns - smsCost - courier - overhead;
+            const cplMax = grossTotal / leads;
             const cplRec = cplMax / (1 + targetRoi);
 
             const uah = n => Math.round(Number(n) || 0).toLocaleString('uk-UA') + ' ₴';
@@ -5083,7 +5086,7 @@
             } else {
                 card.style.background = '#fef2f2';
                 card.style.color = '#e11d48';
-                const deficitPerLead = -netProfit / 100;
+                const deficitPerLead = -netProfit / leads;
                 verdict.innerHTML = `<span class="text-rose-600">✗ В мінусі. Втрачаєш ${Math.round(deficitPerLead)} ₴ на кожен лід. Знизь CPL до <b>${Math.round(cplMax)} ₴</b> або менше.</span>`;
             }
         }
