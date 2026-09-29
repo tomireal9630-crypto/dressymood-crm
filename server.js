@@ -500,7 +500,8 @@ app.get('/api/orders', checkAuth, async (req, res) => {
     const conditions = [];
 
     if (view === 'archive') {
-      params.push(ARCHIVE_STATUSES);
+      // За замовчуванням — тільки продажі й відмови; відбої — окремим перемикачем (status=Отбой)
+      params.push(status ? ARCHIVE_STATUSES : ARCHIVE_STATUSES.filter(s => s !== 'Отбой'));
       conditions.push(`o.status = ANY($${params.length})`);
     } else if (view === 'deleted') {
       params.push(DELETED_STATUS);

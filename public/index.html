@@ -352,9 +352,13 @@
                 <div class="flex justify-between items-start mb-6 gap-4 flex-wrap">
                     <div>
                         <h2 class="text-3xl font-black text-slate-800 uppercase italic tracking-tighter">Архів</h2>
-                        <p class="text-slate-400 font-medium text-sm">Завершені угоди (продаж та відмова)</p>
+                        <p class="text-slate-400 font-medium text-sm">Завершені угоди (продаж та відмова), відбої — окремо</p>
                     </div>
                     <div class="flex items-end gap-2 flex-wrap bg-white border border-slate-100 rounded-2xl p-3 shadow-sm">
+                        <div class="flex bg-slate-100 rounded-lg p-1 gap-1">
+                            <button type="button" data-archive-kind="" onclick="setArchiveKind('')" class="archive-kind-btn px-3 py-1 rounded-md text-xs font-bold transition-all">Продажі й відмови</button>
+                            <button type="button" data-archive-kind="Отбой" onclick="setArchiveKind('Отбой')" class="archive-kind-btn px-3 py-1 rounded-md text-xs font-bold transition-all">Відбої</button>
+                        </div>
                         <div id="archiveClientChip" class="hidden items-center gap-2 px-3 py-2 rounded-lg bg-violet-50 text-violet-700 text-xs font-bold">
                             <i class="fa-solid fa-user text-[11px]"></i>
                             <span id="archiveClientChipPhone"></span>
@@ -3652,6 +3656,22 @@
             } catch (e) { /* мовчки */ }
         }
 
+        // Архів: '' — продажі й відмови, 'Отбой' — тільки відбої
+        let archiveKind = '';
+        function setArchiveKind(kind) {
+            archiveKind = kind;
+            loadOrders();
+        }
+        function applyArchiveKindButtons() {
+            document.querySelectorAll('.archive-kind-btn').forEach(b => {
+                const active = b.dataset.archiveKind === archiveKind;
+                b.classList.toggle('bg-white', active);
+                b.classList.toggle('shadow-sm', active);
+                b.classList.toggle('text-slate-800', active);
+                b.classList.toggle('text-slate-500', !active);
+            });
+        }
+
         function setArchiveRange(preset) {
             const from = document.getElementById('archiveDateFrom');
             const to = document.getElementById('archiveDateTo');
@@ -3700,6 +3720,8 @@
                     if (f) params.set('dateFrom', f);
                     if (t) params.set('dateTo', t);
                     if (archiveClientPhone) params.set('search', archiveClientPhone);
+                    if (archiveKind) params.set('status', archiveKind);
+                    applyArchiveKindButtons();
                     applyArchiveChip();
                 }
                 const res = await fetch('/api/orders?' + params.toString());
