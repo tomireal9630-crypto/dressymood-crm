@@ -177,6 +177,12 @@
                         </select>
                     </div>
                     <div>
+                        <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">Модель</label>
+                        <select id="articleFilter" onchange="loadOrders()" class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
+                            <option value="">Всі моделі</option>
+                        </select>
+                    </div>
+                    <div>
                         <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">Період</label>
                         <select id="dateFilter" onchange="onDateFilterChange()" class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
                             <option value="">Весь час</option>
@@ -3330,6 +3336,20 @@
             } catch (e) { /* мовчки */ }
         }
 
+        async function fillArticleFilter() {
+            const f = document.getElementById('articleFilter');
+            if (!f) return;
+            try {
+                const r = await fetch('/api/orders/articles');
+                const d = await r.json();
+                const list = Array.isArray(d) ? d : [];
+                const cur = f.value;
+                f.innerHTML = `<option value="">Всі моделі</option>` +
+                    list.map(a => `<option value="${esc(a.article)}">${esc(a.article)}${a.name ? ' · ' + esc(a.name) : ''}</option>`).join('');
+                if ([...f.options].some(o => o.value === cur)) f.value = cur;
+            } catch (e) { /* мовчки */ }
+        }
+
         function onDateFilterChange() {
             const v = (document.getElementById('dateFilter') || {}).value || '';
             const wrap = document.getElementById('orderPeriodWrap');
@@ -3338,7 +3358,7 @@
         }
 
         function resetOrderFilters() {
-            ['statusFilter', 'supplierFilter', 'dateFilter', 'ordersDateFrom', 'ordersDateTo']
+            ['statusFilter', 'supplierFilter', 'articleFilter', 'dateFilter', 'ordersDateFrom', 'ordersDateTo']
                 .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
             const wrap = document.getElementById('orderPeriodWrap');
             if (wrap) wrap.classList.add('hidden');
@@ -3814,6 +3834,7 @@
             try {
                 fillStatusFilter();
                 fillSupplierFilter();
+                fillArticleFilter();
                 fillCallbacksSupplierFilter();
                 const view = ['orders', 'archive', 'deleted', 'callbacks'].includes(currentView) ? currentView : 'orders';
                 const table = document.getElementById(TBODY_BY_VIEW[view]);
@@ -3824,6 +3845,8 @@
                 if (view === 'orders') {
                     const sup = (document.getElementById('supplierFilter') || {}).value || '';
                     if (sup) params.set('supplier', sup);
+                    const art = (document.getElementById('articleFilter') || {}).value || '';
+                    if (art) params.set('article', art);
                     const { from, to } = ordersDateRange();
                     if (from) params.set('dateFrom', from);
                     if (to) params.set('dateTo', to);

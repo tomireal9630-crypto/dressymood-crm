@@ -755,9 +755,22 @@ app.get('/api/orders/suppliers', checkAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Моделі (артикули) із замовлень — для фільтра «Модель»; популярніші першими
+app.get('/api/orders/articles', checkAuth, async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT oi.article, MIN(oi.name) AS name, COUNT(*)::int AS cnt
+       FROM order_items oi JOIN orders o ON o.id = oi.order_id
+       WHERE oi.article IS NOT NULL AND oi.article <> '' AND o.status <> $1
+       GROUP BY oi.article ORDER BY cnt DESC, oi.article ASC`, [DELETED_STATUS]
+    );
+    res.json(r.rows.map(x => ({ article: x.article, name: x.name || '' })));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // Лічильники поточних замовлень по статусах (плашки над таблицею) — з тими ж фільтрами, що й список, крім статусу
 app.get('/api/orders/status-counts', checkAuth, async (req, res) => {
-  const { search, dateFrom, dateTo, supplier } = req.query;
+  const { search, dateFrom, dateTo, supplier, article } = req.query;
   try {
     const params = [[...ARCHIVE_STATUSES, DELETED_STATUS]];
     const conditions = [`o.status <> ALL($1)`];
@@ -771,6 +784,10 @@ app.get('/api/orders/status-counts', checkAuth, async (req, res) => {
     if (supplier) {
       params.push(supplier);
       conditions.push(`EXISTS (SELECT 1 FROM order_items oi3 WHERE oi3.order_id = o.id AND oi3.supplier_name = $${params.length})`);
+    }
+    if (article) {
+      params.push(article);
+      conditions.push(`EXISTS (SELECT 1 FROM order_items oi4 WHERE oi4.order_id = o.id AND oi4.article = $${params.length})`);
     }
     if (dateFrom) { params.push(dateFrom); conditions.push(`o.created_at >= $${params.length}::date`); }
     if (dateTo)   { params.push(dateTo);   conditions.push(`o.created_at < ($${params.length}::date + interval '1 day')`); }
