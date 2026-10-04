@@ -2847,15 +2847,68 @@ app.get('/api/np/cities', checkAuth, async (req, res) => {
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
 
+// Повний список відділень/поштоматів міста (у Києві їх 8000+, НП віддає сторінками).
+// Кеш у пам'яті на добу; неповний (НП обірвала сторінки) — лише на 10 хв.
+const NP_WH_PAGE = 2000;
+const npWhCache = new Map(); // cityRef -> { ts, ttl, list } | { promise }
+async function getCityWarehouses(cityRef) {
+  const hit = npWhCache.get(cityRef);
+  if (hit && hit.promise) return hit.promise;
+  if (hit && Date.now() - hit.ts < hit.ttl) return hit.list;
+
+  const promise = (async () => {
+    const all = [];
+    let complete = true;
+    for (let page = 1; page <= 20; page++) {
+      let data = await npCall('Address', 'getWarehouses', { CityRef: cityRef, Limit: String(NP_WH_PAGE), Page: String(page) });
+      if (!data.length && page > 1) { // НП іноді віддає порожню сторінку при частих запитах — одна повторна спроба
+        await new Promise(r => setTimeout(r, 700));
+        data = await npCall('Address', 'getWarehouses', { CityRef: cityRef, Limit: String(NP_WH_PAGE), Page: String(page) });
+        if (!data.length) { complete = false; break; }
+      }
+      all.push(...data);
+      if (data.length < NP_WH_PAGE) break;
+    }
+    const seen = new Set();
+    const list = all
+      .filter(w => !seen.has(w.Ref) && seen.add(w.Ref))
+      .map(w => ({ ref: w.Ref, name: w.Description, type: w.CategoryOfWarehouse || '', number: String(w.Number || '') }))
+      .sort((a, b) => (parseInt(a.number) || 0) - (parseInt(b.number) || 0));
+    if (npWhCache.size > 100) npWhCache.clear();
+    npWhCache.set(cityRef, { ts: Date.now(), ttl: complete ? 24 * 3600e3 : 10 * 60e3, list });
+    return list;
+  })();
+  npWhCache.set(cityRef, { promise });
+  try { return await promise; }
+  catch (e) { npWhCache.delete(cityRef); throw e; }
+}
+
+// Пошук відділення: цифри — за номером (точний збіг першим), текст — за назвою/адресою
+function searchWarehouses(list, q, limit = 30) {
+  q = String(q || '').trim().toLowerCase();
+  if (!q) return list.slice(0, limit);
+  if (/^\d+$/.test(q)) {
+    const exact = list.filter(w => w.number === q);
+    const prefix = list.filter(w => w.number !== q && w.number.startsWith(q));
+    return exact.concat(prefix).slice(0, limit);
+  }
+  const words = q.replace(/[№#"«»,.:]/g, ' ').split(/\s+/).filter(Boolean);
+  const out = [];
+  for (const w of list) {
+    const name = w.name.toLowerCase();
+    if (words.every(x => name.includes(x))) { out.push(w); if (out.length >= limit) break; }
+  }
+  return out;
+}
+
+// Без q — весь список (селект відділення відправника); з q (навіть порожнім) — топ-30 для автопідказки
 app.get('/api/np/warehouses', checkAuth, async (req, res) => {
   try {
     const cityRef = String(req.query.cityRef || '').trim();
     if (!cityRef) return res.json([]);
-    const q = String(req.query.q || '').trim();
-    const props = { CityRef: cityRef, Limit: '500' };
-    if (q) props.FindByString = q;
-    const data = await npCall('Address', 'getWarehouses', props);
-    res.json(data.map(w => ({ ref: w.Ref, name: w.Description, type: w.CategoryOfWarehouse || '' })));
+    const list = await getCityWarehouses(cityRef);
+    if (req.query.q === undefined) return res.json(list);
+    res.json(searchWarehouses(list, req.query.q));
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
 
