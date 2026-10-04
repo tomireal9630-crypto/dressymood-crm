@@ -1393,7 +1393,11 @@ function extractArticleFromCampaign(campaignName, pattern) {
   try {
     const re = new RegExp(pattern);
     const m = campaignName.match(re);
-    if (m && m[1]) return m[1].trim();
+    if (m && m[1]) {
+      const a = m[1].trim();
+      // Кампанія «[536]» без № — у замовленнях і на складі артикул «№536»
+      return /^\d+$/.test(a) ? '№' + a : a;
+    }
   } catch (e) { /* invalid regex */ }
   return null;
 }
