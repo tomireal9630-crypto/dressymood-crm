@@ -101,6 +101,13 @@ a.phone-call:hover .fa-phone { opacity: 1; }
     background: #fef3c7; color: #b45309; cursor: help;
     box-shadow: inset 0 0 0 1.5px #f59e0b;
 }
+/* Повторна заявка: є інші замовлення з цим номером (будь-який статус) */
+.dup-badge {
+    display: inline-block; margin-left: 4px; padding: 1px 6px; border-radius: 6px;
+    font-size: 10px; font-weight: 800; vertical-align: middle; white-space: nowrap;
+    background: #fee2e2; color: #b91c1c; cursor: help;
+}
+body.dark .dup-badge { background: rgba(239,68,68,.18); color: #fca5a5; }
 body.dark .repeat-id { background: rgba(245,158,11,.18); color: #fcd34d; box-shadow: inset 0 0 0 1.5px rgba(245,158,11,.55); }
 
 /* ============== ТЁМНАЯ ТЕМА (под референс-скриншот) ============== */

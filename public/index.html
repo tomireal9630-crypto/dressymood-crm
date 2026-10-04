@@ -3804,6 +3804,10 @@
                     const cDecided = cBought + cRefused;
                     const cPct = cDecided ? Math.round(cRefused / cDecided * 100) : 0;
                     const repeatTip = `Постійний клієнт · Замовлень: ${custCnt} · Викуп: ${cBought} · Відмов: ${cRefused} (${cPct}%)`;
+                    const others = Array.isArray(o.otherOrders) ? o.otherOrders : [];
+                    const dupTip = others.length
+                        ? 'Інші замовлення з цим номером:\n' + others.map(x => `#${x.id} · ${x.status} · ${fmtDate(x.createdAt)}`).join('\n')
+                        : '';
                     return `
                     <tr onclick="rowClickEdit(event, ${o.id})" class="hover:bg-slate-50 transition-all group align-middle cursor-pointer">
                         <td class="px-4 py-5 w-10"><input type="checkbox" class="order-check w-4 h-4 accent-violet-600 cursor-pointer" data-id="${o.id}" onclick="event.stopPropagation()" onchange="onRowCheck()"></td>
@@ -3826,7 +3830,7 @@
                             <span class="inline-flex items-center text-sm font-black bg-emerald-100 text-emerald-700 px-3 py-1 rounded-lg whitespace-nowrap">${Number(o.total) || 0} грн</span>
                         </td>
                         <td class="px-4 py-5">
-                            <div class="font-bold text-slate-800 text-sm leading-tight">${esc(o.fullName)}</div>
+                            <div class="font-bold text-slate-800 text-sm leading-tight">${esc(o.fullName)}${others.length ? ` <span class="dup-badge" title="${esc(dupTip)}">Повтор ×${others.length}</span>` : ''}</div>
                             ${isRepeat
                                 ? `<div class="mt-0.5"><span class="repeat-id order-phone text-xs font-bold" title="${esc(repeatTip)}">${phoneLink(o.phone)}</span></div>`
                                 : `<div class="order-phone text-xs font-bold mt-0.5">${phoneLink(o.phone)}</div>`

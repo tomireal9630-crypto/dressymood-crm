@@ -559,6 +559,10 @@ app.get('/api/orders', checkAuth, async (req, res) => {
              o.sms1_error, o.sms2_error, o.sms3_error,
              o.created_at AS "createdAt", o.original_created_at AS "originalCreatedAt",
              cs.cust_count, cs.cust_bought, cs.cust_refused,
+             -- Інші замовлення з цим номером (будь-який статус, крім видалених) — мітка «Повтор»
+             (SELECT json_agg(json_build_object('id', po.id, 'status', po.status, 'createdAt', po.created_at) ORDER BY po.id)
+                FROM orders po
+               WHERE po.customer_id = o.customer_id AND po.id <> o.id AND po.status <> '${DELETED_STATUS}') AS "otherOrders",
              COALESCE(json_agg(json_build_object(
                'id', oi.id, 'article', oi.article, 'name', oi.name,
                'supplier_name', oi.supplier_name, 'size', oi.size,
