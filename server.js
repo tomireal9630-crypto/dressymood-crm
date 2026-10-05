@@ -1134,6 +1134,22 @@ async function getEconomicsSettings() {
   return { ...ECONOMICS_DEFAULTS, ...(r.rows.length ? r.rows[0].value : {}) };
 }
 
+// Апрув/викуп/відмова моделі — єдине правило для юніт-економіки, картки товару, автоправил і бота.
+// Поки завершених посилок (Продажа + Отказ/Возврат) менше RESOLVED_MIN — викуп «предварительно»
+// з налаштувань (new_buyout_pct), відмова = решта. Посилки «в дорозі» не рахуються як невикуплені.
+// Апрув — фактичний, якщо є заявки; інакше з налаштувань.
+const RESOLVED_MIN = 5;
+function modelRates(settings, { total_leads, approved, sold, refused_after }) {
+  const newApproval = Math.max(0, Math.min(100, Number(settings.new_approval_pct))) / 100 || 0.7;
+  const newBuyout = Math.max(0, Math.min(100, Number(settings.new_buyout_pct))) / 100 || 0.6;
+  const resolved = (sold || 0) + (refused_after || 0);
+  const provisional = resolved < RESOLVED_MIN;
+  const approvalRate = total_leads ? approved / total_leads : newApproval;
+  const buyoutRate = provisional ? newBuyout : sold / resolved;
+  const refusalRate = provisional ? 1 - newBuyout : refused_after / resolved;
+  return { approvalRate, buyoutRate, refusalRate, provisional, resolved };
+}
+
 // SQL: витрата FB у гривні за курсом ДНЯ витрати (останній відомий курс на цю дату з fx_rates).
 // Якщо історії на цю дату ще немає — поточний курс із налаштувань. Так минулі періоди не «пливуть»
 // при кожній зміні курсу.
@@ -1329,16 +1345,10 @@ app.get('/api/products/:id(\\d+)/economics', checkAuth, async (req, res) => {
     const sold = s.sold || 0;
     const refusedAfter = s.refused_after || 0;
 
-    const approvalRate = totalLeads ? approved / totalLeads : 0;
     const returnCost = Number(settings.return_cost) || 0;
-    // Final buyout rate — рахується лише серед РЕЗОЛЮЦІЙ (Продажа+Отказ/Возврат/Ошибка),
-    // ігнорує "в дорозі" (Доставка/В пути/На почте). Це чесна оцінка майбутнього викупу.
-    // Мінімальний поріг 5 — щоб не довіряти статистиці на дуже малих числах.
-    const RESOLVED_MIN = 5;
-    const resolved = sold + refusedAfter;
-    const useFinal = resolved >= RESOLVED_MIN;
-    const buyoutRate  = useFinal ? sold / resolved        : (approved ? sold / approved : 0);
-    const refusalRate = useFinal ? refusedAfter / resolved : (approved ? refusedAfter / approved : 0);
+    const { approvalRate, buyoutRate, refusalRate, provisional, resolved } =
+      modelRates(settings, { total_leads: totalLeads, approved, sold, refused_after: refusedAfter });
+    const useFinal = !provisional;
 
     // На 100 лідів:
     //   approved = 100 × approvalRate
@@ -1390,7 +1400,9 @@ app.get('/api/products/:id(\\d+)/economics', checkAuth, async (req, res) => {
         approval_pct: Math.round(approvalRate * 1000) / 10,
         buyout_pct: Math.round(buyoutRate * 1000) / 10,
         refusal_pct: Math.round(refusalRate * 1000) / 10,
-        is_extrapolated: useFinal
+        is_extrapolated: useFinal,
+        provisional,
+        resolved_min: RESOLVED_MIN
       },
       settings: { return_cost: returnCost, courier_cost: _cour },
       cpl: {
@@ -1680,29 +1692,14 @@ async function articleCplMap(dateFrom, dateTo) {
            MAX(pr.price)::numeric price, MAX(pr.cost)::numeric cost, MAX(pr.target_roi_pct) target_roi
     FROM leads l LEFT JOIN products pr ON pr.article = l.article
     GROUP BY l.article`, p);
-  const newApproval = Math.max(0, Math.min(100, Number(settings.new_approval_pct))) / 100 || 0.7;
-  const newBuyout = Math.max(0, Math.min(100, Number(settings.new_buyout_pct))) / 100 || 0.6;
   const { smsCost, courierCost, overheadPerSale } = await overheadContext(dateFrom, dateTo);
   const map = {};
   for (const row of r.rows) {
     const price = Number(row.price) || 0, cost = Number(row.cost) || 0;
     if (!price) { map[row.article] = null; continue; }
     const targetRoi = (row.target_roi != null ? Number(row.target_roi) : defTargetRoi) / 100;
-    const resolved = row.sold + row.refused_after;
-    // Надійна історія — коли є ≥5 резолюцій. Інакше — орієнтир по припущених апрув/викуп.
-    const reliable = resolved >= 5 && row.approved > 0;
-    let approvalRate, buyoutRate, refusalRate, provisional;
-    if (reliable) {
-      approvalRate = row.total_leads ? row.approved / row.total_leads : 0;
-      buyoutRate = row.sold / resolved;
-      refusalRate = row.refused_after / resolved;
-      provisional = false;
-    } else {
-      approvalRate = newApproval;
-      buyoutRate = newBuyout;
-      refusalRate = 1 - newBuyout;
-      provisional = true;
-    }
+    const { approvalRate, buyoutRate, refusalRate, provisional } = modelRates(settings, row);
+    const reliable = !provisional;
     const approved100 = 100 * approvalRate;
     const sold100 = 100 * approvalRate * buyoutRate, refused100 = 100 * approvalRate * refusalRate;
     // Валовий на 100 лідів = продажі×(ціна−собів.) − відмови×відмова − підтв.×SMS − відправлені×кур'єр − продажі×накладні
@@ -2462,20 +2459,14 @@ app.get('/api/stats/unit-economics', checkAuth, async (req, res) => {
     const _to = new Date(); const _from = new Date(); _from.setDate(_from.getDate() - lookback);
     const iso = d => d.toLocaleDateString('sv-SE');
     const { smsCost, courierCost, overheadPerSale } = await overheadContext(iso(_from), iso(_to));
-    const RESOLVED_MIN = 5;
     const rows = r.rows.map(row => {
       const sellPrice = Number(row.price) || 0;
       const productCost = Number(row.cost) || 0;
       const margin = sellPrice - productCost;
       const targetRoi = (row.target_roi_pct != null ? Number(row.target_roi_pct) : defaultTargetRoi) / 100;
       const total = row.total_leads;
-      const approvalRate = total ? row.approved / total : 0;
-      // Final buyout: рахуємо лише серед резолюцій (Продажа+Отказ/Возврат/Ошибка),
-      // ігноруємо "в дорозі". Поріг ≥5 щоб не довіряти статистиці на дуже малих числах.
-      const resolved = row.sold + row.refused_after;
-      const useFinal = resolved >= RESOLVED_MIN;
-      const buyoutRate  = useFinal ? row.sold / resolved        : (row.approved ? row.sold / row.approved : 0);
-      const refusalRate = useFinal ? row.refused_after / resolved : (row.approved ? row.refused_after / row.approved : 0);
+      const { approvalRate, buyoutRate, refusalRate, provisional, resolved } = modelRates(settings, row);
+      const useFinal = !provisional;
       const approved100 = 100 * approvalRate;
       const sold100 = 100 * approvalRate * buyoutRate;
       const refused100 = 100 * approvalRate * refusalRate;
@@ -2496,6 +2487,7 @@ app.get('/api/stats/unit-economics', checkAuth, async (req, res) => {
         buyout_pct: Math.round(buyoutRate * 1000) / 10,
         refusal_pct: Math.round(refusalRate * 1000) / 10,
         is_extrapolated: useFinal,
+        provisional,
         in_flight: row.approved - resolved,
         cpl_max: Math.round(cpl_max * 100) / 100,
         cpl_recommended: Math.round(cpl_recommended * 100) / 100,

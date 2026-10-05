@@ -4873,8 +4873,8 @@
                     </td>
                     <td class="px-4 py-3 text-right text-sm font-black text-emerald-600">${uah(r.margin)}</td>
                     <td class="px-4 py-3 text-center text-xs font-bold text-slate-700">${noHist ? '—' : r.approval_pct + '%'}</td>
-                    <td class="px-4 py-3 text-center text-xs font-bold text-slate-700">${noHist ? '—' : r.buyout_pct + '%'}</td>
-                    <td class="px-4 py-3 text-center text-xs font-bold text-slate-700">${noHist ? '—' : r.refusal_pct + '%'}</td>
+                    <td class="px-4 py-3 text-center text-xs font-bold text-slate-700">${noHist ? '—' : r.buyout_pct + '%' + `${r.provisional ? ' <span class="text-[8px] font-black text-sky-500 bg-sky-50 px-1 py-0.5 rounded" title="Мало завершених посилок — викуп/відмови з налаштувань, поки не набереться 5 продаж+відмов">предв.</span>' : ''}`}</td>
+                    <td class="px-4 py-3 text-center text-xs font-bold text-slate-700">${noHist ? '—' : r.refusal_pct + '%' + `${r.provisional ? ' <span class="text-[8px] font-black text-sky-500 bg-sky-50 px-1 py-0.5 rounded" title="Мало завершених посилок — викуп/відмови з налаштувань, поки не набереться 5 продаж+відмов">предв.</span>' : ''}`}</td>
                     <td class="px-4 py-3 text-right text-sm font-black text-rose-600">${noHist || r.cpl_max <= 0 ? '—' : uah(r.cpl_max)}</td>
                     <td class="px-4 py-3 text-right text-sm font-black text-emerald-600">${noHist || r.cpl_recommended <= 0 ? '—' : uah(r.cpl_recommended)}</td>
                     <td class="px-4 py-3 text-center text-[11px] font-black text-violet-600">${r.target_roi_pct}%</td>
@@ -4992,7 +4992,7 @@
                     <td class="px-4 py-3 text-right font-black text-emerald-600">${r.cpl_recommended > 0 ? uah(r.cpl_recommended) : '—'}</td>
                     <td class="px-4 py-3 text-right font-black text-rose-600">${r.cpl_max > 0 ? uah(r.cpl_max) : '—'}</td>
                     <td class="px-4 py-3 text-center text-xs font-bold text-slate-700">${r.has_history ? r.approval_pct + '%' : '—'}</td>
-                    <td class="px-4 py-3 text-center text-xs font-bold text-slate-700">${r.has_history ? r.buyout_pct + '%' : '—'}</td>
+                    <td class="px-4 py-3 text-center text-xs font-bold text-slate-700">${r.has_history ? r.buyout_pct + '%' + `${r.provisional ? ' <span class="text-[8px] font-black text-sky-500 bg-sky-50 px-1 py-0.5 rounded" title="Мало завершених посилок — викуп/відмови з налаштувань, поки не набереться 5 продаж+відмов">предв.</span>' : ''}` : '—'}</td>
                     <td class="px-4 py-3 text-right font-bold text-blue-500">${r.adSpend > 0 ? uah(r.adSpend) : '—'}</td>
                     <td class="px-4 py-3 text-right font-black ${r.netProfit > 0 ? 'text-emerald-600' : r.netProfit < 0 ? 'text-rose-600' : 'text-slate-400'}">${r.adSpend > 0 ? uah(r.netProfit) : '—'}</td>
                     <td class="px-4 py-3 text-center"><span class="inline-flex items-center text-[10px] font-black px-2.5 py-1 rounded-full ${sigCls[r.signal]}">${sigText[r.signal]}</span></td>
@@ -5105,7 +5105,7 @@
             renderCalcFactCpl(calcCurrentProduct.fact_cpl);
 
             const note = h.total_leads > 0
-                ? `📊 Історія (за ${h.lookback_days || 30} днів): ${h.total_leads} заявок, апрув ${h.approval_pct}%, викуп ${h.buyout_pct}%${h.in_flight > 0 ? `, ${h.in_flight} в дорозі` : ''}.`
+                ? `📊 Історія (за ${h.lookback_days || 30} днів): ${h.total_leads} заявок, апрув ${h.approval_pct}%, викуп ${h.buyout_pct}%${h.provisional ? ' (попередньо, з налаштувань — мало завершених посилок)' : ''}${h.in_flight > 0 ? `, ${h.in_flight} в дорозі` : ''}.`
                 : `⚠ Ще немає історії по цьому товару — використано дефолтні значення.`;
             document.getElementById('calcHistoryNote').textContent = note;
 
@@ -7015,12 +7015,12 @@
                             <div>
                                 <div class="text-[10px] font-black text-slate-400 uppercase mb-1">% Викупу ${h.is_extrapolated ? '<span class="text-[8px] font-black text-violet-500 bg-violet-50 px-1 py-0.5 rounded ml-1" title="Розраховано серед резолюцій (sold/(sold+refused)). Замовлення в дорозі екстраполюються по цьому ж %.">PROJ</span>' : ''}</div>
                                 <div class="text-lg font-black text-slate-700">${h.buyout_pct}%</div>
-                                <div class="text-[10px] text-slate-400">${h.sold} з ${h.is_extrapolated ? (h.resolved || (h.sold + h.refused_after)) : h.approved}</div>
+                                <div class="text-[10px] text-slate-400">${h.provisional ? `попередньо: завершено ${h.resolved || 0} з ${h.resolved_min || 5}` : `${h.sold} з ${h.resolved || (h.sold + h.refused_after)}`}</div>
                             </div>
                             <div>
                                 <div class="text-[10px] font-black text-slate-400 uppercase mb-1">% Відмов</div>
                                 <div class="text-lg font-black text-slate-700">${h.refusal_pct}%</div>
-                                <div class="text-[10px] text-slate-400">${h.refused_after} відмов на НП</div>
+                                <div class="text-[10px] text-slate-400">${h.provisional ? 'попередньо, з налаштувань' : `${h.refused_after} відмов на НП`}</div>
                             </div>
                         </div>
                         ${h.in_flight > 0 ? `<div class="mt-3 text-[11px] text-slate-500"><i class="fa-solid fa-truck text-amber-500 mr-1"></i>В дорозі: <b>${h.in_flight}</b> заявок (Доставка/В пути/На почте) — їх результат ще не відомий, прогноз робиться на основі історичних викупів</div>` : ''}
