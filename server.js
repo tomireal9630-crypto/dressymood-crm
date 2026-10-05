@@ -4555,5 +4555,8 @@ app.get('/', checkAuth, (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+// Telegram-бот звітів (реклама ФБ + замовлення). Вмикається TG_REPORT_BOT_TOKEN / TG_REPORT_CHAT_ID.
+require('./telegram')({ pool, getEconomicsSettings, fxSpendSql, articleCplMap, syncAllFbAccounts });
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`tomireal CRM running on ${PORT}`));
