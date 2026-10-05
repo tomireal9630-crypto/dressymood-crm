@@ -15,7 +15,7 @@ const APPROVED = `('В работе','Доставка','В пути','На по
 const LEAD_TS = `COALESCE(o.original_created_at, o.created_at)`;
 
 module.exports = function initTelegramReports(deps) {
-  const { pool, getEconomicsSettings, fxSpendSql, articleCplMap, syncAllFbAccounts } = deps;
+  const { pool, getEconomicsSettings, fxSpendSql, articleCplMap, syncAllFbAccounts, fbLiveStatuses } = deps;
   const token = (process.env.TG_REPORT_BOT_TOKEN || '').trim();
   const chatId = (process.env.TG_REPORT_CHAT_ID || '').trim();
   if (!token) { console.log('[TG] TG_REPORT_BOT_TOKEN не задано — бот звітів вимкнено'); return; }
@@ -33,9 +33,16 @@ module.exports = function initTelegramReports(deps) {
 
   async function send(text, to = chatId) {
     if (!to) return;
-    // Ліміт Telegram — 4096 символів
-    for (let i = 0; i < text.length; i += 4000) {
-      await tg('sendMessage', { chat_id: to, text: text.slice(i, i + 4000), parse_mode: 'HTML', disable_web_page_preview: true });
+    // Ліміт Telegram — 4096 символів; ріжемо по рядках, щоб не розірвати HTML-тег
+    const parts = [];
+    let cur = '';
+    for (const line of text.split('\n')) {
+      if (cur && cur.length + line.length + 1 > 3900) { parts.push(cur); cur = ''; }
+      cur += (cur ? '\n' : '') + line;
+    }
+    if (cur) parts.push(cur);
+    for (const p of parts) {
+      await tg('sendMessage', { chat_id: to, text: p, parse_mode: 'HTML', disable_web_page_preview: true });
     }
   }
 
@@ -141,6 +148,73 @@ module.exports = function initTelegramReports(deps) {
     return L.join('\n');
   }
 
+  // Кампанії і групи за період: модель → кампанія → група
+  async function buildAdsReport(from, to, title) {
+    const s = await getEconomicsSettings();
+    const [r, thr, accs] = await Promise.all([
+      pool.query(`
+        SELECT d.ad_account_id, d.campaign_id, MAX(d.campaign_name) campaign_name,
+               d.adset_id, MAX(d.adset_name) adset_name,
+               COALESCE(NULLIF(MAX(d.article), ''), '— без артикула') article, MAX(d.currency) currency,
+               SUM(d.spend)::numeric spend, SUM(${fxSpendSql(s, 'd')})::numeric spend_uah, SUM(d.leads)::int leads
+        FROM fb_spend_daily d
+        WHERE d.date >= $1::date AND d.date <= $2::date
+        GROUP BY d.ad_account_id, d.campaign_id, d.adset_id
+        HAVING SUM(d.spend) > 0 OR SUM(d.leads) > 0`, [from, to]),
+      cplThresholds(),
+      pool.query(`SELECT id, fb_account_id, access_token FROM fb_ad_accounts WHERE is_active = true`)
+    ]);
+    if (!r.rows.length) return `📣 <b>${esc(title)}</b>\n\nЗа цей період витрат немає.`;
+
+    // Живі статуси з ФБ (працює / пауза); якщо ФБ не відповів — просто без позначок
+    const st = { campaigns: {}, adsets: {} };
+    if (fbLiveStatuses) {
+      await Promise.all(accs.rows.map(async a => {
+        try { const x = await fbLiveStatuses(a); Object.assign(st.campaigns, x.campaigns); Object.assign(st.adsets, x.adsets); }
+        catch (e) { console.error('[TG] statuses:', e.message); }
+      }));
+    }
+    const mark = v => !v ? '' : (v.status === 'ACTIVE' ? '▶️ ' : '⏸ ');
+
+    const money = (v, cur) => String(cur || '').toUpperCase() === 'USD' ? '$' + (Number(v) || 0).toFixed(2)
+      : String(cur || '').toUpperCase() === 'EUR' ? '€' + (Number(v) || 0).toFixed(2) : uah(v);
+    const color = (art, spendUah, leads) => {
+      const t = thr[art];
+      if (!t || t.cpl_max == null || t.provisional) return '⚪';
+      if (!leads) return spendUah > t.cpl_max ? '🔴' : '⚪';
+      const c = spendUah / leads;
+      return c <= t.cpl_recommended ? '🟢' : c <= t.cpl_max ? '🟡' : '🔴';
+    };
+
+    const arts = {};
+    for (const x of r.rows) {
+      const A = arts[x.article] = arts[x.article] || { article: x.article, spendUah: 0, leads: 0, camps: {} };
+      const C = A.camps[x.campaign_id] = A.camps[x.campaign_id] || { id: x.campaign_id, name: x.campaign_name, cur: x.currency, spend: 0, spendUah: 0, leads: 0, sets: [] };
+      const g = { id: x.adset_id, name: x.adset_name, cur: x.currency, spend: Number(x.spend) || 0, spendUah: Number(x.spend_uah) || 0, leads: x.leads || 0 };
+      C.sets.push(g);
+      C.spend += g.spend; C.spendUah += g.spendUah; C.leads += g.leads;
+      A.spendUah += g.spendUah; A.leads += g.leads;
+    }
+
+    const L = [`📣 <b>${esc(title)}</b>`];
+    const total = Object.values(arts).reduce((a, x) => ({ s: a.s + x.spendUah, l: a.l + x.leads }), { s: 0, l: 0 });
+    L.push(`Разом: ${uah(total.s)} · ${total.l} лід. · CPL ${total.l ? uah(total.s / total.l) : '—'}`);
+    for (const A of Object.values(arts).sort((a, b) => b.spendUah - a.spendUah)) {
+      const t = thr[A.article];
+      const lim = t && t.cpl_max != null && !t.provisional ? ` · гран. ${uah(t.cpl_max)}` : (t && t.provisional ? ' · предв.' : '');
+      L.push('', `${color(A.article, A.spendUah, A.leads)} <b>${esc(A.article)}</b> — ${uah(A.spendUah)} · ${A.leads} лід. · CPL ${A.leads ? uah(A.spendUah / A.leads) : '—'}${lim}`);
+      for (const C of Object.values(A.camps).sort((a, b) => b.spend - a.spend)) {
+        L.push(`  ${mark(st.campaigns[C.id])}<b>${esc(C.name)}</b>`);
+        L.push(`  ${money(C.spend, C.cur)} · ${C.leads} лід. · CPL ${C.leads ? money(C.spend / C.leads, C.cur) : '—'}`);
+        for (const g of C.sets.sort((a, b) => b.spend - a.spend)) {
+          L.push(`    ${color(A.article, g.spendUah, g.leads)} ${mark(st.adsets[g.id])}${esc(g.name)}: ${money(g.spend, g.cur)} · ${g.leads} лід. · CPL ${g.leads ? money(g.spend / g.leads, g.cur) : '—'}`);
+        }
+      }
+    }
+    L.push('', '<i>▶️ працює · ⏸ на паузі · колір — CPL групи відносно граничного моделі</i>');
+    return L.join('\n');
+  }
+
   async function buildOrdersInfo() {
     const r = await pool.query(`
       SELECT o.id, o.status, COALESCE(NULLIF(o.full_name,''), c.full_name) n,
@@ -242,6 +316,9 @@ module.exports = function initTelegramReports(deps) {
     '/today — зведення за сьогодні',
     '/yesterday — за вчора',
     '/week — за 7 днів',
+    '/ads — кампанії і групи за сьогодні',
+    '/ads_yesterday — кампанії і групи за вчора',
+    '/ads_week — кампанії і групи за 7 днів',
     '/orders — хто чекає дзвінка',
     '',
     `Автоматично: о ${MORNING.from} — за вчора, о ${EVENING.from} — за сьогодні, тривоги щогодини.`
@@ -269,6 +346,12 @@ module.exports = function initTelegramReports(deps) {
     if (cmd === '/yesterday') { const y = addDays(today, -1); return send(await buildReport(y, y, `Вчора, ${dm(y)}`)); }
     if (cmd === '/week') { const f = addDays(today, -6); return send(await buildReport(f, today, `7 днів, ${dm(f)}–${dm(today)}`)); }
     if (cmd === '/orders') return send(await buildOrdersInfo());
+    if (cmd === '/ads') {
+      await syncAllFbAccounts(1).catch(err => console.error('[TG] sync:', err.message));
+      return send(await buildAdsReport(today, today, `Кампанії сьогодні, ${dm(today)} (станом на ${kyivTime()})`));
+    }
+    if (cmd === '/ads_yesterday') { const y = addDays(today, -1); return send(await buildAdsReport(y, y, `Кампанії вчора, ${dm(y)}`)); }
+    if (cmd === '/ads_week') { const f = addDays(today, -6); return send(await buildAdsReport(f, today, `Кампанії за 7 днів, ${dm(f)}–${dm(today)}`)); }
   }
 
   let offset = 0, stopped = false;
@@ -294,11 +377,23 @@ module.exports = function initTelegramReports(deps) {
     }
   }
 
+  // Меню команд у Telegram (кнопка «/» у групі)
+  tg('setMyCommands', { commands: [
+    { command: 'today', description: 'Зведення за сьогодні' },
+    { command: 'ads', description: 'Кампанії і групи за сьогодні' },
+    { command: 'ads_yesterday', description: 'Кампанії і групи за вчора' },
+    { command: 'ads_week', description: 'Кампанії і групи за 7 днів' },
+    { command: 'yesterday', description: 'Зведення за вчора' },
+    { command: 'week', description: 'Зведення за 7 днів' },
+    { command: 'orders', description: 'Хто чекає дзвінка' },
+    { command: 'help', description: 'Список команд' }
+  ] }).catch(err => console.error('[TG] setMyCommands:', err.message));
+
   poll();
   setInterval(() => { scheduleTick().catch(err => console.error('[TG] schedule:', err.message)); }, 60 * 1000);
   setTimeout(() => { checkAlerts().catch(err => console.error('[TG] alerts:', err.message)); }, 5 * 60 * 1000);
   setInterval(() => { checkAlerts().catch(err => console.error('[TG] alerts:', err.message)); }, ALERT_EVERY_MS);
   console.log(`[TG] бот звітів запущено${chatId ? '' : ' (TG_REPORT_CHAT_ID не задано — чекаю команду в групі)'}`);
 
-  return { buildReport, buildOrdersInfo, checkAlerts };
+  return { buildReport, buildAdsReport, buildOrdersInfo, checkAlerts };
 };
