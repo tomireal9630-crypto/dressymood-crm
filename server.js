@@ -3050,7 +3050,8 @@ app.post('/api/orders/:id(\\d+)/ttn', checkAuth, async (req, res) => {
   try {
     const { s, sender } = await requireNpReady();
     const ttn = await generateTtnForOrder(id, s, sender);
-    res.json({ success: true, ttn });
+    const receipt = await autoReceiptAfterTtn(id);
+    res.json({ success: true, ttn, receipt });
   } catch (err) {
     res.status(400).json({ error: err.message });
   } finally { ttnInFlight.delete(id); }
@@ -3066,16 +3067,57 @@ app.post('/api/orders/ttn/bulk', checkAuth, async (req, res) => {
         AND city_ref <> '' AND warehouse_ref <> ''
         AND (ttn = '' OR ttn IS NULL)
       ORDER BY id ASC`);
-    let created = 0, failed = 0;
+    let created = 0, failed = 0, receipts = 0;
     const errors = [];
     for (const row of q.rows) {
       try { await generateTtnForOrder(row.id, s, sender); created++; }
-      catch (e) { failed++; errors.push({ id: row.id, error: e.message }); }
+      catch (e) { failed++; errors.push({ id: row.id, error: e.message }); continue; }
+      const rc = await autoReceiptAfterTtn(row.id);
+      if (rc && rc.ok) receipts++;
+      else if (rc && rc.error) errors.push({ id: row.id, error: 'Чек: ' + rc.error });
     }
-    res.json({ success: true, total: q.rows.length, created, failed, errors: errors.slice(0, 30) });
+    res.json({ success: true, total: q.rows.length, created, failed, receipts, errors: errors.slice(0, 30) });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
+});
+
+// Авто: після створення ТТН — одразу експрес-накладна Checkbox (лише післяплата «на счет»).
+// Не кидає помилок — ТТН вже створена, чек можна довидати кнопкою. Повертає { ok } | { error } | null.
+async function autoReceiptAfterTtn(orderId) {
+  try {
+    const s = await getCheckboxSettings();
+    if (!checkboxReady(s)) return null;
+    const r = await pool.query(`SELECT payment_type FROM orders WHERE id = $1`, [orderId]);
+    if (!r.rows.length || !isAfterpayment(r.rows[0].payment_type)) return null;
+    await createReceiptForOrder(orderId, s);
+    return { ok: true };
+  } catch (e) {
+    console.error('[checkbox auto]', orderId, e.message);
+    return { error: e.message };
+  }
+}
+
+// Масово: експрес-накладні для всіх посилок у дорозі з ТТН, де чека ще немає
+app.post('/api/orders/receipts/bulk', checkAuth, async (req, res) => {
+  try {
+    const s = await getCheckboxSettings();
+    if (!checkboxReady(s)) throw new Error('Спершу заповніть Налаштування Checkbox');
+    const q = await pool.query(`
+      SELECT id FROM orders
+      WHERE status IN ('Доставка','В пути','На почте')
+        AND lower(trim(payment_type)) = 'на счет'
+        AND regexp_replace(COALESCE(ttn, ''), '[[:space:]]', '', 'g') ~ '^[0-9]{14}$'
+        AND COALESCE(checkbox_ettn_id, '') = '' AND COALESCE(checkbox_receipt_id, '') = ''
+      ORDER BY id ASC`);
+    let created = 0, failed = 0;
+    const errors = [];
+    for (const row of q.rows) {
+      try { await createReceiptForOrder(row.id, s); created++; }
+      catch (e) { failed++; errors.push({ id: row.id, error: e.message }); }
+    }
+    res.json({ success: true, total: q.rows.length, created, failed, errors: errors.slice(0, 30) });
+  } catch (err) { res.status(400).json({ error: err.message }); }
 });
 
 // Оновлення статусів посилок ----------------------------------------
@@ -3858,28 +3900,30 @@ app.post('/api/checkbox/test', checkAuth, async (req, res) => {
 //   фіскалізує чек сам, коли клієнт оплатить, і шле його по SMS.
 // «повна оплата» (гроші вже отримані) → звичайний чек продажу одразу.
 const receiptInFlight = new Set(); // захист від подвійного кліку
-app.post('/api/orders/:id(\\d+)/receipt', checkAuth, async (req, res) => {
-  const orderId = req.params.id;
-  if (receiptInFlight.has(orderId)) return res.status(409).json({ error: 'Чек для цього замовлення вже створюється' });
+// Чек / експрес-накладна Checkbox для замовлення. Спільне для кнопки «ЧЕК», авто після ТТН і масової видачі.
+// Повертає об'єкт відповіді; помилка — throw (err.httpStatus для 404/409).
+async function createReceiptForOrder(orderId, s) {
+  orderId = String(orderId);
+  if (receiptInFlight.has(orderId)) { const e = new Error('Чек для цього замовлення вже створюється'); e.httpStatus = 409; throw e; }
   receiptInFlight.add(orderId);
   try {
-    const s = await getCheckboxSettings();
+    s = s || await getCheckboxSettings();
     if (!checkboxReady(s)) throw new Error('Спершу заповніть Налаштування Checkbox');
 
     const oq = await pool.query(
       `SELECT o.id, o.ttn, o.payment_type, o.checkbox_receipt_id, o.checkbox_receipt_url,
               o.checkbox_ettn_id, c.phone
        FROM orders o JOIN customers c ON c.id = o.customer_id WHERE o.id = $1`, [orderId]);
-    if (!oq.rows.length) return res.status(404).json({ error: 'Замовлення не знайдено' });
+    if (!oq.rows.length) { const e = new Error('Замовлення не знайдено'); e.httpStatus = 404; throw e; }
     const o = oq.rows[0];
 
     if (o.checkbox_receipt_id)
-      return res.json({ success: true, existed: true, id: o.checkbox_receipt_id, url: o.checkbox_receipt_url });
+      return ({ success: true, existed: true, id: o.checkbox_receipt_id, url: o.checkbox_receipt_url });
 
     // Експрес-накладна вже є — лише оновлюємо її статус
     if (o.checkbox_ettn_id) {
       const st = await refreshEttnOrder(orderId, o.checkbox_ettn_id, s);
-      return res.json({ success: true, existed: true, ettn: true, status: st.status,
+      return ({ success: true, existed: true, ettn: true, status: st.status,
                         id: st.receiptId, url: st.receiptId ? receiptUrl(st.receiptId) : '' });
     }
 
@@ -3909,7 +3953,7 @@ app.post('/api/orders/:id(\\d+)/receipt', checkAuth, async (req, res) => {
          WHERE id=$3`, [receipt.id, receiptUrl(receipt.id), orderId]);
       await pool.query(
         `INSERT INTO checkbox_log (order_id, receipt_id, status) VALUES ($1, $2, 'ok')`, [orderId, receipt.id]);
-      return res.json({ success: true, id: receipt.id, url: receiptUrl(receipt.id) });
+      return { success: true, id: receipt.id, url: receiptUrl(receipt.id) };
     }
 
     const ttn = String(o.ttn || '').replace(/\s/g, '');
@@ -3931,9 +3975,13 @@ app.post('/api/orders/:id(\\d+)/receipt', checkAuth, async (req, res) => {
       [ettn.id, status, orderId]);
     await pool.query(
       `INSERT INTO checkbox_log (order_id, status) VALUES ($1, 'ettn')`, [orderId]);
-    res.json({ success: true, ettn: true, status });
-  } catch (err) { res.status(400).json({ error: err.message }); }
-  finally { receiptInFlight.delete(orderId); }
+    return { success: true, ettn: true, status };
+  } finally { receiptInFlight.delete(orderId); }
+}
+
+app.post('/api/orders/:id(\\d+)/receipt', checkAuth, async (req, res) => {
+  try { res.json(await createReceiptForOrder(req.params.id)); }
+  catch (err) { res.status(err.httpStatus || 400).json({ error: err.message }); }
 });
 
 // --- API СКЛАДУ ---

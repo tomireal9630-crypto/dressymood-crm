@@ -140,6 +140,11 @@
                     style="background:linear-gradient(135deg,#10b981,#14b8a6)">
                     <i class="fa-solid fa-bolt"></i> Масово ТТН
                 </button>
+                <button onclick="bulkReceipts()" id="bulkReceiptsBtn" title="Видати чеки Checkbox для всіх посилок у дорозі (Доставка / В пути / На почте), де чека ще немає"
+                    class="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white text-xs font-black uppercase tracking-wider transition-all"
+                    style="background:linear-gradient(135deg,#3b82f6,#6366f1)">
+                    <i class="fa-solid fa-receipt"></i> Чеки всім
+                </button>
                 <button onclick="refreshData()" class="w-10 h-10 flex items-center justify-center rounded-xl bg-slate-100 text-slate-500 hover:text-violet-600 hover:bg-violet-100 transition-all">
                     <i class="fa-solid fa-rotate-right"></i>
                 </button>
@@ -2851,7 +2856,7 @@
                 const r = await fetch('/api/orders/ttn/bulk', { method: 'POST' });
                 const j = await r.json();
                 if (!r.ok) throw new Error(j.error || 'Помилка');
-                let msg = `Готово. Створено ТТН: ${j.created} з ${j.total}.`;
+                let msg = `Готово. Створено ТТН: ${j.created} з ${j.total}.` + (j.receipts ? `\nЧеків видано: ${j.receipts}.` : '');
                 if (j.failed) {
                     msg += `\nПомилок: ${j.failed}.`;
                     if (j.errors && j.errors.length) {
@@ -2862,6 +2867,27 @@
                 loadOrders();
             } catch (err) {
                 alert('Помилка масового ТТН: ' + err.message);
+            } finally {
+                if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = orig; }
+            }
+        }
+
+        // Масово: експрес-накладні Checkbox для всіх посилок у дорозі без чека
+        async function bulkReceipts() {
+            const btn = document.getElementById('bulkReceiptsBtn');
+            const orig = btn ? btn.innerHTML : '';
+            if (btn) { btn.disabled = true; btn.style.opacity = '.6'; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Чеки…'; }
+            try {
+                const r = await fetch('/api/orders/receipts/bulk', { method: 'POST' });
+                const j = await r.json().catch(() => ({ error: 'сервер відповів HTTP ' + r.status }));
+                if (!r.ok) throw new Error(j.error || 'Помилка');
+                if (!j.total) showToast('Усі посилки в дорозі вже з чеками ✓', 3000);
+                else if (!j.failed) showToast(`✓ Чеки: ${j.created} з ${j.total}`, 3500);
+                else alert(`Чеки: створено ${j.created} з ${j.total}.\nПомилок: ${j.failed}.\n\n` +
+                           (j.errors || []).map(e => `#${e.id}: ${e.error}`).join('\n'));
+                loadOrders();
+            } catch (err) {
+                alert('Помилка масових чеків: ' + err.message);
             } finally {
                 if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = orig; }
             }
