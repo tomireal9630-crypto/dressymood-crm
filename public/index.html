@@ -672,11 +672,14 @@
                             <option value="">Всі статуси</option>
                         </select>
                     </div>
-                    <div>
+                    <div class="relative" id="exportSupplierWrap">
                         <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">Постачальник</label>
-                        <select id="exportSupplierFilter" onchange="loadExport()" class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
-                            <option value="">Всі постачальники</option>
-                        </select>
+                        <button type="button" id="exportSupplierBtn" onclick="toggleExportSupplierMenu(event)"
+                            class="min-w-[170px] max-w-[260px] flex items-center justify-between gap-2 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
+                            <span id="exportSupplierBtnText" class="truncate">Всі постачальники</span>
+                            <i class="fa-solid fa-chevron-down text-[9px] text-slate-400"></i>
+                        </button>
+                        <div id="exportSupplierMenu" class="hidden absolute left-0 z-30 mt-1 min-w-[220px] max-h-72 overflow-auto bg-white border border-slate-200 rounded-xl shadow-lg p-1.5"></div>
                     </div>
                     <div>
                         <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">Артикул</label>
@@ -4045,8 +4048,10 @@
         }
 
         function resetExportFilters() {
-            ['exportStatusFilter', 'exportSupplierFilter', 'exportArticleFilter', 'exportSourceFilter', 'exportDateFilter', 'exportDateFrom', 'exportDateTo']
+            ['exportStatusFilter', 'exportArticleFilter', 'exportSourceFilter', 'exportDateFilter', 'exportDateFrom', 'exportDateTo']
                 .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+            exportSuppliers.clear();
+            renderExportSupplierMenu();
             const wrap = document.getElementById('exportPeriodWrap');
             if (wrap) wrap.classList.add('hidden');
             loadExport();
@@ -4060,17 +4065,61 @@
             }
         }
 
+        // Постачальники — мультивибір (галочки). Порожньо = всі.
+        const exportSuppliers = new Set();
+        let exportSupplierList = [];
+
+        function exportSupplierLabel() {
+            const n = exportSuppliers.size;
+            if (!n) return 'Всі постачальники';
+            if (n <= 2) return [...exportSuppliers].join(', ');
+            return `${n} постачальники`;
+        }
+
+        function renderExportSupplierMenu() {
+            const btn = document.getElementById('exportSupplierBtnText');
+            if (btn) btn.textContent = exportSupplierLabel();
+            const menu = document.getElementById('exportSupplierMenu');
+            if (!menu) return;
+            const row = (checked, attrs, text, bold) => `
+                <label class="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-slate-50 cursor-pointer text-xs ${bold ? 'font-black' : 'font-bold'} text-slate-600 whitespace-nowrap">
+                    <input type="checkbox" class="w-4 h-4 accent-violet-600" ${checked ? 'checked' : ''} ${attrs}> ${text}
+                </label>`;
+            menu.innerHTML =
+                row(!exportSuppliers.size, 'onchange="setExportSupplier(null, this.checked)"', 'Всі постачальники', true) +
+                '<div class="border-t border-slate-100 my-1"></div>' +
+                (exportSupplierList.length
+                    ? exportSupplierList.map((n, i) => row(exportSuppliers.has(n), `onchange="setExportSupplier(${i}, this.checked)"`, esc(n))).join('')
+                    : '<div class="px-2 py-1.5 text-xs text-slate-400">Немає постачальників</div>');
+        }
+
+        function setExportSupplier(i, on) {
+            if (i === null) exportSuppliers.clear();
+            else { const n = exportSupplierList[i]; if (on) exportSuppliers.add(n); else exportSuppliers.delete(n); }
+            renderExportSupplierMenu();
+            loadExport();
+        }
+
+        function toggleExportSupplierMenu(ev) {
+            if (ev) ev.stopPropagation();
+            const menu = document.getElementById('exportSupplierMenu');
+            if (menu) menu.classList.toggle('hidden');
+        }
+
+        document.addEventListener('click', ev => {
+            const wrap = document.getElementById('exportSupplierWrap');
+            const menu = document.getElementById('exportSupplierMenu');
+            if (wrap && menu && !wrap.contains(ev.target)) menu.classList.add('hidden');
+        });
+
         async function fillExportSupplierFilter() {
-            const f = document.getElementById('exportSupplierFilter');
-            if (!f) return;
             try {
                 const r = await fetch('/api/orders/suppliers');
                 const d = await r.json();
-                const list = Array.isArray(d) ? d : [];
-                const cur = f.value;
-                f.innerHTML = `<option value="">Всі постачальники</option>` +
-                    list.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
-                if ([...f.options].some(o => o.value === cur)) f.value = cur;
+                exportSupplierList = Array.isArray(d) ? d : [];
+                // прибрати з вибору тих, кого вже немає у списку
+                [...exportSuppliers].forEach(n => { if (!exportSupplierList.includes(n)) exportSuppliers.delete(n); });
+                renderExportSupplierMenu();
             } catch (e) { /* мовчки */ }
         }
 
@@ -4096,12 +4145,12 @@
             if (!table) return;
             try {
                 const status = (document.getElementById('exportStatusFilter') || {}).value || '';
-                const supplier = (document.getElementById('exportSupplierFilter') || {}).value || '';
+                const suppliers = [...exportSuppliers];
                 const article = (document.getElementById('exportArticleFilter') || {}).value || '';
                 const sourceFilter = (document.getElementById('exportSourceFilter') || {}).value || '';
                 const params = new URLSearchParams({ view: 'export' });
                 if (status) params.set('status', status);
-                if (supplier) params.set('supplier', supplier);
+                suppliers.forEach(sp => params.append('supplier', sp));
                 if (article) params.set('article', article);
                 const { from, to } = exportDateRange();
                 if (from) params.set('dateFrom', from);
@@ -4116,7 +4165,7 @@
                     const items = Array.isArray(o.items) ? o.items : [];
                     if (!items.length) return;
                     items.forEach(it => {
-                        if (supplier && (it.supplier_name || '') !== supplier) return;
+                        if (suppliers.length && !exportSuppliers.has(it.supplier_name || '')) return;
                         if (article && (it.article || '') !== article) return;
                         if (sourceFilter === 'stock' && !it.from_stock) return;
                         if (sourceFilter === 'supplier' && it.from_stock) return;
@@ -4440,7 +4489,7 @@
             ws2.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: 12 } };
 
             // --- Збереження ---
-            const sup = (document.getElementById('exportSupplierFilter') || {}).value || '';
+            const sup = [...exportSuppliers].join('_');
             const d = new Date();
             const p = x => String(x).padStart(2, '0');
             const stamp = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;

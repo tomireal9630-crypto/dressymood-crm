@@ -529,9 +529,11 @@ app.get('/api/orders', checkAuth, async (req, res) => {
                    AND (oi2.article ILIKE ${p} OR oi2.name ILIKE ${p})))`);
     }
 
-    if (supplier) {
-      params.push(supplier);
-      conditions.push(`EXISTS (SELECT 1 FROM order_items oi3 WHERE oi3.order_id = o.id AND oi3.supplier_name = $${params.length})`);
+    // Один або кілька постачальників (?supplier=A&supplier=B)
+    const suppliers = [].concat(supplier || []).map(String).filter(Boolean);
+    if (suppliers.length) {
+      params.push(suppliers);
+      conditions.push(`EXISTS (SELECT 1 FROM order_items oi3 WHERE oi3.order_id = o.id AND oi3.supplier_name = ANY($${params.length}))`);
     }
 
     if (req.query.article) {
