@@ -595,6 +595,24 @@
                     </div>
                 </div>
 
+                <!-- Чому відмовляються (з відповідей у Viber) -->
+                <div id="returnsByReasonWrap" class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 mb-6 hidden">
+                    <div class="flex justify-between items-center mb-3 gap-2 flex-wrap">
+                        <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Чому відмовляються</div>
+                        <button onclick="toggleViberTemplate()" class="px-3 py-1.5 rounded-lg text-[11px] font-black bg-violet-50 text-violet-600 hover:bg-violet-100 transition-all">
+                            <i class="fa-brands fa-viber mr-1"></i> Шаблон повідомлення
+                        </button>
+                    </div>
+                    <div id="viberTemplatePanel" class="hidden mb-4 bg-slate-50 rounded-xl p-3">
+                        <textarea id="viberTemplateText" rows="4" class="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none text-sm text-slate-700 focus:border-violet-400"></textarea>
+                        <div class="flex justify-between items-center mt-2 gap-2 flex-wrap">
+                            <div class="text-[11px] text-slate-400">{NAME} — ім'я клієнта, {TOV} — товар (назва, колір, розмір)</div>
+                            <button onclick="saveViberTemplate()" class="px-4 py-1.5 rounded-lg text-[11px] font-black bg-violet-600 text-white hover:bg-violet-700 transition-all">Зберегти</button>
+                        </div>
+                    </div>
+                    <div id="returnsByReason" class="flex flex-wrap gap-2"></div>
+                </div>
+
                 <!-- Фільтри -->
                 <div class="flex items-end gap-2 flex-wrap bg-white border border-slate-100 rounded-2xl p-3 shadow-sm mb-6">
                     <div>
@@ -607,6 +625,13 @@
                             <option value="received">Отримано</option>
                             <option value="problem">Проблема</option>
                             <option value="all">Взагалі всі</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">Причина</label>
+                        <select id="returnsReasonFilter" onchange="loadReturns()" class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
+                            <option value="">Всі</option>
+                            <option value="none">Не з'ясовано</option>
                         </select>
                     </div>
                     <div>
@@ -644,6 +669,7 @@
                                 <th class="px-4 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">ТТН → зворотна</th>
                                 <th class="px-4 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Куди</th>
                                 <th class="px-4 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Статус</th>
+                                <th class="px-4 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Причина</th>
                                 <th class="px-4 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Нотатка</th>
                                 <th class="px-4 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Дії</th>
                             </tr>
@@ -3516,6 +3542,18 @@
             received:   { label: 'Отримано',         cls: 'bg-emerald-50 text-emerald-600' },
             problem:    { label: 'Проблема',         cls: 'bg-rose-50 text-rose-600' }
         };
+        const RETURN_REASON_UI = {
+            size:          { label: 'Не підійшов розмір',   cls: 'bg-sky-50 text-sky-600' },
+            quality:       { label: 'Якість / не як на фото', cls: 'bg-rose-50 text-rose-600' },
+            color:         { label: 'Колір',                 cls: 'bg-pink-50 text-pink-600' },
+            changed_mind:  { label: 'Передумав',             cls: 'bg-amber-50 text-amber-600' },
+            long_delivery: { label: 'Довго їхало',           cls: 'bg-orange-50 text-orange-600' },
+            price:         { label: 'Дорого / знайшов дешевше', cls: 'bg-lime-50 text-lime-700' },
+            not_ordered:   { label: 'Не замовляв',           cls: 'bg-slate-200 text-slate-600' },
+            no_answer:     { label: 'Не відповів',           cls: 'bg-slate-100 text-slate-500' },
+            other:         { label: 'Інше',                  cls: 'bg-violet-50 text-violet-600' }
+        };
+        let viberRefusalTemplate = '';
         const retDate = v => v ? new Date(v).toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: '2-digit' }) : '—';
         const retDays = v => v ? Math.floor((Date.now() - new Date(v)) / 86400000) : null;
 
@@ -3525,7 +3563,7 @@
         }
 
         function resetReturnsFilters() {
-            ['returnsStatusFilter', 'returnsCityFilter', 'returnsDateFrom', 'returnsDateTo', 'returnsSearch'].forEach(id => {
+            ['returnsStatusFilter', 'returnsReasonFilter', 'returnsCityFilter','returnsDateFrom', 'returnsDateTo', 'returnsSearch'].forEach(id => {
                 const el = document.getElementById(id); if (el) el.value = '';
             });
             loadReturns();
@@ -3539,8 +3577,10 @@
             const from = (document.getElementById('returnsDateFrom') || {}).value || '';
             const to = (document.getElementById('returnsDateTo') || {}).value || '';
             const q = ((document.getElementById('returnsSearch') || {}).value || '').trim();
+            const reason = (document.getElementById('returnsReasonFilter') || {}).value || '';
             const params = new URLSearchParams();
             if (status && status !== 'all') params.set('status', status);
+            if (reason) params.set('reason', reason);
             if (city) params.set('city', city);
             if (from) params.set('dateFrom', from);
             if (to) params.set('dateTo', to);
@@ -3562,10 +3602,13 @@
                 returnsSelected.clear();
                 renderReturnsSummary(sum);
                 renderReturnsByArticle(sum);
+                renderReturnsByReason(sum);
                 renderReturnsTable();
                 fillReturnsCityFilter(sum.cities || []);
+                fillReturnsReasonFilter();
+                if (!viberRefusalTemplate) loadViberTemplate();
             } catch (e) {
-                tbody.innerHTML = `<tr><td colspan="8" class="p-8 text-center text-rose-500">Помилка: ${esc(e.message)}</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="9"class="p-8 text-center text-rose-500">Помилка: ${esc(e.message)}</td></tr>`;
             }
         }
 
@@ -3640,7 +3683,7 @@
             const tbody = document.getElementById('returnsTable');
             if (!tbody) return;
             if (!returnsRows.length) {
-                tbody.innerHTML = `<tr><td colspan="8" class="p-10 text-center text-slate-400 font-medium">Немає повернень за фільтром</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="9" class="p-10 text-center text-slate-400 font-medium">Немає повернень за фільтром</td></tr>`;
                 returnsUpdateSel();
                 return;
             }
@@ -3677,6 +3720,18 @@
                         <span class="inline-flex items-center text-[11px] font-black px-2.5 py-1 rounded-full ${st.cls}">${st.label}${onHandsDays != null ? ` · ${onHandsDays} дн` : ''}${stale ? ' ⚠' : ''}</span>
                         <div class="text-[10px] text-slate-400 mt-1">${esc(dates || r.np_status_text || '')}</div>
                     </td>
+                    <td class="px-4 py-3 whitespace-nowrap">
+                        <div class="flex items-center gap-1">
+                            <button onclick="returnsAskViber(${r.id})" title="${r.asked_at ? 'Вже писали ' + retDate(r.asked_at) + ' — написати ще раз' : 'Спитати у Viber, чому відмовився'}"
+                                class="px-2.5 py-1.5 rounded-lg text-[11px] font-black transition-all ${r.asked_at ? 'bg-violet-50 text-violet-400 hover:bg-violet-100' : 'bg-violet-600 text-white hover:bg-violet-700'}">
+                                <i class="fa-brands fa-viber"></i>${r.asked_at ? ' <i class="fa-solid fa-check text-[9px]"></i>' : ''}
+                            </button>
+                            <select onchange="returnsSetReason(${r.id}, this.value)" class="px-2 py-1.5 rounded-lg text-[11px] font-bold outline-none cursor-pointer ${r.reason && RETURN_REASON_UI[r.reason] ? RETURN_REASON_UI[r.reason].cls : 'bg-slate-50 text-slate-400'}">
+                                <option value="">— причина —</option>
+                                ${Object.entries(RETURN_REASON_UI).map(([k, v]) => `<option value="${k}" ${r.reason === k ? 'selected' : ''}>${v.label}</option>`).join('')}
+                            </select>
+                        </div>
+                    </td>
                     <td class="px-4 py-3">
                         <input type="text" value="${esc(r.note || '')}" placeholder="…" onchange="returnsPatch(${r.id}, { note: this.value })"
                             class="w-full min-w-[120px] px-2 py-1 bg-transparent border-b border-transparent hover:border-slate-200 focus:border-violet-400 outline-none text-xs text-slate-600">
@@ -3693,6 +3748,136 @@
                 </tr>`;
             }).join('');
             returnsUpdateSel();
+        }
+
+        // --- Причини відмов + Viber ---
+        function renderReturnsByReason(sum) {
+            const wrap = document.getElementById('returnsByReasonWrap');
+            const box = document.getElementById('returnsByReason');
+            if (!wrap || !box) return;
+            const rows = (sum && sum.byReason) || [];
+            const total = rows.reduce((s, x) => s + (Number(x.cnt) || 0), 0);
+            wrap.classList.toggle('hidden', !total);
+            if (!total) return;
+            const known = rows.filter(x => x.reason && x.reason !== 'no_answer');
+            const knownTotal = known.reduce((s, x) => s + x.cnt, 0);
+            const unknown = rows.filter(x => !x.reason).reduce((s, x) => s + x.cnt, 0);
+            const unknownAsked = rows.filter(x => !x.reason).reduce((s, x) => s + x.asked, 0);
+            const noAnswer = rows.filter(x => x.reason === 'no_answer').reduce((s, x) => s + x.cnt, 0);
+            // % — від тих, хто назвав причину
+            box.innerHTML = known.map(x => {
+                const ui = RETURN_REASON_UI[x.reason] || { label: x.reason, cls: 'bg-slate-100 text-slate-500' };
+                const pct = knownTotal ? Math.round(x.cnt / knownTotal * 100) : 0;
+                return `<button onclick="returnsFilterReason('${x.reason}')" class="text-left px-3 py-2 rounded-xl ${ui.cls} hover:opacity-80 transition-all">
+                    <div class="text-[10px] font-black uppercase tracking-wide">${esc(ui.label)}</div>
+                    <div class="text-lg font-black">${pct}% <span class="text-xs font-bold opacity-70">· ${x.cnt}</span></div>
+                </button>`;
+            }).join('') + `
+                <button onclick="returnsFilterReason('none')" class="text-left px-3 py-2 rounded-xl bg-white border border-dashed border-slate-300 text-slate-500 hover:bg-slate-50 transition-all">
+                    <div class="text-[10px] font-black uppercase tracking-wide">Не з'ясовано</div>
+                    <div class="text-lg font-black">${unknown} <span class="text-xs font-bold opacity-70">· писали ${unknownAsked}</span></div>
+                </button>` +
+                (noAnswer ? `<button onclick="returnsFilterReason('no_answer')" class="text-left px-3 py-2 rounded-xl bg-slate-100 text-slate-500 hover:opacity-80 transition-all">
+                    <div class="text-[10px] font-black uppercase tracking-wide">Не відповіли</div>
+                    <div class="text-lg font-black">${noAnswer}</div>
+                </button>` : '');
+        }
+
+        function fillReturnsReasonFilter() {
+            const sel = document.getElementById('returnsReasonFilter');
+            if (!sel || sel.options.length > 2) return;
+            Object.entries(RETURN_REASON_UI).forEach(([k, v]) => sel.add(new Option(v.label, k)));
+        }
+
+        function returnsFilterReason(reason) {
+            const sel = document.getElementById('returnsReasonFilter');
+            if (!sel) return;
+            fillReturnsReasonFilter();
+            sel.value = sel.value === reason ? '' : reason;
+            // Щоб бачити й отримані повернення
+            const st = document.getElementById('returnsStatusFilter');
+            if (st && sel.value && !st.value) st.value = 'all';
+            loadReturns();
+        }
+
+        async function loadViberTemplate() {
+            try {
+                const r = await fetch('/api/settings/viber');
+                const d = await r.json();
+                if (r.ok) viberRefusalTemplate = d.refusalTemplate || '';
+            } catch (e) { /* мовчки */ }
+            const ta = document.getElementById('viberTemplateText');
+            if (ta) ta.value = viberRefusalTemplate;
+        }
+
+        function toggleViberTemplate() {
+            const p = document.getElementById('viberTemplatePanel');
+            if (!p) return;
+            p.classList.toggle('hidden');
+            const ta = document.getElementById('viberTemplateText');
+            if (ta && !ta.value) ta.value = viberRefusalTemplate;
+        }
+
+        async function saveViberTemplate() {
+            const ta = document.getElementById('viberTemplateText');
+            if (!ta) return;
+            try {
+                const r = await fetch('/api/settings/viber', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ refusalTemplate: ta.value }) });
+                const d = await r.json();
+                if (!r.ok) throw new Error(d.error || 'Помилка');
+                viberRefusalTemplate = d.refusalTemplate;
+                ta.value = viberRefusalTemplate;
+                document.getElementById('viberTemplatePanel').classList.add('hidden');
+            } catch (e) { alert('Помилка: ' + e.message); }
+        }
+
+        // 380XXXXXXXXX або '' якщо номер не схожий на український
+        function viberPhone(raw) {
+            let d = String(raw || '').replace(/\D/g, '');
+            if (d.startsWith('80')) d = '3' + d;
+            else if (d.startsWith('0')) d = '38' + d;
+            return /^380\d{9}$/.test(d) ? d : '';
+        }
+
+        // ПІБ у CRM буває і «Ім'я Прізвище», і «Прізвище Ім'я» — якщо перше слово схоже на прізвище, беремо друге
+        const SURNAME_RE = /(енко|єнко|ко|ук|юк|чук|ов|ова|ев|ева|єв|єва|ін|іна|ин|ина|ський|ська|цький|цька|ский|ская|ич|ак|як|ій)$/i;
+        const COMMON_NAMES = /^(ірина|ирина|марина|алина|аліна|катерина|екатерина|галина|кристина|христина|дарина|полина|поліна|арина|карина|ангелина|ангеліна|валентина|антонина|антоніна|олександр|дмитро|андрій|сергій|юлій|віталій|виталий|василий|анатолій|геннадій|ярослав)$/i;
+        function viberFirstName(full) {
+            const parts = String(full || '').trim().split(/\s+/).filter(Boolean);
+            if (parts.length < 2) return parts[0] || '';
+            const looksSurname = (SURNAME_RE.test(parts[0]) && !COMMON_NAMES.test(parts[0]))
+                || (/[ая]$/i.test(parts[1]) && !/[ая]$/i.test(parts[0]) && !COMMON_NAMES.test(parts[0])); // «Мельник Ольга»
+            return looksSurname ? parts[1] : parts[0];
+        }
+
+        async function returnsAskViber(id) {
+            const r = returnsRows.find(x => x.id === id);
+            if (!r) return;
+            const phone = viberPhone(r.customer_phone);
+            if (!phone) return alert('Некоректний номер телефону: ' + (r.customer_phone || '—'));
+            if (!viberRefusalTemplate) await loadViberTemplate();
+            const text = (viberRefusalTemplate || '')
+                .replace(/\{NAME\}/g, viberFirstName(r.customer_name))
+                .replace(/\{TOV\}/g, r.items_human || r.items_text || '')
+                .replace(/\s+([,!?.])/g, '$1').replace(/,\s*!/g, '!');
+            // Копія в буфер — якщо Viber Desktop не підставить текст, просто Ctrl+V
+            try { await navigator.clipboard.writeText(text); } catch (e) { /* не критично */ }
+            const a = document.createElement('a');
+            a.href = `viber://chat?number=%2B${phone}&draft=${encodeURIComponent(text)}`;
+            a.click();
+            try {
+                const res = await fetch(`/api/returns/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ asked: true }) });
+                if (res.ok) { r.asked_at = new Date().toISOString(); renderReturnsTable(); }
+            } catch (e) { /* мовчки */ }
+        }
+
+        async function returnsSetReason(id, reason) {
+            try {
+                const r = await fetch(`/api/returns/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason }) });
+                const d = await r.json();
+                if (!r.ok) throw new Error(d.error || 'Помилка');
+                loadReturns();
+            } catch (e) { alert('Помилка: ' + e.message); }
         }
 
         function returnsToggle(id, on) { on ? returnsSelected.add(id) : returnsSelected.delete(id); returnsUpdateSel(); }

@@ -283,6 +283,9 @@ async function updateDatabaseSchema() {
         `);
         await pool.query(`CREATE INDEX IF NOT EXISTS idx_returns_status ON returns(status);`);
         await pool.query(`CREATE INDEX IF NOT EXISTS idx_returns_refused_at ON returns(refused_at);`);
+        // Причина відмови (з'ясовуємо у клієнта у Viber) + коли написали
+        await pool.query(`ALTER TABLE returns ADD COLUMN IF NOT EXISTS reason VARCHAR(32) DEFAULT '';`);
+        await pool.query(`ALTER TABLE returns ADD COLUMN IF NOT EXISTS asked_at TIMESTAMP WITH TIME ZONE;`);
 
         // === АВТОПРАВИЛА РЕКЛАМИ ===
         await pool.query(`
@@ -3313,11 +3316,41 @@ async function syncReturns() {
   return { created, tracked };
 }
 
+// Причини відмов — ключі; підписи на фронті
+const RETURN_REASONS = ['size', 'quality', 'color', 'changed_mind', 'long_delivery', 'price', 'not_ordered', 'no_answer', 'other'];
+
+const DEFAULT_VIBER_REFUSAL = 'Добрий день, {NAME}! Бачимо, що ви не забрали замовлення ({TOV}). ' +
+  'Підкажіть, будь ласка, що пішло не так? Не підійшов розмір, щось не сподобалось чи передумали? ' +
+  'Для нас це дуже важливо, щоб ставати кращими 🙏';
+
+async function getViberSettings() {
+  const r = await pool.query(`SELECT value FROM app_settings WHERE key = 'viber'`);
+  return { refusalTemplate: DEFAULT_VIBER_REFUSAL, ...((r.rows[0] && r.rows[0].value) || {}) };
+}
+
+app.get('/api/settings/viber', checkAuth, async (req, res) => {
+  try { res.json(await getViberSettings()); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/settings/viber', checkAuth, async (req, res) => {
+  try {
+    const cur = await getViberSettings();
+    const t = String((req.body || {}).refusalTemplate ?? cur.refusalTemplate).trim();
+    const next = { ...cur, refusalTemplate: t || DEFAULT_VIBER_REFUSAL };
+    await pool.query(`INSERT INTO app_settings (key, value) VALUES ('viber', $1)
+                      ON CONFLICT (key) DO UPDATE SET value = $1`, [JSON.stringify(next)]);
+    res.json({ success: true, ...next });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 const RETURNS_SELECT = `
   SELECT rt.*, o.status AS order_status, o.city AS order_city, o.price AS order_price,
          c.full_name AS customer_name, c.phone AS customer_phone,
          COALESCE((SELECT string_agg(trim(oi.article || ' ' || oi.size || ' ' || oi.color), ', ')
                    FROM order_items oi WHERE oi.order_id = o.id), '') AS items_text,
+         COALESCE((SELECT string_agg(trim(COALESCE(NULLIF(oi.name, ''), oi.article) || ' ' || lower(oi.color) || CASE WHEN oi.size <> '' THEN ', розмір ' || oi.size ELSE '' END), '; ')
+                   FROM order_items oi WHERE oi.order_id = o.id), '') AS items_human,
          COALESCE((SELECT string_agg(oi.article, ',') FROM order_items oi WHERE oi.order_id = o.id), '') AS articles
   FROM returns rt
   JOIN orders o ON o.id = rt.order_id
@@ -3325,10 +3358,12 @@ const RETURNS_SELECT = `
 
 // Список повернень з фільтрами
 app.get('/api/returns', checkAuth, async (req, res) => {
-  const { status, city, dateFrom, dateTo, q } = req.query;
+  const { status, city, dateFrom, dateTo, q, reason } = req.query;
   try {
     const p = [], c = [];
     if (status) { p.push(status); c.push(`rt.status = $${p.length}`); }
+    if (reason === 'none') c.push(`COALESCE(rt.reason, '') = ''`);
+    else if (reason) { p.push(reason); c.push(`rt.reason = $${p.length}`); }
     if (city) { p.push(city); c.push(`rt.return_city = $${p.length}`); }
     if (dateFrom) { p.push(dateFrom); c.push(`rt.refused_at >= $${p.length}::date`); }
     if (dateTo) { p.push(dateTo); c.push(`rt.refused_at < ($${p.length}::date + interval '1 day')`); }
@@ -3397,7 +3432,12 @@ app.get('/api/returns/summary', checkAuth, async (req, res) => {
 
     // Список міст для фільтра — по всій таблиці, не лише по періоду
     const cities = await pool.query(`SELECT DISTINCT return_city FROM returns WHERE return_city <> '' ORDER BY 1`);
-    res.json({ byCity: r.rows, byArticle, cities: cities.rows.map(x => x.return_city) });
+    // Чому відмовляються: розбивка по причинах ('' = ще не з'ясували)
+    const byReason = await pool.query(`
+      SELECT COALESCE(reason, '') AS reason, COUNT(*)::int AS cnt,
+             COUNT(*) FILTER (WHERE asked_at IS NOT NULL)::int AS asked
+      FROM returns ${where} GROUP BY 1 ORDER BY cnt DESC`, p);
+    res.json({ byCity: r.rows, byArticle, byReason: byReason.rows, cities: cities.rows.map(x => x.return_city) });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -3422,6 +3462,11 @@ app.patch('/api/returns/:id(\\d+)', checkAuth, async (req, res) => {
       if (b.status !== 'received') set('received_at', null);
     }
     if (b.note !== undefined) set('note', String(b.note));
+    if (b.reason !== undefined) {
+      if (b.reason !== '' && !RETURN_REASONS.includes(b.reason)) return res.status(400).json({ error: 'Невірна причина' });
+      set('reason', b.reason);
+    }
+    if (b.asked) sets.push(`asked_at = now()`);
     if (b.return_ttn !== undefined) set('return_ttn', String(b.return_ttn).trim());
     if (b.return_city !== undefined) set('return_city', String(b.return_city).trim());
     if (!sets.length) return res.status(400).json({ error: 'Нічого оновлювати' });
