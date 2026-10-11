@@ -3319,9 +3319,9 @@ async function syncReturns() {
 // Причини відмов — ключі; підписи на фронті
 const RETURN_REASONS = ['size', 'quality', 'color', 'changed_mind', 'long_delivery', 'price', 'not_ordered', 'no_answer', 'other'];
 
-const DEFAULT_VIBER_REFUSAL = 'Добрий день, {NAME}! Бачимо, що ви не забрали замовлення ({TOV}). ' +
-  'Підкажіть, будь ласка, що пішло не так? Не підійшов розмір, щось не сподобалось чи передумали? ' +
-  'Для нас це дуже важливо, щоб ставати кращими 🙏';
+const DEFAULT_VIBER_REFUSAL = 'Добрий день, {NAME}! Бачимо, що замовлення ({TOV}) повернулося до нас. ' +
+  'Підкажіть, будь ласка, що саме вам не підійшло — розмір, колір чи, можливо, щось інше? ' +
+  'Ваша відповідь допоможе нам ставати кращими 🙏';
 
 async function getViberSettings() {
   const r = await pool.query(`SELECT value FROM app_settings WHERE key = 'viber'`);
