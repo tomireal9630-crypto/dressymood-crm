@@ -3859,7 +3859,8 @@
 
         function returnsViberHref(r) {
             const phone = viberPhone(r.customer_phone);
-            return phone ? `viber://chat?number=%2B${phone}&draft=${encodeURIComponent(returnsViberText(r))}` : '#';
+            // Без draft: Viber Desktop обрізає його до 100 символів — повний текст іде через буфер (Ctrl+V)
+            return phone ? `viber://chat?number=%2B${phone}` : '#';
         }
 
         // Клік по справжньому посиланню viber:// — браузер відкриває Viber сам (програмний перехід після await блокується).
@@ -3868,8 +3869,12 @@
             const r = returnsRows.find(x => x.id === id);
             if (!r) return false;
             if (!viberPhone(r.customer_phone)) { alert('Некоректний номер телефону: ' + (r.customer_phone || '—')); return false; }
-            // Копія в буфер — якщо Viber не підставить текст, просто Ctrl+V
-            try { navigator.clipboard.writeText(returnsViberText(r)).catch(() => {}); } catch (e) { /* не критично */ }
+            // Текст — у буфер: у Viber лишається Ctrl+V і Enter
+            try {
+                navigator.clipboard.writeText(returnsViberText(r))
+                    .then(() => showToast('Текст скопійовано — у Viber натисни Ctrl+V і Enter', 4000))
+                    .catch(() => alert('Не вдалося скопіювати текст:\n\n' + returnsViberText(r)));
+            } catch (e) { /* не критично */ }
             fetch(`/api/returns/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ asked: true }) })
                 .then(res => { if (res.ok) { r.asked_at = new Date().toISOString(); setTimeout(renderReturnsTable, 300); } })
                 .catch(() => {});
