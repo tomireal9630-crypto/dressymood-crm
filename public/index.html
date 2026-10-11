@@ -3603,12 +3603,12 @@
                 renderReturnsSummary(sum);
                 renderReturnsByArticle(sum);
                 renderReturnsByReason(sum);
+                if (!viberRefusalTemplate) await loadViberTemplate(); // потрібен для посилань Viber у таблиці
                 renderReturnsTable();
                 fillReturnsCityFilter(sum.cities || []);
                 fillReturnsReasonFilter();
-                if (!viberRefusalTemplate) loadViberTemplate();
             } catch (e) {
-                tbody.innerHTML = `<tr><td colspan="9"class="p-8 text-center text-rose-500">Помилка: ${esc(e.message)}</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="9" class="p-8 text-center text-rose-500">Помилка: ${esc(e.message)}</td></tr>`;
             }
         }
 
@@ -3722,10 +3722,10 @@
                     </td>
                     <td class="px-4 py-3 whitespace-nowrap">
                         <div class="flex items-center gap-1">
-                            <button onclick="returnsAskViber(${r.id})" title="${r.asked_at ? 'Вже писали ' + retDate(r.asked_at) + ' — написати ще раз' : 'Спитати у Viber, чому відмовився'}"
+                            <a href="${esc(returnsViberHref(r))}" onclick="return returnsAskViber(${r.id})" title="${r.asked_at ? 'Вже писали ' + retDate(r.asked_at) + ' — написати ще раз' : 'Спитати у Viber, чому відмовився'}"
                                 class="px-2.5 py-1.5 rounded-lg text-[11px] font-black transition-all ${r.asked_at ? 'bg-violet-50 text-violet-400 hover:bg-violet-100' : 'bg-violet-600 text-white hover:bg-violet-700'}">
                                 <i class="fa-brands fa-viber"></i>${r.asked_at ? ' <i class="fa-solid fa-check text-[9px]"></i>' : ''}
-                            </button>
+                            </a>
                             <select onchange="returnsSetReason(${r.id}, this.value)" class="px-2 py-1.5 rounded-lg text-[11px] font-bold outline-none cursor-pointer ${r.reason && RETURN_REASON_UI[r.reason] ? RETURN_REASON_UI[r.reason].cls : 'bg-slate-50 text-slate-400'}">
                                 <option value="">— причина —</option>
                                 ${Object.entries(RETURN_REASON_UI).map(([k, v]) => `<option value="${k}" ${r.reason === k ? 'selected' : ''}>${v.label}</option>`).join('')}
@@ -3850,25 +3850,30 @@
             return looksSurname ? parts[1] : parts[0];
         }
 
-        async function returnsAskViber(id) {
-            const r = returnsRows.find(x => x.id === id);
-            if (!r) return;
-            const phone = viberPhone(r.customer_phone);
-            if (!phone) return alert('Некоректний номер телефону: ' + (r.customer_phone || '—'));
-            if (!viberRefusalTemplate) await loadViberTemplate();
-            const text = (viberRefusalTemplate || '')
+        function returnsViberText(r) {
+            return (viberRefusalTemplate || '')
                 .replace(/\{NAME\}/g, viberFirstName(r.customer_name))
                 .replace(/\{TOV\}/g, r.items_human || r.items_text || '')
                 .replace(/\s+([,!?.])/g, '$1').replace(/,\s*!/g, '!');
-            // Копія в буфер — якщо Viber Desktop не підставить текст, просто Ctrl+V
-            try { await navigator.clipboard.writeText(text); } catch (e) { /* не критично */ }
-            const a = document.createElement('a');
-            a.href = `viber://chat?number=%2B${phone}&draft=${encodeURIComponent(text)}`;
-            a.click();
-            try {
-                const res = await fetch(`/api/returns/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ asked: true }) });
-                if (res.ok) { r.asked_at = new Date().toISOString(); renderReturnsTable(); }
-            } catch (e) { /* мовчки */ }
+        }
+
+        function returnsViberHref(r) {
+            const phone = viberPhone(r.customer_phone);
+            return phone ? `viber://chat?number=%2B${phone}&draft=${encodeURIComponent(returnsViberText(r))}` : '#';
+        }
+
+        // Клік по справжньому посиланню viber:// — браузер відкриває Viber сам (програмний перехід після await блокується).
+        // Тут лише копія тексту в буфер і відмітка «писали». true = дати посиланню спрацювати.
+        function returnsAskViber(id) {
+            const r = returnsRows.find(x => x.id === id);
+            if (!r) return false;
+            if (!viberPhone(r.customer_phone)) { alert('Некоректний номер телефону: ' + (r.customer_phone || '—')); return false; }
+            // Копія в буфер — якщо Viber не підставить текст, просто Ctrl+V
+            try { navigator.clipboard.writeText(returnsViberText(r)).catch(() => {}); } catch (e) { /* не критично */ }
+            fetch(`/api/returns/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ asked: true }) })
+                .then(res => { if (res.ok) { r.asked_at = new Date().toISOString(); setTimeout(renderReturnsTable, 300); } })
+                .catch(() => {});
+            return true;
         }
 
         async function returnsSetReason(id, reason) {
