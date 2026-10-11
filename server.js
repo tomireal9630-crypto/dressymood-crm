@@ -3321,7 +3321,7 @@ const RETURN_REASONS = ['size', 'quality', 'color', 'changed_mind', 'long_delive
 
 const DEFAULT_VIBER_REFUSAL = 'Добрий день, {NAME}! Бачимо, що замовлення ({TOV}) повернулося до нас. ' +
   'Підкажіть, будь ласка, що саме вам не підійшло — розмір, колір чи, можливо, щось інше? ' +
-  'Ваша відповідь допоможе нам ставати кращими 🙏';
+  'Якщо справа в розмірі — із задоволенням підберемо інший і відправимо ще раз 😊';
 
 async function getViberSettings() {
   const r = await pool.query(`SELECT value FROM app_settings WHERE key = 'viber'`);
