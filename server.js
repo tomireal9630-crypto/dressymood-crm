@@ -949,7 +949,54 @@ app.get('/api/stats/roi', checkAuth, async (req, res) => {
     const appByArtQ = `SELECT oi.article, COUNT(DISTINCT o.id)::int AS approved FROM orders o JOIN order_items oi ON oi.order_id=o.id ${appWhere} AND oi.article IS NOT NULL AND oi.article <> '' GROUP BY oi.article`;
     const appTotalQ = `SELECT COUNT(DISTINCT o.id)::int AS approved FROM orders o ${appWhere}`;
 
-    const [t, a, refT, refA, spT, spA, spU, appT, appA] = await Promise.all([
+    // Прогноз: незакриті ліди періоду (ще в дорозі / не підтверджені) по артикулах.
+    // Їх добудовуємо історичним апрувом/викупом артикула з уже «дозрілих» лідів.
+    const OPEN_APPROVED = `('В работе','Доставка','В пути','На почте','Ошибка в ТТН','Переадресация')`;
+    const OPEN_NEW = `('Новый','Не дозвон','Не дозвон2')`;
+    const openParams = [];
+    const openConds = [`o.status <> '✗✗✗'`, `oi.article IS NOT NULL`, `oi.article <> ''`];
+    if (dateFrom) { openParams.push(dateFrom); openConds.push(`${dateExpr} >= $${openParams.length}::date`); }
+    if (dateTo)   { openParams.push(dateTo);   openConds.push(`${dateExpr} < ($${openParams.length}::date + interval '1 day')`); }
+    const openByArtQ = `
+      WITH ol AS (
+        SELECT o.id, o.status, oi.article,
+               SUM(oi.price * oi.quantity) AS rev,
+               SUM(COALESCE((SELECT MAX(cost) FROM products p WHERE p.article = oi.article), 0) * oi.quantity) AS cst
+        FROM orders o JOIN order_items oi ON oi.order_id = o.id
+        WHERE ${openConds.join(' AND ')}
+        GROUP BY o.id, o.status, oi.article)
+      SELECT article,
+             COUNT(*)::int AS leads,
+             COUNT(*) FILTER (WHERE status IN ${OPEN_APPROVED})::int AS open_app,
+             COALESCE(SUM(rev) FILTER (WHERE status IN ${OPEN_APPROVED}), 0)::numeric AS open_app_rev,
+             COALESCE(SUM(cst) FILTER (WHERE status IN ${OPEN_APPROVED}), 0)::numeric AS open_app_cost,
+             COUNT(*) FILTER (WHERE status IN ${OPEN_NEW})::int AS open_new,
+             COALESCE(SUM(rev) FILTER (WHERE status IN ${OPEN_NEW}), 0)::numeric AS open_new_rev,
+             COALESCE(SUM(cst) FILTER (WHERE status IN ${OPEN_NEW}), 0)::numeric AS open_new_cost
+      FROM ol GROUP BY article`;
+    // Історія для ставок: ліди старші за settlement_days (вже закрились), вікно lookback_days.
+    // Беремо НЕ поточний період — там продажі закриваються швидше за відмови і викуп завищений.
+    // Новинка без такої історії → закриті посилки артикула за весь час (cur_*), далі — орієнтир з налаштувань.
+    const settleDays = Number(settings.settlement_days) || 14;
+    const histDays = Number(settings.lookback_days) || 30;
+    const histQ = `
+      WITH hl AS (
+        SELECT DISTINCT o.id, o.status, oi.article,
+               (${dateExpr} <  CURRENT_DATE - $1::int AND ${dateExpr} >= CURRENT_DATE - $1::int - $2::int) AS mature
+        FROM orders o JOIN order_items oi ON oi.order_id = o.id
+        WHERE o.status <> '✗✗✗' AND oi.article IS NOT NULL AND oi.article <> '')
+      SELECT article,
+             COUNT(*) FILTER (WHERE mature)::int AS total_leads,
+             COUNT(*) FILTER (WHERE mature AND status IN ${APPROVED_SET})::int AS approved,
+             COUNT(*) FILTER (WHERE mature AND status = 'Продажа')::int AS sold,
+             COUNT(*) FILTER (WHERE mature AND status IN ('Отказ','Возврат'))::int AS refused_after,
+             COUNT(*) FILTER (WHERE status NOT IN ${OPEN_NEW})::int AS cur_total_leads,
+             COUNT(*) FILTER (WHERE status IN ${APPROVED_SET})::int AS cur_approved,
+             COUNT(*) FILTER (WHERE status = 'Продажа')::int AS cur_sold,
+             COUNT(*) FILTER (WHERE status IN ('Отказ','Возврат'))::int AS cur_refused_after
+      FROM hl GROUP BY article`;
+
+    const [t, a, refT, refA, spT, spA, spU, appT, appA, opA, hiA] = await Promise.all([
       pool.query(totalsQ, soldParams),
       pool.query(byArtQ, soldParams),
       pool.query(refusedTotalQ, refusedParams),
@@ -958,7 +1005,9 @@ app.get('/api/stats/roi', checkAuth, async (req, res) => {
       pool.query(spendByArtQ, spendParams),
       pool.query(spendUnmappedQ, spendParams),
       pool.query(appTotalQ, appParams),
-      pool.query(appByArtQ, appParams)
+      pool.query(appByArtQ, appParams),
+      pool.query(openByArtQ, openParams),
+      pool.query(histQ, [settleDays, histDays])
     ]);
     const { smsCost, courierCost, overheadPerSale } = await overheadContext(dateFrom, dateTo);
 
@@ -989,10 +1038,47 @@ app.get('/api/stats/roi', checkAuth, async (req, res) => {
     const spendMap = {};
     spA.rows.forEach(r => { spendMap[r.article] = { spend: Number(r.spend) || 0, leads: Number(r.leads) || 0 }; });
 
+    const openMap = {};
+    opA.rows.forEach(r => { openMap[r.article] = r; });
+    const histMap = {};
+    hiA.rows.forEach(r => { histMap[r.article] = r; });
+
+    // Очікуваний чистий від незакритих лідів артикула (кур'єр/повернення/накладні — як у факті;
+    // SMS для вже підтверджених у факті враховано, тут — лише для тих, що ще підтвердять)
+    const forecastFor = (article) => {
+      const o = openMap[article] || {};
+      const h = histMap[article] || {};
+      const mature = { total_leads: h.total_leads || 0, approved: h.approved || 0, sold: h.sold || 0, refused_after: h.refused_after || 0 };
+      const current = { total_leads: h.cur_total_leads || 0, approved: h.cur_approved || 0, sold: h.cur_sold || 0, refused_after: h.cur_refused_after || 0 };
+      let rates = modelRates(settings, mature), source = 'history';
+      if (rates.provisional) {
+        rates = modelRates(settings, current);
+        source = rates.provisional ? 'default' : 'current';
+      }
+      const { approvalRate, buyoutRate, refusalRate } = rates;
+      const provisional = source === 'default';
+      const openApp = Number(o.open_app) || 0, openNew = Number(o.open_new) || 0;
+      const willApprove = openNew * approvalRate;
+      const expSold = (openApp + willApprove) * buyoutRate;
+      const expRefused = (openApp + willApprove) * refusalRate;
+      const expRev = (Number(o.open_app_rev) || 0) * buyoutRate + (Number(o.open_new_rev) || 0) * approvalRate * buyoutRate;
+      const expCost = (Number(o.open_app_cost) || 0) * buyoutRate + (Number(o.open_new_cost) || 0) * approvalRate * buyoutRate;
+      const expNet = expRev - expCost - expRefused * returnCost - (expSold + expRefused) * courierCost
+                   - expSold * overheadPerSale - willApprove * smsCost;
+      const leads = Number(o.leads) || 0;
+      return {
+        leads, open: openApp + openNew, open_approved: openApp, open_new: openNew,
+        exp_sold: expSold, exp_net: expNet,
+        buyout_pct: Math.round(buyoutRate * 100), approval_pct: Math.round(approvalRate * 100),
+        provisional, source
+      };
+    };
+
     const articleSet = new Set();
     a.rows.forEach(r => articleSet.add(r.article));
     Object.keys(spendMap).forEach(art => articleSet.add(art));
     Object.keys(refusedMap).forEach(art => articleSet.add(art));
+    Object.keys(openMap).forEach(art => articleSet.add(art));
 
     const salesByArt = {};
     a.rows.forEach(r => { salesByArt[r.article] = r; });
@@ -1010,8 +1096,20 @@ app.get('/api/stats/roi', checkAuth, async (req, res) => {
       const ovhC = (Number(r.orders) || 0) * overheadPerSale;
       const courC = ((Number(r.orders_shipped) || 0) + refused) * courierCost;
       const net = gross - sp - ret - smsC - courC - ovhC;
+      const fc = forecastFor(article);
+      const netForecast = net + fc.exp_net;
       return {
         article,
+        leads_total: fc.leads,
+        open: fc.open,
+        closed_pct: fc.leads ? Math.round((fc.leads - fc.open) / fc.leads * 100) : 100,
+        exp_sold: fc.exp_sold,
+        net_forecast: netForecast,
+        roi_forecast: sp ? netForecast / sp * 100 : 0,
+        forecast_buyout_pct: fc.buyout_pct,
+        forecast_approval_pct: fc.approval_pct,
+        forecast_provisional: fc.provisional,
+        forecast_source: fc.source,
         orders: Number(r.orders) || 0,
         units: Number(r.units) || 0,
         revenue: rev,
@@ -1033,8 +1131,20 @@ app.get('/api/stats/roi', checkAuth, async (req, res) => {
       };
     });
 
+    // Прогноз по всьому періоду = факт + очікуване по незакритих (сума по артикулах)
+    const fcSum = byArticle.reduce((s, r) => {
+      s.leads += r.leads_total; s.open += r.open; s.expNet += r.net_forecast - r.net_profit; s.expSold += r.exp_sold;
+      return s;
+    }, { leads: 0, open: 0, expNet: 0, expSold: 0 });
+    const netForecastTotal = netProfit + fcSum.expNet;
+
     res.json({
       totals: {
+        net_forecast: netForecastTotal,
+        roi_forecast: adSpend ? netForecastTotal / adSpend * 100 : 0,
+        exp_sold: fcSum.expSold,
+        open: fcSum.open,
+        closed_pct: fcSum.leads ? Math.round((fcSum.leads - fcSum.open) / fcSum.leads * 100) : 100,
         orders: tr.orders || 0,
         units: tr.units || 0,
         revenue,

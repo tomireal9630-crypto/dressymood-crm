@@ -1125,7 +1125,7 @@
                         </div>
                     </div>
 
-                    <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 mb-6">
+                    <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 mb-6">
                         <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-4">
                             <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Виручка</div>
                             <div id="roiKpiRevenue" class="text-xl font-black text-slate-800">0 ₴</div>
@@ -1152,9 +1152,14 @@
                             <div class="text-[10px] text-slate-400 mt-1">Маржа <span id="roiKpiMargin">0%</span></div>
                         </div>
                         <div class="bg-white rounded-2xl shadow-sm border-2 border-violet-200 p-4">
-                            <div class="text-[10px] font-black text-violet-500 uppercase tracking-widest mb-1">ROI</div>
+                            <div class="text-[10px] font-black text-violet-500 uppercase tracking-widest mb-1">ROI факт</div>
                             <div id="roiKpiRoi" class="text-xl font-black text-violet-600">0%</div>
                             <div class="text-[10px] text-slate-400 mt-1">CPO <span id="roiKpiCpo">0</span> ₴</div>
+                        </div>
+                        <div class="bg-white rounded-2xl shadow-sm border-2 border-pink-200 p-4" title="Факт по закритих + очікуване по тих, що ще в дорозі/не підтверджені (за історичним апрувом і викупом артикула)">
+                            <div class="text-[10px] font-black text-pink-500 uppercase tracking-widest mb-1">ROI прогноз</div>
+                            <div id="roiKpiRoiForecast" class="text-xl font-black text-pink-600">0%</div>
+                            <div class="text-[10px] text-slate-400 mt-1">закрито <span id="roiKpiClosedPct">0</span>% · прибуток ≈ <span id="roiKpiNetForecast">0</span> ₴</div>
                         </div>
                     </div>
 
@@ -1167,6 +1172,8 @@
                         <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Сортування</label>
                         <select id="statsRoiSort" onchange="renderRoiTable()" class="flex-1 px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
                             <option value="profitDesc">Прибуток ↓</option>
+                            <option value="roiForecastDesc">ROI прогноз ↓</option>
+                            <option value="roiForecastAsc">ROI прогноз ↑</option>
                             <option value="profitAsc">Прибуток ↑</option>
                             <option value="revenueDesc">Виручка ↓</option>
                             <option value="marginDesc">Маржа ↓</option>
@@ -1176,7 +1183,7 @@
                     </div>
 
                     <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-x-auto">
-                        <table class="w-full text-left min-w-[1200px] text-xs">
+                        <table class="w-full text-left min-w-[1400px] text-xs">
                             <thead>
                                 <tr class="bg-slate-50/50 border-b border-slate-100">
                                     <th class="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Модель</th>
@@ -1188,7 +1195,9 @@
                                     <th class="px-4 py-3 text-[10px] font-black text-violet-500 uppercase tracking-widest text-center">ROAS</th>
                                     <th class="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">CPL</th>
                                     <th class="px-4 py-3 text-[10px] font-black text-emerald-500 uppercase tracking-widest text-right">Чист. пр.</th>
-                                    <th class="px-4 py-3 text-[10px] font-black text-violet-500 uppercase tracking-widest text-center">ROI</th>
+                                    <th class="px-4 py-3 text-[10px] font-black text-violet-500 uppercase tracking-widest text-center">ROI факт</th>
+                                    <th class="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Закрито</th>
+                                    <th class="px-4 py-3 text-[10px] font-black text-pink-500 uppercase tracking-widest text-center">ROI прогноз</th>
                                 </tr>
                             </thead>
                             <tbody id="roiStatsTable" class="divide-y divide-slate-50"></tbody>
@@ -5017,6 +5026,14 @@
             const roiEl = document.getElementById('roiKpiRoi');
             if (roiEl) roiEl.style.color = (t.roi || 0) >= 0 ? '#7c3aed' : '#e11d48';
             document.getElementById('roiKpiCpo').textContent = Math.round(t.cpo || 0);
+            const fcEl = document.getElementById('roiKpiRoiForecast');
+            if (fcEl) {
+                const hasSpend = (Number(t.ad_spend) || 0) > 0;
+                fcEl.textContent = hasSpend ? Math.round(t.roi_forecast || 0) + '%' : '—';
+                fcEl.style.color = !hasSpend ? '#94a3b8' : (t.roi_forecast || 0) >= 0 ? '#db2777' : '#e11d48';
+                document.getElementById('roiKpiClosedPct').textContent = t.closed_pct ?? 0;
+                document.getElementById('roiKpiNetForecast').textContent = int(Math.round(t.net_forecast || 0));
+            }
 
             const unmappedWrap = document.getElementById('roiUnmapped');
             if (unmappedWrap) {
@@ -5045,15 +5062,22 @@
                 revenueDesc: (a,b) => (b.revenue||0) - (a.revenue||0),
                 marginDesc:  (a,b) => (b.roi||0) - (a.roi||0),
                 ordersDesc:  (a,b) => (b.orders||0) - (a.orders||0),
+                roiForecastDesc: (a,b) => (b.roi_forecast||0) - (a.roi_forecast||0),
+                roiForecastAsc:  (a,b) => (a.roi_forecast||0) - (b.roi_forecast||0),
                 articleAsc:  (a,b) => (a.article || '').localeCompare(b.article || '')
             };
             rows.sort(sorters[sort] || sorters.profitDesc);
             if (!rows.length) {
-                tbody.innerHTML = `<tr><td colspan="10" class="p-8 text-center text-slate-400 font-medium">Немає даних за період</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="12" class="p-8 text-center text-slate-400 font-medium">Немає даних за період</td></tr>`;
                 return;
             }
             const uah = n => Number(n || 0).toLocaleString('uk-UA') + ' ₴';
             tbody.innerHTML = rows.map(r => {
+                const fcV = Number(r.roi_forecast) || 0;
+                const fcCls = fcV >= 50 ? 'bg-emerald-50 text-emerald-600' : fcV >= 0 ? 'bg-amber-50 text-amber-600' : 'bg-rose-50 text-rose-600';
+                const closedPct = r.closed_pct ?? 100;
+                const closedCls = closedPct >= 70 ? 'text-emerald-600' : closedPct >= 35 ? 'text-amber-600' : 'text-rose-500';
+                const fcTitle = `Викуп ${r.forecast_buyout_pct}% · апрув ${r.forecast_approval_pct}%${r.forecast_source === 'history' ? ' (закрита історія артикула)' : r.forecast_source === 'current' ? ' (по вже закритих посилках новинки — може бути трохи завищено)' : ' (орієнтир з налаштувань — історії ще мало)'} · очік. продажів ≈ ${Math.round(r.exp_sold || 0)} · прибуток ≈ ${uah(Math.round(r.net_forecast || 0))}`;
                 const roasV = Number(r.roas) || 0;
                 const roiV = Number(r.roi) || 0;
                 const roasCls = roasV >= 2.5 ? 'bg-emerald-50 text-emerald-600'
@@ -5078,6 +5102,8 @@
                     <td class="px-4 py-3 text-right text-xs font-bold text-slate-600">${noSpend ? '—' : Math.round(r.cpl) + ' ₴'}</td>
                     <td class="px-4 py-3 text-right font-black ${npCls}">${uah(r.net_profit)}</td>
                     <td class="px-4 py-3 text-center">${noSpend ? '<span class="text-slate-300">—</span>' : `<span class="inline-flex items-center text-[11px] font-black px-2.5 py-1 rounded-full ${roiCls}">${Math.round(roiV)}%</span>`}</td>
+                    <td class="px-4 py-3 text-center font-black ${closedCls}">${closedPct}%<div class="text-[10px] text-slate-400 font-medium">${r.open || 0} в роботі</div></td>
+                    <td class="px-4 py-3 text-center" title="${esc(fcTitle)}">${noSpend ? '<span class="text-slate-300">—</span>' : `<span class="inline-flex items-center text-[11px] font-black px-2.5 py-1 rounded-full ${fcCls}">${Math.round(fcV)}%${r.forecast_provisional ? ' *' : ''}</span>`}<div class="text-[10px] text-slate-400 font-medium">викуп ${r.forecast_buyout_pct}%</div></td>
                 </tr>`;
             }).join('');
         }
