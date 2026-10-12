@@ -967,6 +967,9 @@ app.get('/api/stats/roi', checkAuth, async (req, res) => {
         GROUP BY o.id, o.status, oi.article)
       SELECT article,
              COUNT(*)::int AS leads,
+             COUNT(*) FILTER (WHERE status IN ('Продажа','Отказ','Возврат'))::int AS resolved,
+             COUNT(*) FILTER (WHERE status IN ('Доставка','В пути','На почте','Ошибка в ТТН','Переадресация'))::int AS in_transit,
+             COUNT(*) FILTER (WHERE status = 'В работе' OR status IN ${OPEN_NEW})::int AS not_shipped,
              COUNT(*) FILTER (WHERE status IN ${OPEN_APPROVED})::int AS open_app,
              COALESCE(SUM(rev) FILTER (WHERE status IN ${OPEN_APPROVED}), 0)::numeric AS open_app_rev,
              COALESCE(SUM(cst) FILTER (WHERE status IN ${OPEN_APPROVED}), 0)::numeric AS open_app_cost,
@@ -1068,6 +1071,7 @@ app.get('/api/stats/roi', checkAuth, async (req, res) => {
       const leads = Number(o.leads) || 0;
       return {
         leads, open: openApp + openNew, open_approved: openApp, open_new: openNew,
+        resolved: Number(o.resolved) || 0, in_transit: Number(o.in_transit) || 0, not_shipped: Number(o.not_shipped) || 0,
         exp_sold: expSold, exp_net: expNet,
         buyout_pct: Math.round(buyoutRate * 100), approval_pct: Math.round(approvalRate * 100),
         provisional, source
@@ -1102,7 +1106,11 @@ app.get('/api/stats/roi', checkAuth, async (req, res) => {
         article,
         leads_total: fc.leads,
         open: fc.open,
-        closed_pct: fc.leads ? Math.round((fc.leads - fc.open) / fc.leads * 100) : 100,
+        // % закритих серед ВІДПРАВЛЕНИХ посилок: (Продажа+Отказ/Возврат) / (вони + ті, що в дорозі)
+        resolved: fc.resolved,
+        in_transit: fc.in_transit,
+        not_shipped: fc.not_shipped,
+        closed_pct: (fc.resolved + fc.in_transit) ? Math.round(fc.resolved / (fc.resolved + fc.in_transit) * 100) : 100,
         exp_sold: fc.exp_sold,
         net_forecast: netForecast,
         roi_forecast: sp ? netForecast / sp * 100 : 0,
@@ -1133,9 +1141,9 @@ app.get('/api/stats/roi', checkAuth, async (req, res) => {
 
     // Прогноз по всьому періоду = факт + очікуване по незакритих (сума по артикулах)
     const fcSum = byArticle.reduce((s, r) => {
-      s.leads += r.leads_total; s.open += r.open; s.expNet += r.net_forecast - r.net_profit; s.expSold += r.exp_sold;
+      s.resolved += r.resolved; s.inTransit += r.in_transit; s.notShipped += r.not_shipped; s.open += r.open; s.expNet += r.net_forecast - r.net_profit; s.expSold += r.exp_sold;
       return s;
-    }, { leads: 0, open: 0, expNet: 0, expSold: 0 });
+    }, { resolved: 0, inTransit: 0, notShipped: 0, open: 0, expNet: 0, expSold: 0 });
     const netForecastTotal = netProfit + fcSum.expNet;
 
     res.json({
@@ -1144,7 +1152,9 @@ app.get('/api/stats/roi', checkAuth, async (req, res) => {
         roi_forecast: adSpend ? netForecastTotal / adSpend * 100 : 0,
         exp_sold: fcSum.expSold,
         open: fcSum.open,
-        closed_pct: fcSum.leads ? Math.round((fcSum.leads - fcSum.open) / fcSum.leads * 100) : 100,
+        in_transit: fcSum.inTransit,
+        not_shipped: fcSum.notShipped,
+        closed_pct: (fcSum.resolved + fcSum.inTransit) ? Math.round(fcSum.resolved / (fcSum.resolved + fcSum.inTransit) * 100) : 100,
         orders: tr.orders || 0,
         units: tr.units || 0,
         revenue,

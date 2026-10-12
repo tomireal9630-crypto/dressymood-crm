@@ -1159,7 +1159,7 @@
                         <div class="bg-white rounded-2xl shadow-sm border-2 border-pink-200 p-4" title="Факт по закритих + очікуване по тих, що ще в дорозі/не підтверджені (за історичним апрувом і викупом артикула)">
                             <div class="text-[10px] font-black text-pink-500 uppercase tracking-widest mb-1">ROI прогноз</div>
                             <div id="roiKpiRoiForecast" class="text-xl font-black text-pink-600">0%</div>
-                            <div class="text-[10px] text-slate-400 mt-1">закрито <span id="roiKpiClosedPct">0</span>% · прибуток ≈ <span id="roiKpiNetForecast">0</span> ₴</div>
+                            <div class="text-[10px] text-slate-400 mt-1">посилок закрито <span id="roiKpiClosedPct">0</span>% · прибуток ≈ <span id="roiKpiNetForecast">0</span> ₴</div>
                         </div>
                     </div>
 
@@ -1196,7 +1196,7 @@
                                     <th class="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">CPL</th>
                                     <th class="px-4 py-3 text-[10px] font-black text-emerald-500 uppercase tracking-widest text-right">Чист. пр.</th>
                                     <th class="px-4 py-3 text-[10px] font-black text-violet-500 uppercase tracking-widest text-center">ROI факт</th>
-                                    <th class="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Закрито</th>
+                                    <th class="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center" title="Серед відправлених посилок: (Продажа + Отказ/Возврат) ÷ (вони + Доставка/В пути/На почте)">Посилок закрито</th>
                                     <th class="px-4 py-3 text-[10px] font-black text-pink-500 uppercase tracking-widest text-center">ROI прогноз</th>
                                 </tr>
                             </thead>
@@ -5102,7 +5102,7 @@
                     <td class="px-4 py-3 text-right text-xs font-bold text-slate-600">${noSpend ? '—' : Math.round(r.cpl) + ' ₴'}</td>
                     <td class="px-4 py-3 text-right font-black ${npCls}">${uah(r.net_profit)}</td>
                     <td class="px-4 py-3 text-center">${noSpend ? '<span class="text-slate-300">—</span>' : `<span class="inline-flex items-center text-[11px] font-black px-2.5 py-1 rounded-full ${roiCls}">${Math.round(roiV)}%</span>`}</td>
-                    <td class="px-4 py-3 text-center font-black ${closedCls}">${closedPct}%<div class="text-[10px] text-slate-400 font-medium">${r.open || 0} в роботі</div></td>
+                    <td class="px-4 py-3 text-center font-black ${closedCls}">${closedPct}%<div class="text-[10px] text-slate-400 font-medium">${r.in_transit || 0} в дорозі${r.not_shipped ? ` · ${r.not_shipped} не відпр.` : ''}</div></td>
                     <td class="px-4 py-3 text-center" title="${esc(fcTitle)}">${noSpend ? '<span class="text-slate-300">—</span>' : `<span class="inline-flex items-center text-[11px] font-black px-2.5 py-1 rounded-full ${fcCls}">${Math.round(fcV)}%${r.forecast_provisional ? ' *' : ''}</span>`}<div class="text-[10px] text-slate-400 font-medium">викуп ${r.forecast_buyout_pct}%</div></td>
                 </tr>`;
             }).join('');
