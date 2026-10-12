@@ -968,8 +968,8 @@ app.get('/api/stats/roi', checkAuth, async (req, res) => {
       SELECT article,
              COUNT(*)::int AS leads,
              COUNT(*) FILTER (WHERE status IN ('Продажа','Отказ','Возврат'))::int AS resolved,
-             COUNT(*) FILTER (WHERE status IN ('Доставка','В пути','На почте','Ошибка в ТТН','Переадресация'))::int AS in_transit,
-             COUNT(*) FILTER (WHERE status = 'В работе' OR status IN ${OPEN_NEW})::int AS not_shipped,
+             COUNT(*) FILTER (WHERE status IN ${OPEN_APPROVED})::int AS in_transit,
+             COUNT(*) FILTER (WHERE status IN ${OPEN_NEW})::int AS not_shipped,
              COUNT(*) FILTER (WHERE status IN ${OPEN_APPROVED})::int AS open_app,
              COALESCE(SUM(rev) FILTER (WHERE status IN ${OPEN_APPROVED}), 0)::numeric AS open_app_rev,
              COALESCE(SUM(cst) FILTER (WHERE status IN ${OPEN_APPROVED}), 0)::numeric AS open_app_cost,
@@ -1110,7 +1110,7 @@ app.get('/api/stats/roi', checkAuth, async (req, res) => {
         article,
         leads_total: fc.leads,
         open: fc.open,
-        // % закритих серед ВІДПРАВЛЕНИХ посилок: (Продажа+Отказ/Возврат) / (вони + ті, що в дорозі)
+        // % закритих серед ВІДПРАВЛЕНИХ посилок: (Продажа+Отказ/Возврат) / (вони + в дорозі; «В работе» — підтверджені, теж у дорозі)
         resolved: fc.resolved,
         in_transit: fc.in_transit,
         not_shipped: fc.not_shipped,
