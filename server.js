@@ -1053,12 +1053,16 @@ app.get('/api/stats/roi', checkAuth, async (req, res) => {
       const h = histMap[article] || {};
       const mature = { total_leads: h.total_leads || 0, approved: h.approved || 0, sold: h.sold || 0, refused_after: h.refused_after || 0 };
       const current = { total_leads: h.cur_total_leads || 0, approved: h.cur_approved || 0, sold: h.cur_sold || 0, refused_after: h.cur_refused_after || 0 };
-      let rates = modelRates(settings, mature), source = 'history';
-      if (rates.provisional) {
-        rates = modelRates(settings, current);
-        source = rates.provisional ? 'default' : 'current';
+      // Власний викуп артикула — лише коли ≥ FORECAST_RESOLVED_MIN завершених посилок; до того — орієнтир з налаштувань
+      const resolvedOf = x => x.sold + x.refused_after;
+      let source = resolvedOf(mature) >= FORECAST_RESOLVED_MIN ? 'history'
+                 : resolvedOf(current) >= FORECAST_RESOLVED_MIN ? 'current' : 'default';
+      const base = source === 'history' ? mature : current;
+      let { approvalRate, buyoutRate, refusalRate } = modelRates(settings, base);
+      if (source === 'default') {
+        buyoutRate = Math.max(0, Math.min(100, Number(settings.new_buyout_pct))) / 100 || 0.6;
+        refusalRate = 1 - buyoutRate;
       }
-      const { approvalRate, buyoutRate, refusalRate } = rates;
       const provisional = source === 'default';
       const openApp = Number(o.open_app) || 0, openNew = Number(o.open_new) || 0;
       const willApprove = openNew * approvalRate;
@@ -1264,6 +1268,8 @@ async function getEconomicsSettings() {
 // з налаштувань (new_buyout_pct), відмова = решта. Посилки «в дорозі» не рахуються як невикуплені.
 // Апрув — фактичний, якщо є заявки; інакше з налаштувань.
 const RESOLVED_MIN = 5;
+// Прогнозний ROI бере власний викуп артикула лише з цієї кількості завершених посилок
+const FORECAST_RESOLVED_MIN = 20;
 function modelRates(settings, { total_leads, approved, sold, refused_after }) {
   const newApproval = Math.max(0, Math.min(100, Number(settings.new_approval_pct))) / 100 || 0.7;
   const newBuyout = Math.max(0, Math.min(100, Number(settings.new_buyout_pct))) / 100 || 0.6;

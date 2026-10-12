@@ -5077,7 +5077,7 @@
                 const fcCls = fcV >= 50 ? 'bg-emerald-50 text-emerald-600' : fcV >= 0 ? 'bg-amber-50 text-amber-600' : 'bg-rose-50 text-rose-600';
                 const closedPct = r.closed_pct ?? 100;
                 const closedCls = closedPct >= 70 ? 'text-emerald-600' : closedPct >= 35 ? 'text-amber-600' : 'text-rose-500';
-                const fcTitle = `Викуп ${r.forecast_buyout_pct}% · апрув ${r.forecast_approval_pct}%${r.forecast_source === 'history' ? ' (закрита історія артикула)' : r.forecast_source === 'current' ? ' (по вже закритих посилках новинки — може бути трохи завищено)' : ' (орієнтир з налаштувань — історії ще мало)'} · очік. продажів ≈ ${Math.round(r.exp_sold || 0)} · прибуток ≈ ${uah(Math.round(r.net_forecast || 0))}`;
+                const fcTitle = `Викуп ${r.forecast_buyout_pct}% · апрув ${r.forecast_approval_pct}%${r.forecast_source === 'history' ? ' (закрита історія артикула)' : r.forecast_source === 'current' ? ' (фактичний викуп артикула, ≥20 завершених)' : ' (орієнтир з налаштувань — менше 20 завершених посилок)'} · очік. продажів ≈ ${Math.round(r.exp_sold || 0)} · прибуток ≈ ${uah(Math.round(r.net_forecast || 0))}`;
                 const roasV = Number(r.roas) || 0;
                 const roiV = Number(r.roi) || 0;
                 const roasCls = roasV >= 2.5 ? 'bg-emerald-50 text-emerald-600'
