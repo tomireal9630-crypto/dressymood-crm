@@ -68,6 +68,7 @@
                     </button>
                     <button onclick="switchView('returns')" id="btn-returns" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
                         <i class="fa-solid fa-rotate-left w-5 text-center"></i> Повернення
+                        <span id="returnsAlertBadge" class="ml-auto bg-rose-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full hidden" title="Проблемні повернення — капає платне зберігання">0</span>
                         <span id="returnsBadge" class="ml-auto bg-violet-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full hidden" title="У кур'єра на руках">0</span>
                     </button>
                 </nav>
@@ -570,6 +571,9 @@
                         </button>
                     </div>
                 </div>
+
+                <!-- Проблемні повернення (лише коли є) -->
+                <div id="returnsAlerts" class="hidden mb-6"></div>
 
                 <!-- Зведення по містах -->
                 <div id="returnsSummary" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 mb-6"></div>
@@ -3600,7 +3604,8 @@
             try {
                 const [lr, sr] = await Promise.all([
                     fetch('/api/returns?' + params.toString()),
-                    fetch('/api/returns/summary?' + sp.toString())
+                    fetch('/api/returns/summary?' + sp.toString()),
+                    loadReturnsAlerts()
                 ]);
                 let rows = await lr.json();
                 const sum = await sr.json();
@@ -3619,6 +3624,52 @@
             } catch (e) {
                 tbody.innerHTML = `<tr><td colspan="9" class="p-8 text-center text-rose-500">Помилка: ${esc(e.message)}</td></tr>`;
             }
+        }
+
+        // Проблемні повернення: що з ними робити
+        const RETURN_ALERT_UI = {
+            need_return: { title: 'Оформи повернення в кабінеті НП', hint: 'Клієнт відмовився на касі — НП сама назад не відправить' },
+            no_return:   { title: 'Немає зворотної ЕН', hint: 'Відмова давно, а повернення не створене — перевір у НП' },
+            our_storage: { title: 'Забери з відділення', hint: 'Повернення лежить у нашому відділенні — платне зберігання' }
+        };
+        let returnsAlertIds = {};
+        async function loadReturnsAlerts() {
+            const wrap = document.getElementById('returnsAlerts');
+            let list = [];
+            try { list = await (await fetch('/api/returns/alerts')).json(); } catch (e) {}
+            if (!Array.isArray(list)) list = [];
+            returnsAlertIds = {};
+            list.forEach(x => { returnsAlertIds[x.id] = x.kind; });
+            setReturnsAlertBadge(list.length);
+            if (!wrap) return;
+            if (!list.length) { wrap.classList.add('hidden'); wrap.innerHTML = ''; return; }
+            const total = list.reduce((s, x) => s + Number(x.kind === 'our_storage' ? x.return_storage_price : x.storage_price || 0), 0);
+            wrap.classList.remove('hidden');
+            wrap.innerHTML = `
+                <div class="bg-rose-50 border-2 border-rose-200 rounded-2xl p-5">
+                    <div class="flex justify-between items-baseline mb-3">
+                        <div class="text-lg font-black text-rose-600 uppercase tracking-tight"><i class="fa-solid fa-triangle-exclamation mr-1"></i> Проблемні повернення: ${list.length}</div>
+                        ${total > 0 ? `<div class="text-sm font-black text-rose-600">Платне зберігання: ${Math.round(total)} ₴</div>` : ''}
+                    </div>
+                    <div class="space-y-2">${list.map(x => {
+                        const ui = RETURN_ALERT_UI[x.kind];
+                        const money = Number(x.kind === 'our_storage' ? x.return_storage_price : x.storage_price) || 0;
+                        const from = x.kind === 'our_storage' ? x.return_paid_storage_from : x.paid_storage_from;
+                        const ttn = x.kind === 'our_storage' ? (x.return_ttn || x.ttn) : x.ttn;
+                        const place = x.kind === 'our_storage' ? x.return_city : x.order_city;
+                        return `<div class="bg-white rounded-xl px-4 py-3 flex flex-wrap items-center gap-x-4 gap-y-1">
+                            <div class="font-black text-rose-600 text-sm min-w-[220px]" title="${esc(ui.hint)}">${esc(ui.title)}</div>
+                            <div class="font-mono text-xs text-slate-700 cursor-pointer hover:text-violet-600" title="Скопіювати ТТН" onclick="navigator.clipboard.writeText('${esc(ttn)}')">${esc(ttn)} <i class="fa-regular fa-copy text-slate-300"></i></div>
+                            <div class="text-sm font-bold text-slate-700">#${x.order_id} · ${esc(x.customer_name || '—')}</div>
+                            <div class="text-xs text-slate-500">${esc(place || '')} · відмова ${retDate(x.refused_at)} (${retDays(x.refused_at)} дн)</div>
+                            <div class="ml-auto text-xs font-black ${money > 0 ? 'text-rose-600' : 'text-amber-600'}">${money > 0 ? `зберігання ${Math.round(money)} ₴` : (from ? `платне з ${retDate(from)}` : '')}</div>
+                        </div>`;
+                    }).join('')}</div>
+                </div>`;
+        }
+        function setReturnsAlertBadge(n) {
+            const b = document.getElementById('returnsAlertBadge');
+            if (b) { b.textContent = n; b.classList.toggle('hidden', !n); }
         }
 
         function fillReturnsCityFilter(cities) {
@@ -3727,6 +3778,7 @@
                     </td>
                     <td class="px-4 py-3">
                         <span class="inline-flex items-center text-[11px] font-black px-2.5 py-1 rounded-full ${st.cls}">${st.label}${onHandsDays != null ? ` · ${onHandsDays} дн` : ''}${stale ? ' ⚠' : ''}</span>
+                        ${returnsAlertIds[r.id] ? `<div class="mt-1"><span class="inline-flex text-[10px] font-black px-2 py-0.5 rounded-full bg-rose-500 text-white" title="${esc(RETURN_ALERT_UI[returnsAlertIds[r.id]].hint)}">⚠ ${esc(RETURN_ALERT_UI[returnsAlertIds[r.id]].title)}</span></div>` : ''}
                         <div class="text-[10px] text-slate-400 mt-1">${esc(dates || r.np_status_text || '')}</div>
                     </td>
                     <td class="px-4 py-3 whitespace-nowrap">
@@ -3971,6 +4023,8 @@
                 const n = ((d && d.byCity) || []).reduce((s, c) => s + (Number(c.on_hands) || 0), 0);
                 const b = document.getElementById('returnsBadge');
                 if (b) { b.textContent = n; b.classList.toggle('hidden', n === 0); }
+                const a = await (await fetch('/api/returns/alerts')).json();
+                setReturnsAlertBadge(Array.isArray(a) ? a.length : 0);
             } catch (e) { /* мовчки */ }
         }
 

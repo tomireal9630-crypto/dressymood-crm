@@ -286,6 +286,12 @@ async function updateDatabaseSchema() {
         // Причина відмови (з'ясовуємо у клієнта у Viber) + коли написали
         await pool.query(`ALTER TABLE returns ADD COLUMN IF NOT EXISTS reason VARCHAR(32) DEFAULT '';`);
         await pool.query(`ALTER TABLE returns ADD COLUMN IF NOT EXISTS asked_at TIMESTAMP WITH TIME ZONE;`);
+        // Контроль платного зберігання: НП сама не оформлює повернення, якщо клієнт відмовився на касі (код 103)
+        await pool.query(`ALTER TABLE returns ADD COLUMN IF NOT EXISTS need_return BOOLEAN DEFAULT false;`);
+        await pool.query(`ALTER TABLE returns ADD COLUMN IF NOT EXISTS storage_price NUMERIC DEFAULT 0;`);           // зберігання у відділенні клієнта
+        await pool.query(`ALTER TABLE returns ADD COLUMN IF NOT EXISTS paid_storage_from DATE;`);
+        await pool.query(`ALTER TABLE returns ADD COLUMN IF NOT EXISTS return_storage_price NUMERIC DEFAULT 0;`);    // зберігання у нашому відділенні
+        await pool.query(`ALTER TABLE returns ADD COLUMN IF NOT EXISTS return_paid_storage_from DATE;`);
 
         // === АВТОПРАВИЛА РЕКЛАМИ ===
         await pool.query(`
@@ -3405,6 +3411,10 @@ async function syncReturns() {
         // Поки зворотна ЕН невідома — по оригіналу лише фіксуємо факт; статуси 9-11 по оригіналу
         // означають "повернення одержано відправником" (коли НП не створює окрему ЕН)
         const code = String(st.StatusCode || '');
+        // 103 = відмовився на касі: поки відправник не оформить повернення, посилка лежить і капає зберігання
+        set('need_return', code === '103' && st.PossibilityCreateReturn === true && !retNum);
+        set('storage_price', Number(st.StoragePrice) || 0);
+        set('paid_storage_from', npDateToIso(st.DatePayedKeeping));
         if (['9', '10', '11', '106'].includes(code) && RETURN_RANK[row.status] < RETURN_RANK.picked_up) {
           set('status', 'picked_up');
           if (!row.picked_up_at) set('picked_up_at', npDateToIso(st.RecipientDateTime) || new Date());
@@ -3417,6 +3427,9 @@ async function syncReturns() {
         if (st.WarehouseRecipient) set('return_branch', String(st.WarehouseRecipient));
         const cost = Number(st.DocumentCost) || 0;
         if (cost > 0) set('np_return_cost', cost);
+        set('need_return', false);
+        set('return_storage_price', Number(st.StoragePrice) || 0);
+        set('return_paid_storage_from', npDateToIso(st.DatePayedKeeping));
         const code = String(st.StatusCode || '');
         set('np_status_code', code);
         set('np_status_text', String(st.Status || ''));
@@ -3441,6 +3454,40 @@ async function syncReturns() {
   }
   return { created, tracked };
 }
+
+// Що пішло не так із поверненнями (банер у «Поверненнях», бейдж у меню, тривога в Telegram):
+//   need_return — клієнт відмовився на касі, НП чекає, поки ми оформимо повернення; капає зберігання
+//   no_return   — відмова є, а зворотної ЕН > RETURN_NO_EN_DAYS днів (НП не створила з іншої причини)
+//   our_storage — повернення лежить у нашому відділенні, платне зберігання вже йде або почнеться завтра
+const RETURN_NO_EN_DAYS = 3;
+async function getReturnAlerts() {
+  const r = await pool.query(`
+    SELECT rt.id, rt.order_id, rt.ttn, rt.return_ttn, rt.status, rt.return_city, rt.return_branch,
+           rt.refused_at, rt.arrived_at, rt.need_return, rt.np_status_text,
+           rt.storage_price, rt.paid_storage_from, rt.return_storage_price, rt.return_paid_storage_from,
+           c.full_name AS customer_name, o.city AS order_city,
+           CASE
+             WHEN rt.need_return THEN 'need_return'
+             WHEN rt.status = 'in_transit' AND COALESCE(rt.return_ttn, '') = ''
+                  AND rt.refused_at < now() - make_interval(days => $1) THEN 'no_return'
+             ELSE 'our_storage'
+           END AS kind
+    FROM returns rt
+    JOIN orders o ON o.id = rt.order_id
+    LEFT JOIN customers c ON c.id = o.customer_id
+    WHERE rt.need_return
+       OR (rt.status = 'in_transit' AND COALESCE(rt.return_ttn, '') = ''
+           AND rt.refused_at < now() - make_interval(days => $1))
+       OR (rt.status = 'at_branch'
+           AND (rt.return_storage_price > 0 OR rt.return_paid_storage_from <= (now() AT TIME ZONE 'Europe/Kyiv')::date + 1))
+    ORDER BY rt.refused_at`, [RETURN_NO_EN_DAYS]);
+  return r.rows;
+}
+
+app.get('/api/returns/alerts', checkAuth, async (req, res) => {
+  try { res.json(await getReturnAlerts()); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
 
 // Причини відмов — ключі; підписи на фронті
 const RETURN_REASONS = ['size', 'quality', 'color', 'changed_mind', 'long_delivery', 'price', 'not_ordered', 'no_answer', 'other'];
@@ -4769,7 +4816,7 @@ app.get('/', checkAuth, (req, res) => {
 });
 
 // Telegram-бот звітів (реклама ФБ + замовлення). Вмикається TG_REPORT_BOT_TOKEN / TG_REPORT_CHAT_ID.
-require('./telegram')({ pool, getEconomicsSettings, fxSpendSql, articleCplMap, syncAllFbAccounts, fbLiveStatuses });
+require('./telegram')({ pool, getEconomicsSettings, fxSpendSql, articleCplMap, syncAllFbAccounts, fbLiveStatuses, getReturnAlerts });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`tomireal CRM running on ${PORT}`));

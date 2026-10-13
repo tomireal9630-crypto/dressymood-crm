@@ -15,7 +15,7 @@ const APPROVED = `('В работе','Доставка','В пути','На по
 const LEAD_TS = `COALESCE(o.original_created_at, o.created_at)`;
 
 module.exports = function initTelegramReports(deps) {
-  const { pool, getEconomicsSettings, fxSpendSql, articleCplMap, syncAllFbAccounts, fbLiveStatuses } = deps;
+  const { pool, getEconomicsSettings, fxSpendSql, articleCplMap, syncAllFbAccounts, fbLiveStatuses, getReturnAlerts } = deps;
   const token = (process.env.TG_REPORT_BOT_TOKEN || '').trim();
   const chatId = (process.env.TG_REPORT_CHAT_ID || '').trim();
   if (!token) { console.log('[TG] TG_REPORT_BOT_TOKEN не задано — бот звітів вимкнено'); return; }
@@ -286,6 +286,22 @@ module.exports = function initTelegramReports(deps) {
         out.push(`⚠️ <b>Не завантажуються дані ФБ</b>: ${esc(x.name)}\n<i>${esc(String(x.last_sync_error).slice(0, 300))}</i>`);
         sent.add(key);
       }
+    }
+
+    // 4) Проблемні повернення — нагадуємо раз на день, поки не вирішено (капає платне зберігання)
+    const RET_TEXT = {
+      need_return: 'клієнт відмовився на касі — <b>оформи повернення в кабінеті НП</b>',
+      no_return: 'зворотної ЕН досі немає — перевір у НП',
+      our_storage: 'лежить у нашому відділенні — забери'
+    };
+    for (const x of (getReturnAlerts ? await getReturnAlerts() : [])) {
+      const key = `ret:${x.id}:${x.kind}`;
+      if (sent.has(key)) continue;
+      const money = x.kind === 'our_storage' ? Number(x.return_storage_price) : Number(x.storage_price);
+      out.push(`📦 <b>Повернення</b> #${x.order_id} · ${esc(x.customer_name || '—')}\n` +
+               `ТТН <code>${esc(x.return_ttn || x.ttn)}</code> · ${esc(x.kind === 'our_storage' ? x.return_city : x.order_city)}\n` +
+               RET_TEXT[x.kind] + (money > 0 ? `\nПлатне зберігання вже: ${uah(money)}` : ''));
+      sent.add(key);
     }
 
     state.alerts.sent = [...sent];
