@@ -82,6 +82,8 @@ async function updateDatabaseSchema() {
             ADD COLUMN IF NOT EXISTS checkbox_ettn_status VARCHAR(32) DEFAULT '',
             ADD COLUMN IF NOT EXISTS original_created_at TIMESTAMP WITH TIME ZONE;
         `);
+        // Переадресація: НП створює нову ЕН, посилка далі їде по ній — трекаємо її замість оригінальної
+        await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS np_redirect_ttn VARCHAR(32) DEFAULT '';`);
 
         // Checkbox віддає статуси ЕТТН малими літерами — код порівнює великими
         await pool.query(`UPDATE orders SET checkbox_ettn_status = upper(checkbox_ettn_status)
@@ -734,6 +736,8 @@ app.patch('/api/orders/:id', checkAuth, async (req, res) => {
       }
     }
     if (req.body.ttn !== undefined) await checkboxDropEttnIfTtnChanged(req.params.id, req.body.ttn);
+    // Нова ТТН — стара переадресація вже не про цю посилку
+    if (keys.includes('ttn')) extraSet += `, np_redirect_ttn = CASE WHEN orders.ttn = $${keys.indexOf('ttn') + 1} THEN np_redirect_ttn ELSE '' END`;
     const setClause = keys.map((key, i) => `${key} = $${i + 1}`).join(', ');
     const values = keys.map(k => req.body[k]);
     values.push(req.params.id);
@@ -3161,7 +3165,7 @@ async function generateTtnForOrder(orderId, s, sender) {
   if (!ttn) throw new Error('НП не повернула номер ТТН');
 
   await pool.query(
-    `UPDATE orders SET ttn=$1, np_doc_ref=$2, status='Доставка',
+    `UPDATE orders SET ttn=$1, np_doc_ref=$2, np_redirect_ttn='', status='Доставка',
       np_status_code='1', np_status_text='Накладну створено', np_updated_at=now()
      WHERE id=$3`,
     [ttn, doc.Ref || '', orderId]
@@ -3258,43 +3262,64 @@ app.post('/api/orders/receipts/bulk', checkAuth, async (req, res) => {
 });
 
 // Оновлення статусів посилок ----------------------------------------
+// Номер ЕН переадресації, створеної на основі цієї ЕН (остання, якщо їх кілька)
+function npRedirectNumber(st) {
+  const list = (st.CreatedOnTheBasis || []).filter(x => x.OwnerDocumentType === 'Redirecting');
+  if (list.length) return String(list[list.length - 1].Number || '');
+  return st.LastCreatedOnTheBasisDocumentType === 'Redirecting' ? String(st.LastCreatedOnTheBasisNumber || '') : '';
+}
+
 async function refreshNpStatuses() {
   const s = await getNpSettings();
   if (!s.apiKey) return { updated: 0, skipped: 'no api key' };
   const FINAL = ['Продажа', 'Отказ', '✗✗✗'];
   const q = await pool.query(
-    `SELECT id, ttn FROM orders
+    `SELECT id, ttn, np_redirect_ttn FROM orders
      WHERE ttn <> '' AND ttn IS NOT NULL AND status <> ALL($1)`, [FINAL]);
   if (!q.rows.length) return { updated: 0 };
-  const docs = q.rows.map(r => ({ DocumentNumber: r.ttn, Phone: '' }));
+  // Трекаємо ЕН переадресації, якщо вона є; інакше — оригінальну ТТН
+  let pending = q.rows.map(r => ({ row: r, track: r.np_redirect_ttn || r.ttn }));
   let updated = 0;
-  for (let i = 0; i < docs.length; i += 100) {
-    const chunk = docs.slice(i, i + 100);
-    let data;
-    try { data = await npCall('TrackingDocument', 'getStatusDocuments', { Documents: chunk }); }
-    catch (e) { continue; }
-    for (const st of data) {
-      const row = q.rows.find(r => r.ttn === st.Number);
-      if (!row) continue;
-      const newStatus = npStatusToOrder(st.StatusCode);
-      const fields = {
-        np_status_code: String(st.StatusCode || ''),
-        np_status_text: st.Status || '',
-        np_delivery_date: st.ScheduledDeliveryDate || st.DateScheduledDelivery || '',
-        np_delivery_cost: Number(st.DocumentCost) || 0,
-        np_arrival_date: st.RecipientDateTime || st.ActualDeliveryDate || ''
-      };
-      const sets = Object.keys(fields).map((k, idx) => `${k}=$${idx + 1}`);
-      const vals = Object.values(fields);
-      if (newStatus) { sets.push(`status=$${vals.length + 1}`); vals.push(newStatus); }
-      sets.push(`np_updated_at=now()`);
-      vals.push(row.id);
-      await pool.query(`UPDATE orders SET ${sets.join(', ')} WHERE id=$${vals.length}`, vals);
-      if (newStatus && RETURN_TRIGGER_STATUSES.includes(newStatus)) {
-        try { await ensureReturnForOrder(row.id); } catch (e) {}
+  // Кілька проходів: якщо знайшли нову переадресацію — одразу дотягуємо її статус (ланцюжок до 3)
+  for (let pass = 0; pass < 3 && pending.length; pass++) {
+    const next = [];
+    for (let i = 0; i < pending.length; i += 100) {
+      const chunk = pending.slice(i, i + 100);
+      let data;
+      try { data = await npCall('TrackingDocument', 'getStatusDocuments', { Documents: chunk.map(p => ({ DocumentNumber: p.track, Phone: '' })) }); }
+      catch (e) { continue; }
+      for (const st of data) {
+        const item = chunk.find(p => p.track === st.Number);
+        if (!item) continue;
+        const row = item.row;
+        const redir = npRedirectNumber(st);
+        if (redir && redir !== item.track) {
+          await pool.query(`UPDATE orders SET np_redirect_ttn=$1, np_updated_at=now() WHERE id=$2`, [redir, row.id]);
+          next.push({ row, track: redir });
+          continue;
+        }
+        const newStatus = npStatusToOrder(st.StatusCode);
+        const viaRedirect = item.track !== row.ttn;
+        const fields = {
+          np_status_code: String(st.StatusCode || ''),
+          np_status_text: (st.Status || '') + (viaRedirect ? ` (переадресація ${item.track})` : ''),
+          np_delivery_date: st.ScheduledDeliveryDate || st.DateScheduledDelivery || '',
+          np_delivery_cost: Number(st.DocumentCost) || 0,
+          np_arrival_date: st.RecipientDateTime || st.ActualDeliveryDate || ''
+        };
+        const sets = Object.keys(fields).map((k, idx) => `${k}=$${idx + 1}`);
+        const vals = Object.values(fields);
+        if (newStatus) { sets.push(`status=$${vals.length + 1}`); vals.push(newStatus); }
+        sets.push(`np_updated_at=now()`);
+        vals.push(row.id);
+        await pool.query(`UPDATE orders SET ${sets.join(', ')} WHERE id=$${vals.length}`, vals);
+        if (newStatus && RETURN_TRIGGER_STATUSES.includes(newStatus)) {
+          try { await ensureReturnForOrder(row.id); } catch (e) {}
+        }
+        updated++;
       }
-      updated++;
     }
+    pending = next;
   }
   return { updated };
 }
@@ -3315,13 +3340,14 @@ const RETURN_RANK = { in_transit: 1, at_branch: 2, picked_up: 3, received: 4, pr
 
 // Гарантує рядок повернення для замовлення (ідемпотентно)
 async function ensureReturnForOrder(orderId) {
-  const o = await pool.query(`SELECT id, ttn, status FROM orders WHERE id = $1`, [orderId]);
+  const o = await pool.query(`SELECT id, ttn, np_redirect_ttn, status FROM orders WHERE id = $1`, [orderId]);
   if (!o.rows.length) return null;
   const row = o.rows[0];
   if (!row.ttn) return null; // без ТТН нічого не їхало
+  // Після переадресації повернення НП оформлює на основі ЕН переадресації
   const r = await pool.query(
     `INSERT INTO returns (order_id, ttn) VALUES ($1, $2)
-     ON CONFLICT (order_id) DO NOTHING RETURNING id`, [row.id, row.ttn]);
+     ON CONFLICT (order_id) DO NOTHING RETURNING id`, [row.id, row.np_redirect_ttn || row.ttn]);
   return r.rows.length ? r.rows[0].id : null;
 }
 
@@ -3344,7 +3370,7 @@ async function syncReturnForOrderStatus(orderId, status) {
 async function backfillReturns() {
   const r = await pool.query(`
     INSERT INTO returns (order_id, ttn, refused_at)
-    SELECT o.id, o.ttn, COALESCE(o.np_updated_at, o.created_at)
+    SELECT o.id, COALESCE(NULLIF(o.np_redirect_ttn, ''), o.ttn), COALESCE(o.np_updated_at, o.created_at)
     FROM orders o
     WHERE o.status = ANY($1) AND o.ttn <> '' AND o.ttn IS NOT NULL
       AND NOT EXISTS (SELECT 1 FROM returns rt WHERE rt.order_id = o.id)
@@ -3403,7 +3429,8 @@ async function syncReturns() {
 
       // Оригінальна ТТН: НП дає номер зворотної ЕН у LastCreatedOnTheBasisNumber
       if (!trackingReturnDoc) {
-        const retNum = String(st.LastCreatedOnTheBasisNumber || '').trim();
+        // Переадресація — це не повернення: її номер у return_ttn не пишемо
+        const retNum = st.LastCreatedOnTheBasisDocumentType === 'Redirecting' ? '' : String(st.LastCreatedOnTheBasisNumber || '').trim();
         if (retNum && retNum !== row.ttn) set('return_ttn', retNum);
         // Місто повернення = місто відправника оригіналу (посилка їде назад туди)
         if (st.CitySender) set('return_city', String(st.CitySender));
@@ -3818,19 +3845,19 @@ async function autoSendSms() {
     `SELECT id FROM orders WHERE status='На почте' AND sms2_sent_at IS NULL AND ttn <> ''`);
   for (const r of q2.rows) { try { await sendOrderSms(r.id, 2, false); } catch (e) {} }
 
-  // SMS3: на почте 5+ днів від np_arrival_date (fallback: sms2_sent_at + 5d)
+  // SMS3: на 3-й календарний день на відділенні (від np_arrival_date, fallback: дата SMS2),
+  // лише вдень за Києвом — щоб не будити клієнта вночі
   const q3 = await pool.query(`
     SELECT id FROM orders
     WHERE status='На почте' AND sms3_sent_at IS NULL AND sms2_sent_at IS NOT NULL
+      AND extract(hour FROM now() AT TIME ZONE 'Europe/Kyiv') BETWEEN 9 AND 19
       AND (
-        (np_arrival_date <> '' AND
-          CASE WHEN np_arrival_date ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}'
-               THEN to_timestamp(substring(np_arrival_date from 1 for 19),'YYYY-MM-DD HH24:MI:SS') < now() - interval '5 days'
-               WHEN np_arrival_date ~ '^[0-9]{2}\\.[0-9]{2}\\.[0-9]{4}'
-               THEN to_timestamp(substring(np_arrival_date from 1 for 10),'DD.MM.YYYY') < now() - interval '5 days'
-               ELSE false END)
-        OR (np_arrival_date = '' AND sms2_sent_at < now() - interval '5 days')
-      )`);
+        CASE WHEN np_arrival_date ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}'
+             THEN to_date(substring(np_arrival_date from 1 for 10),'YYYY-MM-DD')
+             WHEN np_arrival_date ~ '^[0-9]{2}\\.[0-9]{2}\\.[0-9]{4}'
+             THEN to_date(substring(np_arrival_date from 1 for 10),'DD.MM.YYYY')
+             ELSE (sms2_sent_at AT TIME ZONE 'Europe/Kyiv')::date END
+      ) + 3 <= (now() AT TIME ZONE 'Europe/Kyiv')::date`);
   for (const r of q3.rows) { try { await sendOrderSms(r.id, 3, false); } catch (e) {} }
 }
 
