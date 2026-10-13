@@ -69,7 +69,7 @@
                     <button onclick="switchView('returns')" id="btn-returns" class="sidebar-item w-full flex items-center gap-4 px-4 py-3 rounded-lg text-[13px] font-semibold text-left">
                         <i class="fa-solid fa-rotate-left w-5 text-center"></i> Повернення
                         <span id="returnsAlertBadge" class="ml-auto bg-rose-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full hidden" title="Проблемні повернення — капає платне зберігання">0</span>
-                        <span id="returnsBadge" class="ml-auto bg-violet-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full hidden" title="У кур'єра на руках">0</span>
+                        <span id="returnsBadge" class="ml-auto bg-violet-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full hidden" title="Ще не вернулись: їдуть назад, лежать на пошті або повернення не оформлене">0</span>
                     </button>
                 </nav>
             </div>
@@ -4015,12 +4015,12 @@
             navigator.clipboard.writeText(lines.join('\n')).then(() => alert('Скопійовано')).catch(() => alert('Не вдалося скопіювати'));
         }
 
-        // Бейдж у меню: скільки посилок у кур'єра на руках
+        // Бейдж у меню: посилки, що ще не повернулись (їдуть назад / лежать на пошті / без оформленого повернення)
         async function updateReturnsBadge() {
             try {
                 const r = await fetch('/api/returns/summary');
                 const d = await r.json();
-                const n = ((d && d.byCity) || []).reduce((s, c) => s + (Number(c.on_hands) || 0), 0);
+                const n = ((d && d.byCity) || []).reduce((s, c) => s + (Number(c.in_transit) || 0) + (Number(c.at_branch) || 0), 0);
                 const b = document.getElementById('returnsBadge');
                 if (b) { b.textContent = n; b.classList.toggle('hidden', n === 0); }
                 const a = await (await fetch('/api/returns/alerts')).json();
