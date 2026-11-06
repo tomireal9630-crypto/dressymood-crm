@@ -750,6 +750,9 @@
                     <button onclick="copyExportGrouping()" class="px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider bg-slate-100 text-slate-600 hover:bg-slate-200 transition-all">
                         <i class="fa-solid fa-copy mr-1"></i> Копіювати
                     </button>
+                    <button onclick="openSupplierText()" class="px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider bg-violet-600 text-white hover:bg-violet-700 transition-all">
+                        <i class="fa-solid fa-message mr-1"></i> Текст постачальнику
+                    </button>
                     <button onclick="exportToExcel()" class="px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider bg-emerald-500 text-white hover:bg-emerald-600 transition-all">
                         <i class="fa-solid fa-file-excel mr-1"></i> Експорт в Excel
                     </button>
@@ -4555,6 +4558,93 @@
             navigator.clipboard.writeText(text).then(
                 () => { /* без alert, кнопка коротко мигне */ },
                 () => alert('Не вдалося скопіювати')
+            );
+        }
+
+        // Текст постачальнику для месенджера: блок на кожне вибране замовлення з ТТН.
+        // Сортування як у Excel (артикул → колір → розмір), нумерація з «Почати з №».
+        function buildSupplierText(startNo) {
+            const selected = exportRows.filter(r => exportSelected.has(exportRowKey(r)));
+            const byOrder = new Map();
+            selected.forEach(r => {
+                const g = byOrder.get(r.orderId) || { fullName: r.fullName, ttn: r.ttn, items: [] };
+                g.items.push(r);
+                byOrder.set(r.orderId, g);
+            });
+            const cmp = (a, b) => (a || '').localeCompare(b || '', 'uk');
+            const all = [...byOrder.values()];
+            const orders = all.filter(o => o.ttn).sort((a, b) => {
+                const x = a.items[0], y = b.items[0];
+                return cmp(x.article, y.article) || cmp(x.color, y.color) || cmp(x.size, y.size);
+            });
+            let n = startNo;
+            const text = orders.map(o => {
+                const lines = [`✅Заказ №: ${n++}`];
+                o.items.forEach(it => {
+                    lines.push(`мод: ${it.article || ''}`, `розмір: ${it.size || ''}`, `колір: ${it.color || ''}`, `товар: ${it.name || ''}`);
+                    if (it.quantity > 1) lines.push(`кількість: ${it.quantity}`);
+                });
+                lines.push(`ФІО: ${o.fullName || ''}`, `ТТН: ${o.ttn}`, '➖➖➖➖➖');
+                return lines.join('\n');
+            }).join('\n');
+            return { text, count: orders.length, skipped: all.length - orders.length };
+        }
+
+        function openSupplierText() {
+            if (!exportSelected.size) { alert('Нічого не вибрано'); return; }
+            let m = document.getElementById('supplierTextModal');
+            if (!m) {
+                m = document.createElement('div');
+                m.id = 'supplierTextModal';
+                m.className = 'fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4';
+                m.innerHTML = `
+                <div class="bg-white rounded-3xl shadow-2xl w-full max-w-lg flex flex-col max-h-[90vh]">
+                    <div class="flex items-center justify-between px-6 pt-5 pb-3">
+                        <div class="font-black text-slate-800">Текст постачальнику</div>
+                        <button onclick="closeSupplierText()" class="text-slate-400 hover:text-slate-700"><i class="fa-solid fa-xmark"></i></button>
+                    </div>
+                    <div class="px-6 flex items-center gap-3 flex-wrap">
+                        <label class="text-[10px] font-black text-slate-400 uppercase">Почати з №</label>
+                        <input id="supplierTextStart" type="number" min="1" value="1" oninput="refreshSupplierText()"
+                            class="w-20 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg outline-none text-sm font-bold">
+                        <span id="supplierTextInfo" class="text-xs text-slate-500 font-medium"></span>
+                    </div>
+                    <textarea id="supplierTextArea" readonly
+                        class="mx-6 mt-3 flex-1 min-h-[320px] p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono outline-none resize-none"></textarea>
+                    <div class="flex justify-end gap-2 px-6 py-4">
+                        <button onclick="closeSupplierText()" class="px-4 py-2 rounded-lg text-xs font-bold bg-slate-100 text-slate-600 hover:bg-slate-200">Закрити</button>
+                        <button id="supplierTextCopyBtn" onclick="copySupplierText()" class="px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider bg-violet-600 text-white hover:bg-violet-700">
+                            <i class="fa-solid fa-copy mr-1"></i> Копіювати
+                        </button>
+                    </div>
+                </div>`;
+                m.addEventListener('click', e => { if (e.target === m) closeSupplierText(); });
+                document.body.appendChild(m);
+            }
+            m.classList.remove('hidden');
+            refreshSupplierText();
+        }
+
+        function refreshSupplierText() {
+            const start = Math.max(1, parseInt(document.getElementById('supplierTextStart').value, 10) || 1);
+            const { text, count, skipped } = buildSupplierText(start);
+            document.getElementById('supplierTextArea').value = text;
+            document.getElementById('supplierTextInfo').textContent =
+                `Замовлень: ${count}` + (skipped ? ` · без ТТН пропущено: ${skipped}` : '');
+        }
+
+        function closeSupplierText() {
+            const m = document.getElementById('supplierTextModal');
+            if (m) m.classList.add('hidden');
+        }
+
+        function copySupplierText() {
+            const ta = document.getElementById('supplierTextArea');
+            if (!ta.value) { alert('Немає замовлень з ТТН'); return; }
+            const btn = document.getElementById('supplierTextCopyBtn');
+            navigator.clipboard.writeText(ta.value).then(
+                () => { btn.innerHTML = '<i class="fa-solid fa-check mr-1"></i> Скопійовано'; setTimeout(() => { btn.innerHTML = '<i class="fa-solid fa-copy mr-1"></i> Копіювати'; }, 1500); },
+                () => { ta.select(); alert('Не вдалося скопіювати — текст виділено, натисніть Ctrl+C'); }
             );
         }
 
