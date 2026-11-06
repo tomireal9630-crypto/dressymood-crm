@@ -2869,7 +2869,7 @@ app.post('/api/landing/order', landingLimiter, async (req, res) => {
   const article = cut(req.body.article, 255);
   const product = cut(req.body.product, 255);
   const price = Number(String(req.body.price || '0').replace(',', '.')) || 0;
-  const supplier = cut(req.body.supplier, 255);
+  let supplier = cut(req.body.supplier, 255);
   const size = cut(req.body.size, 50);
   const color = cut(req.body.color, 50);
   const source = cut(req.body.source || req.get('referer') || 'Лендінг', 2000);
@@ -2877,6 +2877,15 @@ app.post('/api/landing/order', landingLimiter, async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+
+    // Постачальник — зі складу за артикулом (лендинги шлють захардкоджене значення);
+    // те, що прислав лендинг, лише fallback для артикулів, яких немає на складі
+    if (article) {
+      const sp = await client.query(
+        `SELECT s.name FROM products p JOIN suppliers s ON s.id = p.supplier_id
+         WHERE p.article = $1 LIMIT 1`, [article]);
+      if (sp.rows.length) supplier = sp.rows[0].name;
+    }
 
     // Прив'язка лише за телефоном; ім'я існуючого клієнта НЕ перетираємо
     const cust = await client.query('SELECT id FROM customers WHERE phone = $1', [phone]);
