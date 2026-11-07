@@ -2272,8 +2272,8 @@
                     </div>
                 </div>
                 <div>
-                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Коментар</label>
-                    <textarea name="comment" rows="2" placeholder="Замітки по клієнту або замовленню..." class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-medium text-sm"></textarea>
+                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Примітка (видно у списку замовлень)</label>
+                    <textarea name="comment" rows="2" placeholder="Примітка до замовлення..." class="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-medium text-sm"></textarea>
                 </div>
 
                 <div class="bg-slate-50/60 border border-slate-100 rounded-2xl p-6">
@@ -4161,6 +4161,7 @@
                 }
                 const res = await fetch('/api/orders?' + params.toString());
                 const data = await res.json();
+                window.lastOrders = Array.isArray(data) ? data : [];
                 if (!Array.isArray(data) || !data.length) {
                     table.innerHTML = `<tr><td colspan="14" class="p-8 text-center text-slate-400 font-medium">Пусто</td></tr>`;
                     return;
@@ -4231,8 +4232,12 @@
                         <td class="px-4 py-5">
                             <div class="font-bold text-slate-800 text-sm leading-tight">${esc(o.fullName)}${others.length ? ` <span class="dup-badge" title="${esc(dupTip)}">Повтор ×${others.length}</span>` : ''}</div>
                             ${isRepeat
-                                ? `<div class="mt-0.5"><span class="repeat-id order-phone text-xs font-bold" title="${esc(repeatTip)}">${phoneLink(o.phone)}</span></div>`
-                                : `<div class="order-phone text-xs font-bold mt-0.5">${phoneLink(o.phone)}</div>`
+                                ? `<div class="mt-1"><span class="repeat-id order-phone order-phone-lg font-extrabold" title="${esc(repeatTip)}">${phoneLink(o.phone)}</span></div>`
+                                : `<div class="order-phone order-phone-lg font-extrabold mt-1">${phoneLink(o.phone)}</div>`
+                            }
+                            ${(o.comment || '').trim()
+                                ? `<div class="order-note" onclick="event.stopPropagation(); editOrderNote(${o.id})" title="Клік — редагувати примітку"><i class="fa-solid fa-note-sticky"></i><span>${esc(o.comment)}</span></div>`
+                                : `<button class="order-note-add" onclick="event.stopPropagation(); editOrderNote(${o.id})" title="Додати примітку"><i class="fa-solid fa-plus"></i> примітка</button>`
                             }
                         </td>
                         <td class="px-4 py-5 text-sm text-slate-700 font-medium">${esc(o.city || '—')}</td>
@@ -7245,6 +7250,14 @@
             await fetch(`/api/orders/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ [field]: value }) });
             loadOrders();
             if (field === 'status') updateCallbacksBadge();
+        }
+
+        // Примітка до замовлення (поле comment) — швидке редагування зі списку
+        async function editOrderNote(id) {
+            const o = (window.lastOrders || []).find(x => x.id === id) || {};
+            const val = prompt('Примітка до замовлення #' + id + ' (порожньо — видалити):', o.comment || '');
+            if (val === null) return;
+            await updateOrder(id, 'comment', val.trim());
         }
 
         function askDeleteOrder(id) {
