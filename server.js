@@ -3782,20 +3782,35 @@ function normPhoneTurbo(raw) {
 }
 
 async function turboSmsSend(token, sender, phone, text) {
-  const resp = await fetch(TURBOSMS_URL, {
-    method: 'POST',
-    headers: {
-      'Authorization': 'Bearer ' + token,
-      'Content-Type': 'application/json',
-      'Accept': 'application/json'
-    },
-    body: JSON.stringify({
-      recipients: [phone],
-      sms: { sender, text }
-    })
-  });
+  let resp;
+  try {
+    resp = await fetch(TURBOSMS_URL, {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + token,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({
+        recipients: [phone],
+        sms: { sender, text }
+      }),
+      signal: AbortSignal.timeout(20000)
+    });
+  } catch (netErr) {
+    // Обрив/таймаут: запит міг дійти до TurboSMS → не повторюємо автоматично (ризик дубля)
+    const e = new Error('Збій зв\'язку з TurboSMS (' + (netErr.name || netErr.message) + ') — перевірте в кабінеті');
+    e.unknown = true;
+    throw e;
+  }
   const j = await resp.json().catch(() => ({}));
-  const code = j.response_code != null ? Number(j.response_code) : -1;
+  if (j.response_code == null) {
+    // Відповіді немає/не JSON — невідомо, чи пішла SMS. Не досилаємо автоматично (ризик дубля)
+    const e = new Error('Невідома відповідь TurboSMS (HTTP ' + resp.status + ') — перевірте в кабінеті');
+    e.unknown = true;
+    throw e;
+  }
+  const code = Number(j.response_code);
   // Успіх у TurboSMS: код 0 або 8xx, статус "OK" або "SUCCESS_*" (SUCCESS_MESSAGE_ACCEPTED,
   // SUCCESS_MESSAGE_SENT…). Інакше успішну відправку рахуємо помилкою → автодосилання дублює SMS
   const isOkStatus = st => !st || st === 'OK' || /^SUCCESS/i.test(st);
@@ -3838,8 +3853,13 @@ async function sendOrderSms(orderId, kind, force) {
   const phone = normPhoneTurbo(o.phone);
   if (!phone) throw new Error('У замовленні немає телефону');
 
-  if (!force && o['sms' + kind + '_sent_at']) {
-    return { skipped: true, reason: 'already sent' };
+  // Антидубль: атомарно «бронюємо» SMS ДО відправки. Якщо паралельний процес (інший тік,
+  // старий контейнер під час деплою) вже забронював — пропускаємо. Ручна досилка (force) — без броні.
+  if (!force) {
+    const claim = await pool.query(
+      `UPDATE orders SET sms${kind}_sent_at = now(), sms${kind}_error = ''
+       WHERE id = $1 AND sms${kind}_sent_at IS NULL RETURNING id`, [orderId]);
+    if (!claim.rowCount) return { skipped: true, reason: 'already sent' };
   }
 
   const text = renderTemplate(tpl, o, o.items);
@@ -3856,8 +3876,20 @@ async function sendOrderSms(orderId, kind, force) {
     return { success: true };
   } catch (err) {
     const msg = String(err.message || err).slice(0, 500);
-    await pool.query(
-      `UPDATE orders SET sms${kind}_error = $1 WHERE id = $2`, [msg, orderId]);
+    if (err.unknown) {
+      // Невідомо, чи дійшла: бронь лишаємо (автоматика не повторить), помилка видна в бейджі —
+      // менеджер перевіряє в кабінеті TurboSMS і за потреби досилає вручну
+      await pool.query(
+        `UPDATE orders SET sms${kind}_sent_at = COALESCE(sms${kind}_sent_at, now()), sms${kind}_error = $1 WHERE id = $2`,
+        [msg, orderId]);
+    } else if (force) {
+      // Ручна досилка не вдалась — попередню позначку «відправлено» не чіпаємо (інакше автоматика повторить)
+      await pool.query(`UPDATE orders SET sms${kind}_error = $1 WHERE id = $2`, [msg, orderId]);
+    } else {
+      // TurboSMS явно відхилив (баланс, номер…) — SMS не пішла, знімаємо бронь → автоповтор
+      await pool.query(
+        `UPDATE orders SET sms${kind}_sent_at = NULL, sms${kind}_error = $1 WHERE id = $2`, [msg, orderId]);
+    }
     await pool.query(
       `INSERT INTO sms_log (order_id, kind, phone, text, status, error) VALUES ($1,$2,$3,$4,'error',$5)`,
       [orderId, kind, phone, text, msg]
@@ -3867,7 +3899,13 @@ async function sendOrderSms(orderId, kind, force) {
 }
 
 // Автовідправка SMS 1/2/3 за умовами
+let autoSmsRunning = false; // не запускати автовідправку вдруге, поки попередня не закінчилась
 async function autoSendSms() {
+  if (autoSmsRunning) return;
+  autoSmsRunning = true;
+  try { await autoSendSmsRun(); } finally { autoSmsRunning = false; }
+}
+async function autoSendSmsRun() {
   const s = await getSmsSettings();
   if (!s.token || s.autoSend === false) return;
 

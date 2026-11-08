@@ -4199,7 +4199,7 @@
                         const sent = o['sms' + k + '_sent_at'];
                         const err = o['sms' + k + '_error'];
                         const cls = sent && !err ? 'bg-emerald-500 text-white' : (err ? 'bg-rose-500 text-white' : 'bg-slate-200 text-slate-500');
-                        const tip = sent ? `SMS${k} відправлено: ${new Date(sent).toLocaleString()}` : (err ? `SMS${k} помилка: ${err}` : `SMS${k} ще не відправлено (клік — дослати)`);
+                        const tip = err ? `SMS${k} помилка: ${err}` : (sent ? `SMS${k} відправлено: ${new Date(sent).toLocaleString()}` : `SMS${k} ще не відправлено (клік — дослати)`);
                         return `<button onclick="event.stopPropagation(); resendSms(${o.id},${k})" title="${esc(tip)}" class="w-5 h-5 rounded-full ${cls} text-[10px] font-black flex items-center justify-center hover:opacity-80 transition">${k}</button>`;
                     };
                     const smsHtml = `<div class="flex gap-1 mt-1.5">${smsBadge(1)}${smsBadge(2)}${smsBadge(3)}</div>`;
