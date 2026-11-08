@@ -1613,8 +1613,8 @@
                         <div class="flex items-center gap-3 pt-2 flex-wrap">
                             <button type="submit" class="bg-violet-600 text-white px-8 py-3 rounded-xl font-black text-sm uppercase tracking-widest hover:bg-violet-700 transition-all">Зберегти</button>
                             <input type="text" id="smsTestPhone" placeholder="+380XXXXXXXXX" class="px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none text-sm font-bold w-44">
-                            <button type="button" onclick="testSms()" class="px-6 py-3 rounded-xl font-bold text-sm text-slate-600 bg-slate-100 hover:bg-slate-200 transition-all">Тестова відправка SMS1</button>
-                            <span id="smsTestResult" class="text-sm font-bold"></span>
+                            <button type="button" onclick="testSms()" class="px-6 py-3 rounded-xl font-bold text-sm text-slate-600 bg-slate-100 hover:bg-slate-200 transition-all">Тест: надіслати SMS 1, 2, 3</button>
+                            <span id="smsTestResult" class="text-sm font-bold w-full"></span>
                         </div>
                     </form>
                 </div>
@@ -3047,22 +3047,27 @@
             if (!f) return;
             f.onsubmit = async (e) => {
                 e.preventDefault();
-                const fd = {
-                    token: f.token.value.trim(),
-                    sender: f.sender.value.trim() || 'MAGAZIN',
-                    autoSend: f.autoSend.checked,
-                    sms1: f.sms1.value, sms2: f.sms2.value, sms3: f.sms3.value
-                };
                 try {
-                    const r = await fetch('/api/settings/sms', {
-                        method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(fd)
-                    });
-                    const j = await r.json();
-                    if (!r.ok) throw new Error(j.error || 'Помилка');
+                    await saveSmsForm();
                     alert('Налаштування SMS збережено');
                 } catch (err) { alert('Помилка: ' + err.message); }
             };
+        }
+
+        async function saveSmsForm() {
+            const f = document.getElementById('smsSettingsForm');
+            const fd = {
+                token: f.token.value.trim(),
+                sender: f.sender.value.trim() || 'MAGAZIN',
+                autoSend: f.autoSend.checked,
+                sms1: f.sms1.value, sms2: f.sms2.value, sms3: f.sms3.value
+            };
+            const r = await fetch('/api/settings/sms', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(fd)
+            });
+            const j = await r.json();
+            if (!r.ok) throw new Error(j.error || 'Помилка');
         }
 
         async function testSms() {
@@ -3071,17 +3076,25 @@
             const f = document.getElementById('smsSettingsForm');
             const phone = document.getElementById('smsTestPhone').value.trim();
             if (!phone) { el.textContent = '✕ Вкажіть тестовий номер'; el.style.color = '#dc2626'; return; }
-            // Спершу збережемо налаштування (щоб токен/відправник застосувались)
-            try { await f.requestSubmit ? f.requestSubmit() : f.dispatchEvent(new Event('submit', { cancelable: true })); } catch (e) {}
-            try {
-                const r = await fetch('/api/sms/test', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ phone, text: f.sms1.value || 'Тестове повідомлення з CRM' })
-                });
-                const j = await r.json();
-                if (!r.ok) throw new Error(j.error || 'Помилка');
-                el.textContent = '✓ Відправлено'; el.style.color = '#16a34a';
-            } catch (err) { el.textContent = '✕ ' + err.message; el.style.color = '#dc2626'; }
+            // Спершу зберігаємо налаштування (токен/відправник/шаблони), тест бере збережені
+            try { await saveSmsForm(); }
+            catch (e) { el.textContent = '✕ Не збереглось: ' + e.message; el.style.color = '#dc2626'; return; }
+            // Усі 3 шаблони з підстановкою даних останнього замовлення з ТТН
+            const lines = [];
+            for (const kind of [1, 2, 3]) {
+                try {
+                    const r = await fetch('/api/sms/test', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ phone, kind })
+                    });
+                    const j = await r.json();
+                    if (!r.ok) throw new Error(j.error || 'Помилка');
+                    lines.push(`✓ SMS${kind} (${j.length} симв · ${j.parts} SMS): ${j.text}`);
+                } catch (err) { lines.push(`✕ SMS${kind}: ${err.message}`); }
+            }
+            el.style.whiteSpace = 'pre-line';
+            el.textContent = lines.join('\n');
+            el.style.color = lines.some(l => l.startsWith('✕')) ? '#dc2626' : '#16a34a';
         }
 
         async function resendSms(id, kind) {

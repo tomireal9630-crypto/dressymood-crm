@@ -3921,12 +3921,25 @@ app.post('/api/settings/sms', checkAuth, async (req, res) => {
 // Тестова відправка SMS з налаштувань
 app.post('/api/sms/test', checkAuth, async (req, res) => {
   try {
-    const { phone, text } = req.body || {};
-    if (!phone || !text) return res.status(400).json({ error: 'Вкажіть phone та text' });
+    const { phone, kind } = req.body || {};
+    let { text } = req.body || {};
+    if (!phone) return res.status(400).json({ error: 'Вкажіть тестовий номер' });
     const s = await getSmsSettings();
     if (!s.token) return res.status(400).json({ error: 'Не вказано токен TurboSMS' });
+    // kind=1/2/3 — збережений шаблон зі змінними останнього замовлення з ТТН (як побачить клієнт)
+    if ([1, 2, 3].includes(Number(kind))) {
+      const tpl = s['sms' + Number(kind)];
+      if (!tpl) return res.status(400).json({ error: 'Шаблон SMS' + kind + ' порожній' });
+      const last = await pool.query(`SELECT id FROM orders WHERE ttn <> '' ORDER BY id DESC LIMIT 1`);
+      const o = last.rows.length ? await loadOrderForSms(last.rows[0].id) : null;
+      text = renderTemplate(tpl, o || { ttn: '20450012345678' }, o ? o.items : []);
+    }
+    if (!text) return res.status(400).json({ error: 'Порожній текст' });
     await turboSmsSend(s.token, s.sender || 'MAGAZIN', normPhoneTurbo(phone), text);
-    res.json({ success: true });
+    const parts = /^[\x00-\x7F]*$/.test(text)
+      ? (text.length <= 160 ? 1 : Math.ceil(text.length / 153))
+      : (text.length <= 70 ? 1 : Math.ceil(text.length / 67));
+    res.json({ success: true, text, length: text.length, parts });
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
 
