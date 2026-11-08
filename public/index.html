@@ -338,6 +338,10 @@
                         <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">По</label>
                         <input type="date" id="dashTo" onchange="loadDashboard()" class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
                     </div>
+                        <div class="flex gap-1">
+                            <button type="button" data-dp="dashFrom|dashTo|0" onclick="applyDatePreset(this, loadDashboard)" class="dp-btn px-3 py-2 rounded-lg text-xs font-bold border border-slate-200 bg-white text-slate-600 hover:border-violet-400 transition-all">Сьогодні</button>
+                            <button type="button" data-dp="dashFrom|dashTo|1" onclick="applyDatePreset(this, loadDashboard)" class="dp-btn px-3 py-2 rounded-lg text-xs font-bold border border-slate-200 bg-white text-slate-600 hover:border-violet-400 transition-all">Вчора</button>
+                        </div>
                     <div>
                         <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">Статус</label>
                         <select id="dashStatus" onchange="loadDashboard()" class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
@@ -1056,6 +1060,10 @@
                             <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">По</label>
                             <input type="date" id="statsBuyoutTo" class="px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
                         </div>
+                        <div class="flex gap-1">
+                            <button type="button" data-dp="statsBuyoutFrom|statsBuyoutTo|0" onclick="applyDatePreset(this, loadBuyoutStats)" class="dp-btn px-3 py-2 rounded-lg text-xs font-bold border border-slate-200 bg-white text-slate-600 hover:border-violet-400 transition-all">Сьогодні</button>
+                            <button type="button" data-dp="statsBuyoutFrom|statsBuyoutTo|1" onclick="applyDatePreset(this, loadBuyoutStats)" class="dp-btn px-3 py-2 rounded-lg text-xs font-bold border border-slate-200 bg-white text-slate-600 hover:border-violet-400 transition-all">Вчора</button>
+                        </div>
                         <div>
                             <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">Постачальник</label>
                             <select id="statsBuyoutSupplier" class="px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
@@ -1123,6 +1131,10 @@
                         <div>
                             <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">По</label>
                             <input type="date" id="statsRoiTo" class="px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
+                        </div>
+                        <div class="flex gap-1">
+                            <button type="button" data-dp="statsRoiFrom|statsRoiTo|0" onclick="applyDatePreset(this, loadRoiStats)" class="dp-btn px-3 py-2 rounded-lg text-xs font-bold border border-slate-200 bg-white text-slate-600 hover:border-violet-400 transition-all">Сьогодні</button>
+                            <button type="button" data-dp="statsRoiFrom|statsRoiTo|1" onclick="applyDatePreset(this, loadRoiStats)" class="dp-btn px-3 py-2 rounded-lg text-xs font-bold border border-slate-200 bg-white text-slate-600 hover:border-violet-400 transition-all">Вчора</button>
                         </div>
                         <button onclick="loadRoiStats()" class="px-5 py-2 rounded-lg text-xs font-black uppercase tracking-wider text-white transition-all"
                             style="background:linear-gradient(135deg,#8b5cf6,#ec4899)">Показати</button>
@@ -1220,6 +1232,10 @@
                         <div>
                             <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">По</label>
                             <input type="date" id="statsApprovalTo" class="px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
+                        </div>
+                        <div class="flex gap-1">
+                            <button type="button" data-dp="statsApprovalFrom|statsApprovalTo|0" onclick="applyDatePreset(this, loadApprovalStats)" class="dp-btn px-3 py-2 rounded-lg text-xs font-bold border border-slate-200 bg-white text-slate-600 hover:border-violet-400 transition-all">Сьогодні</button>
+                            <button type="button" data-dp="statsApprovalFrom|statsApprovalTo|1" onclick="applyDatePreset(this, loadApprovalStats)" class="dp-btn px-3 py-2 rounded-lg text-xs font-bold border border-slate-200 bg-white text-slate-600 hover:border-violet-400 transition-all">Вчора</button>
                         </div>
                         <button onclick="loadApprovalStats()" class="px-5 py-2 rounded-lg text-xs font-black uppercase tracking-wider text-white transition-all"
                             style="background:linear-gradient(135deg,#8b5cf6,#ec4899)">Показати</button>
@@ -4873,15 +4889,41 @@
         // --- ДАШБОРД ---
         let dashInit = false;
 
+        // Дата YYYY-MM-DD за Києвом; daysAgo: 0 = сьогодні, 1 = вчора
+        function kyivDate(daysAgo) {
+            const d = new Date(Date.now() - (daysAgo || 0) * 86400000);
+            return d.toLocaleDateString('sv-SE', { timeZone: 'Europe/Kyiv' });
+        }
+        // Кнопки «Сьогодні / Вчора» біля діапазону дат: data-dp="fromId|toId|днів_назад"
+        function applyDatePreset(btn, loadFn) {
+            const [fromId, toId, ago] = btn.dataset.dp.split('|');
+            const v = kyivDate(Number(ago));
+            document.getElementById(fromId).value = v;
+            document.getElementById(toId).value = v;
+            refreshDatePresets();
+            if (typeof loadFn === 'function') loadFn();
+        }
+        // Підсвітити кнопку, якщо вибраний діапазон = сьогодні / вчора
+        function refreshDatePresets() {
+            document.querySelectorAll('[data-dp]').forEach(b => {
+                const [fromId, toId, ago] = b.dataset.dp.split('|');
+                const v = kyivDate(Number(ago));
+                const f = document.getElementById(fromId), t = document.getElementById(toId);
+                const on = !!f && !!t && f.value === v && t.value === v;
+                b.classList.toggle('bg-violet-600', on); b.classList.toggle('border-violet-600', on); b.classList.toggle('text-white', on);
+                b.classList.toggle('bg-white', !on); b.classList.toggle('text-slate-600', !on);
+            });
+        }
+        document.addEventListener('change', e => { if (e.target && e.target.type === 'date') refreshDatePresets(); });
+
         async function initDashboard() {
             dashInit = true;
-            const iso = d => d.toISOString().slice(0, 10);
-            const now = new Date();
-            const from = new Date(now); from.setDate(from.getDate() - 30);
+            const today = kyivDate(0); // за замовчуванням — сьогодні (за Києвом)
             const fEl = document.getElementById('dashFrom');
             const tEl = document.getElementById('dashTo');
-            if (fEl && !fEl.value) fEl.value = iso(from);
-            if (tEl && !tEl.value) tEl.value = iso(now);
+            if (fEl && !fEl.value) fEl.value = today;
+            if (tEl && !tEl.value) tEl.value = today;
+            refreshDatePresets();
             const sSel = document.getElementById('dashStatus');
             if (sSel && sSel.options.length <= 1) {
                 sSel.innerHTML = `<option value="">Всі статуси</option>` +
@@ -4966,13 +5008,12 @@
 
         async function initBuyoutStats() {
             statsBuyoutInit = true;
-            const iso = d => d.toISOString().slice(0, 10);
-            const now = new Date();
-            const from = new Date(now); from.setDate(from.getDate() - 30);
+            const today = kyivDate(0); // за замовчуванням — сьогодні (за Києвом)
             const fromEl = document.getElementById('statsBuyoutFrom');
             const toEl = document.getElementById('statsBuyoutTo');
-            if (fromEl && !fromEl.value) fromEl.value = iso(from);
-            if (toEl && !toEl.value) toEl.value = iso(now);
+            if (fromEl && !fromEl.value) fromEl.value = today;
+            if (toEl && !toEl.value) toEl.value = today;
+            refreshDatePresets();
             try {
                 const r = await fetch('/api/orders/suppliers');
                 const list = await r.json();
@@ -5049,13 +5090,12 @@
 
         async function initApprovalStats() {
             statsApprovalInit = true;
-            const iso = d => d.toISOString().slice(0, 10);
-            const now = new Date();
-            const from = new Date(now); from.setDate(from.getDate() - 30);
+            const today = kyivDate(0); // за замовчуванням — сьогодні (за Києвом)
             const fromEl = document.getElementById('statsApprovalFrom');
             const toEl = document.getElementById('statsApprovalTo');
-            if (fromEl && !fromEl.value) fromEl.value = iso(from);
-            if (toEl && !toEl.value) toEl.value = iso(now);
+            if (fromEl && !fromEl.value) fromEl.value = today;
+            if (toEl && !toEl.value) toEl.value = today;
+            refreshDatePresets();
             loadApprovalStats();
         }
 
@@ -5142,13 +5182,12 @@
 
         async function initRoiStats() {
             statsRoiInit = true;
-            const iso = d => d.toISOString().slice(0, 10);
-            const now = new Date();
-            const from = new Date(now); from.setDate(from.getDate() - 30);
+            const today = kyivDate(0); // за замовчуванням — сьогодні (за Києвом)
             const fromEl = document.getElementById('statsRoiFrom');
             const toEl = document.getElementById('statsRoiTo');
-            if (fromEl && !fromEl.value) fromEl.value = iso(from);
-            if (toEl && !toEl.value) toEl.value = iso(now);
+            if (fromEl && !fromEl.value) fromEl.value = today;
+            if (toEl && !toEl.value) toEl.value = today;
+            refreshDatePresets();
             loadRoiStats();
         }
 
