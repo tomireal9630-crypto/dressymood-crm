@@ -3710,10 +3710,33 @@ const DEFAULT_SMS = {
   token: '',
   sender: 'MAGAZIN',
   autoSend: true,
-  sms1: 'Ваше замовлення комплектується: {TTN} ({TOV}).',
-  sms2: 'Посилка: {TTN} ({TOV}) прибула. Ви можете її отримати!',
-  sms3: 'Ваша посилка очікує на новій пошті: {TTN} ({TOV})'
+  // Кирилиця: 1 SMS = 70 символів. ТТН = 14 цифр → шаблони без {TOV}/{SUM}, щоб завжди 1 SMS
+  sms1: 'Ваше замовлення відправлено Новою поштою. ТТН {TTN}',
+  sms2: 'Посилка {TTN} прибула на відділення НП. Можна забирати!',
+  sms3: 'Посилка {TTN} чекає на НП. Безкоштовне зберігання до {DO}'
 };
+
+// Безкоштовне зберігання на відділенні НП (днів від прибуття) — для змінної {DO}
+const NP_FREE_STORAGE_DAYS = 5;
+
+// Дата прибуття на відділення: np_arrival_date (YYYY-MM-DD… або DD.MM.YYYY…),
+// fallback — дата SMS2, далі — сьогодні. Повертає Date (локальна північ, Europe/Kyiv)
+function arrivalDate(order) {
+  const s = String(order.np_arrival_date || '');
+  let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return new Date(+m[1], +m[2] - 1, +m[3]);
+  m = s.match(/^(\d{2})\.(\d{2})\.(\d{4})/);
+  if (m) return new Date(+m[3], +m[2] - 1, +m[1]);
+  const d = order.sms2_sent_at ? new Date(order.sms2_sent_at) : new Date();
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
+// {DO} — до якої дати безкоштовне зберігання, формат ДД.ММ
+function storageUntil(order) {
+  const d = arrivalDate(order);
+  d.setDate(d.getDate() + NP_FREE_STORAGE_DAYS);
+  return String(d.getDate()).padStart(2, '0') + '.' + String(d.getMonth() + 1).padStart(2, '0');
+}
 
 async function getSmsSettings() {
   const r = await pool.query(`SELECT value FROM app_settings WHERE key = 'sms'`);
@@ -3744,7 +3767,8 @@ function renderTemplate(tpl, order, items) {
     TEL: order.phone || '',
     CITY: order.city || '',
     OP: order.branch || '',
-    DATE: new Date().toLocaleDateString('sv-SE') // YYYY-MM-DD у Europe/Kyiv (process.env.TZ)
+    DATE: new Date().toLocaleDateString('sv-SE'), // YYYY-MM-DD у Europe/Kyiv (process.env.TZ)
+    DO: storageUntil(order) // ДД.ММ — кінець безкоштовного зберігання на НП
   };
   return String(tpl || '').replace(/\{(\w+)\}/g, (_, k) => (map[k] != null ? String(map[k]) : ''));
 }
