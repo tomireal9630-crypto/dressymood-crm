@@ -504,6 +504,35 @@ app.post('/api/logout', (req, res) => { req.session.destroy(); res.json({ succes
 const ARCHIVE_STATUSES = ['Продажа', 'Отказ', 'Отбой'];
 const DELETED_STATUS = '✗✗✗';
 
+// Пошук замовлень: ПІБ (клієнта і отримувача в замовленні), телефон, № замовлення, ТТН, артикул, назва.
+// Телефон порівнюється лише цифрами по останніх 9 (095 461 44 22 = +380954614422 = 0954614422),
+// бо в базі номери збережені як ввели. Додає параметри в params, повертає SQL-умову або null.
+function orderSearchCondition(search, params) {
+  const q = String(search || '').trim();
+  if (!q) return null;
+  params.push(`%${q}%`);
+  const p = `$${params.length}`;
+  const or = [
+    `c.full_name ILIKE ${p}`, `o.full_name ILIKE ${p}`, `c.phone ILIKE ${p}`, `o.ttn ILIKE ${p}`,
+    `EXISTS (SELECT 1 FROM order_items oi2 WHERE oi2.order_id = o.id AND (oi2.article ILIKE ${p} OR oi2.name ILIKE ${p}))`
+  ];
+  // Лише цифри й символи телефону/номера (+, пробіли, дужки, дефіси, #) → шукаємо як № замовлення / телефон / ТТН
+  const digits = q.replace(/\D/g, '');
+  if (digits && /^[\d\s+()\-#№.]+$/.test(q)) {
+    if (digits.length <= 9) {
+      params.push(Number(digits));
+      or.push(`o.id = $${params.length}`);
+    }
+    if (digits.length >= 4) {
+      const tail = digits.length > 9 ? digits.slice(-9) : digits; // 380954614422 → 954614422
+      params.push(`%${tail}%`);
+      const d = `$${params.length}`;
+      or.push(`regexp_replace(c.phone, '\\D', '', 'g') LIKE ${d}`, `regexp_replace(o.ttn, '\\D', '', 'g') LIKE ${d}`);
+    }
+  }
+  return `(${or.join(' OR ')})`;
+}
+
 app.get('/api/orders', checkAuth, async (req, res) => {
   const { view, search, status, dateFrom, dateTo, supplier } = req.query;
   try {
@@ -532,13 +561,8 @@ app.get('/api/orders', checkAuth, async (req, res) => {
       conditions.push(`o.status = $${params.length}`);
     }
 
-    if (search) {
-      params.push(`%${search}%`);
-      const p = `$${params.length}`;
-      conditions.push(`(c.full_name ILIKE ${p} OR c.phone ILIKE ${p} OR o.ttn ILIKE ${p}
-        OR EXISTS (SELECT 1 FROM order_items oi2 WHERE oi2.order_id = o.id
-                   AND (oi2.article ILIKE ${p} OR oi2.name ILIKE ${p})))`);
-    }
+    const searchCond = orderSearchCondition(search, params);
+    if (searchCond) conditions.push(searchCond);
 
     // Один або кілька постачальників (?supplier=A&supplier=B)
     const suppliers = [].concat(supplier || []).map(String).filter(Boolean);
@@ -789,13 +813,8 @@ app.get('/api/orders/status-counts', checkAuth, async (req, res) => {
   try {
     const params = [[...ARCHIVE_STATUSES, DELETED_STATUS]];
     const conditions = [`o.status <> ALL($1)`];
-    if (search) {
-      params.push(`%${search}%`);
-      const p = `$${params.length}`;
-      conditions.push(`(c.full_name ILIKE ${p} OR c.phone ILIKE ${p} OR o.ttn ILIKE ${p}
-        OR EXISTS (SELECT 1 FROM order_items oi2 WHERE oi2.order_id = o.id
-                   AND (oi2.article ILIKE ${p} OR oi2.name ILIKE ${p})))`);
-    }
+    const searchCond = orderSearchCondition(search, params);
+    if (searchCond) conditions.push(searchCond);
     if (supplier) {
       params.push(supplier);
       conditions.push(`EXISTS (SELECT 1 FROM order_items oi3 WHERE oi3.order_id = o.id AND oi3.supplier_name = $${params.length})`);
