@@ -3796,11 +3796,14 @@ async function turboSmsSend(token, sender, phone, text) {
   });
   const j = await resp.json().catch(() => ({}));
   const code = j.response_code != null ? Number(j.response_code) : -1;
-  const okGlobal = code === 0 || code === 800; // 800 = "OK"
+  // Успіх у TurboSMS: код 0 або 8xx, статус "OK" або "SUCCESS_*" (SUCCESS_MESSAGE_ACCEPTED,
+  // SUCCESS_MESSAGE_SENT…). Інакше успішну відправку рахуємо помилкою → автодосилання дублює SMS
+  const isOkStatus = st => !st || st === 'OK' || /^SUCCESS/i.test(st);
+  const okGlobal = code === 0 || (code >= 800 && code < 900) || /^SUCCESS/i.test(j.response_status || '');
   const rr = (j.response_result && j.response_result[0]) || {};
-  const okItem = !rr.response_status || rr.response_status === 'OK';
+  const okItem = isOkStatus(rr.response_status);
   if (!okGlobal || !okItem) {
-    const msg = (rr.response_status && rr.response_status !== 'OK') ? rr.response_status
+    const msg = !isOkStatus(rr.response_status) ? rr.response_status
       : (j.response_status || ('TurboSMS code ' + code));
     throw new Error(msg);
   }
