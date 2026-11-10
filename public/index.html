@@ -4595,8 +4595,10 @@
             );
         }
 
-        // Текст постачальнику для месенджера: блок на кожне вибране замовлення з ТТН.
-        // Сортування як у Excel (артикул → колір → розмір), нумерація з «Почати з №».
+        // Текст постачальнику для месенджера: розбивка на секції по моделях (артикулах),
+        // у секції — блок на кожне вибране замовлення з ТТН (колір → розмір).
+        // Замовлення з кількома товарами = один блок «N товари в одній посилці»;
+        // якщо в ньому різні моделі — окрема секція в кінці. Нумерація наскрізна з «Почати з №».
         function buildSupplierText(startNo) {
             const selected = exportRows.filter(r => exportSelected.has(exportRowKey(r)));
             const byOrder = new Map();
@@ -4606,21 +4608,63 @@
                 byOrder.set(r.orderId, g);
             });
             const cmp = (a, b) => (a || '').localeCompare(b || '', 'uk');
+            const byColorSize = (x, y) => cmp(x.color, y.color) || cmp(x.size, y.size);
+            const plural = (n, one, few, many) => {
+                const m10 = n % 10, m100 = n % 100;
+                if (m10 === 1 && m100 !== 11) return one;
+                if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
+                return many;
+            };
+            const MIXED = '\u0000mixed';
             const all = [...byOrder.values()];
-            const orders = all.filter(o => o.ttn).sort((a, b) => {
-                const x = a.items[0], y = b.items[0];
-                return cmp(x.article, y.article) || cmp(x.color, y.color) || cmp(x.size, y.size);
+            const orders = all.filter(o => o.ttn);
+
+            // Секції: артикул → замовлення; замовлення з різними артикулами — в MIXED
+            const sections = new Map();
+            orders.forEach(o => {
+                o.items.sort(byColorSize);
+                const arts = new Set(o.items.map(it => it.article || ''));
+                const key = arts.size === 1 ? [...arts][0] : MIXED;
+                if (!sections.has(key)) sections.set(key, []);
+                sections.get(key).push(o);
             });
+            const keys = [...sections.keys()].sort((a, b) =>
+                (a === MIXED) - (b === MIXED) || cmp(a, b));
+
             let n = startNo;
-            const text = orders.map(o => {
-                const lines = [`✅Заказ №: ${n++}`];
-                o.items.forEach(it => {
+            const orderBlock = (o, showArticle) => {
+                const cnt = o.items.length;
+                const lines = [`✅Заказ №: ${n++}` + (cnt > 1 ? ` (${cnt} ${plural(cnt, 'товар', 'товари', 'товарів')} в одній посилці)` : '')];
+                if (cnt === 1) {
+                    const it = o.items[0];
                     lines.push(`мод: ${it.article || ''}`, `розмір: ${it.size || ''}`, `колір: ${it.color || ''}`, `товар: ${it.name || ''}`);
                     if (it.quantity > 1) lines.push(`кількість: ${it.quantity}`);
-                });
+                } else {
+                    const sameName = new Set(o.items.map(it => it.name || '')).size === 1;
+                    if (!showArticle) lines.push(`мод: ${o.items[0].article || ''}`);
+                    o.items.forEach((it, i) => {
+                        const parts = [];
+                        if (showArticle) parts.push(`мод: ${it.article || ''}`);
+                        parts.push(`розмір: ${it.size || ''}`, `колір: ${it.color || ''}`);
+                        if (it.quantity > 1) parts.push(`${it.quantity} шт`);
+                        if (!sameName && it.name) parts.push(it.name);
+                        lines.push(`  ${i + 1}) ${parts.join(' · ')}`);
+                    });
+                    if (sameName && o.items[0].name) lines.push(`товар: ${o.items[0].name}`);
+                }
                 lines.push(`ФІО: ${o.fullName || ''}`, `ТТН: ${o.ttn}`, '➖➖➖➖➖');
                 return lines.join('\n');
-            }).join('\n');
+            };
+
+            const text = keys.map(key => {
+                const list = sections.get(key).sort((a, b) => byColorSize(a.items[0], b.items[0]));
+                const pcs = list.reduce((s, o) => s + o.items.reduce((t, it) => t + (Number(it.quantity) || 1), 0), 0);
+                const stat = `${list.length} ${plural(list.length, 'замовлення', 'замовлення', 'замовлень')}, ${pcs} шт`;
+                const head = key === MIXED
+                    ? `🔀 РІЗНІ МОДЕЛІ В ОДНІЙ ПОСИЛЦІ — ${stat}`
+                    : `📦 МОДЕЛЬ ${key || 'без артикулу'} — ${stat}`;
+                return [head, '', ...list.map(o => orderBlock(o, key === MIXED))].join('\n');
+            }).join('\n\n');
             return { text, count: orders.length, skipped: all.length - orders.length };
         }
 
