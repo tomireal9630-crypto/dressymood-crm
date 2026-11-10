@@ -84,6 +84,9 @@ async function updateDatabaseSchema() {
         `);
         // Переадресація: НП створює нову ЕН, посилка далі їде по ній — трекаємо її замість оригінальної
         await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS np_redirect_ttn VARCHAR(32) DEFAULT '';`);
+        // Коли замовлення передали постачальнику (текст у месенджер) — щоб не відправити двічі.
+        // На рівні замовлення: order_items перестворюються при редагуванні
+        await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS supplier_sent_at TIMESTAMPTZ;`);
 
         // Checkbox віддає статуси ЕТТН малими літерами — код порівнює великими
         await pool.query(`UPDATE orders SET checkbox_ettn_status = upper(checkbox_ettn_status)
@@ -595,6 +598,7 @@ app.get('/api/orders', checkAuth, async (req, res) => {
              o.sms1_sent_at, o.sms2_sent_at, o.sms3_sent_at,
              o.sms1_error, o.sms2_error, o.sms3_error,
              o.created_at AS "createdAt", o.original_created_at AS "originalCreatedAt",
+             o.supplier_sent_at AS "supplierSentAt",
              cs.cust_count, cs.cust_bought, cs.cust_refused,
              -- Інші замовлення з цим номером (будь-який статус, крім видалених) — мітка «Повтор»
              (SELECT json_agg(json_build_object('id', po.id, 'status', po.status, 'createdAt', po.created_at) ORDER BY po.id)
@@ -739,6 +743,19 @@ app.post('/api/orders/manual', checkAuth, async (req, res) => {
   } finally {
     client.release();
   }
+});
+
+// Позначка «передано постачальнику» для кількох замовлень: { ids: [..], sent: true|false }.
+// Повторна позначка не зсуває дату першої передачі.
+app.post('/api/orders/supplier-sent', checkAuth, async (req, res) => {
+  const ids = [].concat(req.body.ids || []).map(Number).filter(n => Number.isInteger(n) && n > 0);
+  if (!ids.length) return res.status(400).json({ error: 'Не вибрано замовлень' });
+  try {
+    const r = await pool.query(
+      `UPDATE orders SET supplier_sent_at = CASE WHEN $2::boolean THEN COALESCE(supplier_sent_at, now()) ELSE NULL END
+       WHERE id = ANY($1::int[])`, [ids, req.body.sent !== false]);
+    res.json({ success: true, updated: r.rowCount });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 const ALLOWED_ORDER_FIELDS = ['status', 'ttn', 'comment', 'source',

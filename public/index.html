@@ -730,6 +730,14 @@
                         </select>
                     </div>
                     <div>
+                        <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">Постачальнику</label>
+                        <select id="exportSentFilter" onchange="loadExport()" class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
+                            <option value="unsent" selected>Ще не передані</option>
+                            <option value="sent">Вже передані</option>
+                            <option value="">Всі</option>
+                        </select>
+                    </div>
+                    <div>
                         <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">Період</label>
                         <select id="exportDateFilter" onchange="onExportDateChange()" class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-600">
                             <option value="">Весь час</option>
@@ -753,6 +761,9 @@
                     <div class="flex-1"></div>
                     <button onclick="copyExportGrouping()" class="px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider bg-slate-100 text-slate-600 hover:bg-slate-200 transition-all">
                         <i class="fa-solid fa-copy mr-1"></i> Копіювати
+                    </button>
+                    <button onclick="unmarkSupplierSent()" title="Зняти позначку «передано постачальнику» з вибраних замовлень" class="px-3 py-2 rounded-lg text-xs font-bold bg-slate-100 text-slate-500 hover:bg-slate-200 transition-all">
+                        <i class="fa-solid fa-rotate-left mr-1"></i> Не передано
                     </button>
                     <button onclick="openSupplierText()" class="px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider bg-violet-600 text-white hover:bg-violet-700 transition-all">
                         <i class="fa-solid fa-message mr-1"></i> Текст постачальнику
@@ -4345,6 +4356,8 @@
         function resetExportFilters() {
             ['exportStatusFilter', 'exportArticleFilter', 'exportSourceFilter', 'exportDateFilter', 'exportDateFrom', 'exportDateTo']
                 .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+            const sentF = document.getElementById('exportSentFilter');
+            if (sentF) sentF.value = 'unsent';
             exportSuppliers.clear();
             renderExportSupplierMenu();
             const wrap = document.getElementById('exportPeriodWrap');
@@ -4455,10 +4468,13 @@
                 const data = await res.json();
                 const orders = Array.isArray(data) ? data : [];
 
+                const sentFilter = (document.getElementById('exportSentFilter') || {}).value || '';
                 exportRows = [];
                 orders.forEach(o => {
                     const items = Array.isArray(o.items) ? o.items : [];
                     if (!items.length) return;
+                    if (sentFilter === 'unsent' && o.supplierSentAt) return;
+                    if (sentFilter === 'sent' && !o.supplierSentAt) return;
                     items.forEach(it => {
                         if (suppliers.length && !exportSuppliers.has(it.supplier_name || '')) return;
                         if (article && (it.article || '') !== article) return;
@@ -4470,6 +4486,7 @@
                             phone: o.phone || '',
                             ttn: o.ttn || '',
                             status: o.status || '',
+                            supplierSentAt: o.supplierSentAt || null,
                             itemId: it.id,
                             article: it.article || '',
                             name: it.name || '',
@@ -4523,7 +4540,9 @@
                     </td>
                     <td class="px-3 py-3 text-[11px] font-mono font-bold text-slate-700 whitespace-nowrap">${esc(r.ttn || '—')}</td>
                     <td class="px-3 py-3 text-[11px] font-bold text-slate-600 whitespace-nowrap">${esc(r.supplier_name || '—')}</td>
-                    <td class="px-3 py-3"><span class="text-[10px] font-black px-2 py-1 rounded-full ring-1 ring-inset ${stCls}">${esc(r.status)}</span></td>
+                    <td class="px-3 py-3"><span class="text-[10px] font-black px-2 py-1 rounded-full ring-1 ring-inset ${stCls}">${esc(r.status)}</span>${r.supplierSentAt
+                        ? `<div class="text-[9px] font-black text-emerald-600 mt-1 whitespace-nowrap" title="Передано постачальнику ${esc(new Date(r.supplierSentAt).toLocaleString('uk-UA'))}"><i class="fa-solid fa-check"></i> пост. ${esc(new Date(r.supplierSentAt).toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit' }))}</div>`
+                        : ''}</td>
                 </tr>`;
             }).join('');
 
@@ -4603,7 +4622,7 @@
             const selected = exportRows.filter(r => exportSelected.has(exportRowKey(r)));
             const byOrder = new Map();
             selected.forEach(r => {
-                const g = byOrder.get(r.orderId) || { fullName: r.fullName, ttn: r.ttn, items: [] };
+                const g = byOrder.get(r.orderId) || { orderId: r.orderId, fullName: r.fullName, ttn: r.ttn, sentAt: r.supplierSentAt, items: [] };
                 g.items.push(r);
                 byOrder.set(r.orderId, g);
             });
@@ -4665,7 +4684,11 @@
                     : `📦 МОДЕЛЬ ${key || 'без артикулу'} — ${stat}`;
                 return [head, '', ...list.map(o => orderBlock(o, key === MIXED))].join('\n');
             }).join('\n\n');
-            return { text, count: orders.length, skipped: all.length - orders.length };
+            return {
+                text, count: orders.length, skipped: all.length - orders.length,
+                orderIds: orders.map(o => o.orderId),
+                alreadySent: orders.filter(o => o.sentAt).length
+            };
         }
 
         function openSupplierText() {
@@ -4705,10 +4728,33 @@
 
         function refreshSupplierText() {
             const start = Math.max(1, parseInt(document.getElementById('supplierTextStart').value, 10) || 1);
-            const { text, count, skipped } = buildSupplierText(start);
+            const { text, count, skipped, orderIds, alreadySent } = buildSupplierText(start);
+            supplierTextOrderIds = orderIds;
             document.getElementById('supplierTextArea').value = text;
-            document.getElementById('supplierTextInfo').textContent =
-                `Замовлень: ${count}` + (skipped ? ` · без ТТН пропущено: ${skipped}` : '');
+            const info = document.getElementById('supplierTextInfo');
+            info.innerHTML = esc(`Замовлень: ${count}` + (skipped ? ` · без ТТН пропущено: ${skipped}` : ''))
+                + (alreadySent ? ` · <span class="text-rose-600 font-black">⚠ вже передані раніше: ${alreadySent}</span>` : '');
+        }
+        let supplierTextOrderIds = [];
+
+        async function markSupplierSent(ids, sent) {
+            const r = await fetch('/api/orders/supplier-sent', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ids, sent })
+            });
+            const j = await r.json().catch(() => ({}));
+            if (!r.ok) throw new Error(j.error || r.status);
+            return j.updated || 0;
+        }
+
+        async function unmarkSupplierSent() {
+            const ids = [...new Set(exportRows
+                .filter(r => exportSelected.has(exportRowKey(r)) && r.supplierSentAt)
+                .map(r => r.orderId))];
+            if (!ids.length) { alert('Серед вибраних немає замовлень з позначкою «передано постачальнику».\nЩоб їх побачити — фільтр «Постачальнику: Вже передані».'); return; }
+            if (!confirm(`Зняти позначку «передано постачальнику» з ${ids.length} замовл.?`)) return;
+            try { await markSupplierSent(ids, false); loadExport(); }
+            catch (e) { alert('Не вдалося: ' + e.message); }
         }
 
         function closeSupplierText() {
@@ -4720,9 +4766,20 @@
             const ta = document.getElementById('supplierTextArea');
             if (!ta.value) { alert('Немає замовлень з ТТН'); return; }
             const btn = document.getElementById('supplierTextCopyBtn');
+            const ids = supplierTextOrderIds.slice();
+            const askMark = async () => {
+                if (!ids.length) return;
+                if (!confirm(`Позначити ${ids.length} замовл. як передані постачальнику?\nВони більше не потраплятимуть у вигрузку (фільтр «Ще не передані»).`)) return;
+                try {
+                    await markSupplierSent(ids, true);
+                    closeSupplierText();
+                    exportSelected.clear();
+                    loadExport();
+                } catch (e) { alert('Не вдалося позначити: ' + e.message); }
+            };
             navigator.clipboard.writeText(ta.value).then(
-                () => { btn.innerHTML = '<i class="fa-solid fa-check mr-1"></i> Скопійовано'; setTimeout(() => { btn.innerHTML = '<i class="fa-solid fa-copy mr-1"></i> Копіювати'; }, 1500); },
-                () => { ta.select(); alert('Не вдалося скопіювати — текст виділено, натисніть Ctrl+C'); }
+                () => { btn.innerHTML = '<i class="fa-solid fa-check mr-1"></i> Скопійовано'; setTimeout(() => { btn.innerHTML = '<i class="fa-solid fa-copy mr-1"></i> Копіювати'; }, 1500); askMark(); },
+                () => { ta.select(); alert('Не вдалося скопіювати — текст виділено, натисніть Ctrl+C'); askMark(); }
             );
         }
 
