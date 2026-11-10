@@ -7299,7 +7299,13 @@
         };
 
         async function updateOrder(id, field, value) {
-            await fetch(`/api/orders/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ [field]: value }) });
+            try {
+                const r = await fetch(`/api/orders/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ [field]: value }) });
+                if (!r.ok) {
+                    const j = await r.json().catch(() => ({}));
+                    alert('Не збережено: ' + (j.error || r.status));
+                }
+            } catch (e) { alert('Не збережено: ' + e.message); }
             loadOrders();
             if (field === 'status') updateCallbacksBadge();
         }

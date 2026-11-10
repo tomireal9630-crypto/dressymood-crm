@@ -761,7 +761,7 @@ app.patch('/api/orders/:id', checkAuth, async (req, res) => {
     }
     if (req.body.ttn !== undefined) await checkboxDropEttnIfTtnChanged(req.params.id, req.body.ttn);
     // Нова ТТН — стара переадресація вже не про цю посилку
-    if (keys.includes('ttn')) extraSet += `, np_redirect_ttn = CASE WHEN orders.ttn = $${keys.indexOf('ttn') + 1} THEN np_redirect_ttn ELSE '' END`;
+    if (keys.includes('ttn')) extraSet += `, np_redirect_ttn = CASE WHEN orders.ttn = $${keys.indexOf('ttn') + 1}::varchar THEN np_redirect_ttn ELSE '' END`;
     const setClause = keys.map((key, i) => `${key} = $${i + 1}`).join(', ');
     const values = keys.map(k => req.body[k]);
     values.push(req.params.id);
