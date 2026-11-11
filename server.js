@@ -243,6 +243,7 @@ async function updateDatabaseSchema() {
                 attempts INTEGER NOT NULL DEFAULT 0,
                 response TEXT DEFAULT '',
                 created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                last_attempt_at TIMESTAMP WITH TIME ZONE,
                 sent_at TIMESTAMP WITH TIME ZONE,
                 UNIQUE (order_id, event_name)
             );
@@ -3022,6 +3023,10 @@ const net = require('net');
 const CAPI_CONFIRMED_STATUSES = ['В работе', 'Доставка', 'В пути', 'На почте', 'Переадресация',
   'Ошибка в ТТН', 'Продажа', 'Отказ', 'Возврат'];
 const CAPI_MAX_ATTEMPTS = 5;
+// ConfirmedOrder і Purchase чекають 60 хв: якщо статус помилково змінили й повернули —
+// подія не піде (відправлену подію в Meta скасувати неможливо). Lead — одразу.
+const CAPI_DELAYED_EVENTS = ['ConfirmedOrder', 'Purchase'];
+const CAPI_DELAY_MINUTES = 60;
 const sha256 = (s) => crypto.createHash('sha256').update(String(s)).digest('hex');
 
 // fbclid з URL переходу → fbc (якщо cookie _fbc не дійшла)
@@ -3045,32 +3050,58 @@ async function capiSyncOrderInner(orderId) {
   const o = r.rows[0];
   if (!o || !o.fb_pixel_id) return; // заявка без пікселя (старий лендинг / вручну) — нічого не шлемо
 
-  const px = (await pool.query(`SELECT * FROM fb_pixels WHERE pixel_id = $1`, [o.fb_pixel_id])).rows[0];
-  if (!px || !px.is_active) return; // піксель не додано в CRM або вимкнено
-
   const due = [];
   // Lead старший за 6 днів Meta вже не прийме (вікно 7 днів) — пропускаємо
   if (Date.now() - new Date(o.created_at).getTime() < 6 * 86400000) due.push('Lead');
   if (CAPI_CONFIRMED_STATUSES.includes(o.status)) due.push('ConfirmedOrder');
   if (o.status === 'Продажа') due.push('Purchase');
 
-  for (const ev of due) {
-    // «Бронюємо» подію: нова, або минула спроба впала і ліміт спроб не вичерпано
-    const claim = await pool.query(`
-      INSERT INTO capi_events (order_id, event_name, pixel_id, status, attempts)
-      VALUES ($1, $2, $3, 'pending', 1)
-      ON CONFLICT (order_id, event_name) DO UPDATE
-        SET status = 'pending', attempts = capi_events.attempts + 1, pixel_id = EXCLUDED.pixel_id
-        WHERE capi_events.status = 'error' AND capi_events.attempts < ${CAPI_MAX_ATTEMPTS}
-      RETURNING id`, [o.id, ev, px.pixel_id]);
-    if (!claim.rows.length) continue; // вже відправлено / в процесі / вичерпано спроби
+  // Статус повернули назад, поки подія чекала в черзі, — прибираємо її, у Meta нічого не йде
+  const notDue = CAPI_DELAYED_EVENTS.filter(ev => !due.includes(ev));
+  if (notDue.length) {
+    await pool.query(`DELETE FROM capi_events WHERE order_id = $1 AND status = 'waiting' AND event_name = ANY($2)`,
+      [o.id, notDue]);
+  }
 
-    const ok = await capiSendEvent(px, o, ev, claim.rows[0].id);
+  const px = (await pool.query(`SELECT * FROM fb_pixels WHERE pixel_id = $1`, [o.fb_pixel_id])).rows[0];
+  if (!px || !px.is_active) return; // піксель не додано в CRM або вимкнено
+
+  for (const ev of due) {
+    let claim;
+    if (CAPI_DELAYED_EVENTS.includes(ev)) {
+      // Ставимо в чергу (час входу в статус = created_at); відправляємо, лише коли
+      // статус протримався CAPI_DELAY_MINUTES — або повторюємо після помилки
+      await pool.query(`
+        INSERT INTO capi_events (order_id, event_name, pixel_id, status, attempts)
+        VALUES ($1, $2, $3, 'waiting', 0)
+        ON CONFLICT (order_id, event_name) DO NOTHING`, [o.id, ev, px.pixel_id]);
+      claim = await pool.query(`
+        UPDATE capi_events
+        SET status = 'pending', attempts = attempts + 1, pixel_id = $3, last_attempt_at = now()
+        WHERE order_id = $1 AND event_name = $2 AND (
+          (status = 'waiting' AND created_at <= now() - interval '${CAPI_DELAY_MINUTES} minutes')
+          OR (status = 'error' AND attempts < ${CAPI_MAX_ATTEMPTS}))
+        RETURNING id, created_at`, [o.id, ev, px.pixel_id]);
+    } else {
+      // Lead — одразу: нова подія, або минула спроба впала і ліміт спроб не вичерпано
+      claim = await pool.query(`
+        INSERT INTO capi_events (order_id, event_name, pixel_id, status, attempts, last_attempt_at)
+        VALUES ($1, $2, $3, 'pending', 1, now())
+        ON CONFLICT (order_id, event_name) DO UPDATE
+          SET status = 'pending', attempts = capi_events.attempts + 1, pixel_id = EXCLUDED.pixel_id, last_attempt_at = now()
+          WHERE capi_events.status = 'error' AND capi_events.attempts < ${CAPI_MAX_ATTEMPTS}
+        RETURNING id, created_at`, [o.id, ev, px.pixel_id]);
+    }
+    if (!claim.rows.length) continue; // ще чекає / вже відправлено / в процесі / вичерпано спроби
+
+    // Час події: Lead — коли прийшла заявка; решта — коли замовлення увійшло в статус
+    const eventTime = ev === 'Lead' ? o.created_at : claim.rows[0].created_at;
+    const ok = await capiSendEvent(px, o, ev, claim.rows[0].id, eventTime);
     if (!ok) break; // токен/піксель зламаний — решту не шлемо, спробуємо пізніше
   }
 }
 
-function capiBuildEvent(o, ev) {
+function capiBuildEvent(o, ev, eventTime) {
   const base = o.fb_event_id || `crm${o.id}`;
   const digits = String(o.phone || '').replace(/\D/g, '');
   const fbc = o.fbc || fbcFromSource(o.source, o.created_at);
@@ -3084,9 +3115,7 @@ function capiBuildEvent(o, ev) {
 
   const event = {
     event_name: ev,
-    event_time: ev === 'Lead'
-      ? Math.floor(new Date(o.created_at).getTime() / 1000)
-      : Math.floor(Date.now() / 1000),
+    event_time: Math.floor(new Date(eventTime || Date.now()).getTime() / 1000),
     event_id: ev === 'Lead' ? base : `${base}-${ev}`,
     // 'website' вимагає user agent; без нього — подія з CRM
     action_source: o.client_ua ? 'website' : 'system_generated',
@@ -3104,8 +3133,8 @@ function capiBuildEvent(o, ev) {
 }
 
 // true — відправлено; false — помилка (записана в журнал і в піксель)
-async function capiSendEvent(px, o, ev, logId) {
-  const body = { data: [capiBuildEvent(o, ev)], access_token: px.access_token };
+async function capiSendEvent(px, o, ev, logId, eventTime) {
+  const body = { data: [capiBuildEvent(o, ev, eventTime)], access_token: px.access_token };
   if (px.test_event_code) body.test_event_code = px.test_event_code;
   let j = {}, ok = false, errMsg = '', errCode = null;
   try {
@@ -3138,15 +3167,18 @@ async function capiSendEvent(px, o, ev, logId) {
   return false;
 }
 
-// Повтор невдалих відправок (мережа, тимчасові помилки Meta)
-async function capiRetryFailed() {
+// Кожні 5 хв: відправляємо події, що відчекали CAPI_DELAY_MINUTES,
+// і повторюємо невдалі (не частіше ніж раз на 15 хв, до CAPI_MAX_ATTEMPTS спроб)
+async function capiProcessQueue() {
   const r = await pool.query(`
     SELECT DISTINCT order_id FROM capi_events
-    WHERE status = 'error' AND attempts < $1 AND created_at > now() - interval '3 days'
-    LIMIT 300`, [CAPI_MAX_ATTEMPTS]);
+    WHERE (status = 'waiting' AND created_at <= now() - interval '${CAPI_DELAY_MINUTES} minutes')
+       OR (status = 'error' AND attempts < $1 AND created_at > now() - interval '3 days'
+           AND (last_attempt_at IS NULL OR last_attempt_at <= now() - interval '15 minutes'))
+    LIMIT 500`, [CAPI_MAX_ATTEMPTS]);
   for (const row of r.rows) await capiSyncOrder(row.order_id);
 }
-setInterval(() => { capiRetryFailed().catch(e => console.error('[CAPI retry]', e.message)); }, 15 * 60 * 1000);
+setInterval(() => { capiProcessQueue().catch(e => console.error('[CAPI queue]', e.message)); }, 5 * 60 * 1000);
 
 // --- Пікселі (CRUD) ---
 const maskToken = (t) => t ? '…' + String(t).slice(-6) : '';

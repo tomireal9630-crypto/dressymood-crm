@@ -1837,7 +1837,7 @@
                     <div class="mb-6 flex justify-between items-start gap-4">
                         <div>
                             <h3 class="text-xl font-black text-slate-800 uppercase italic"><i class="fa-solid fa-bullseye text-blue-500 mr-2"></i>Пікселі · Conversions API</h3>
-                            <p class="text-[11px] text-slate-400 font-medium">CRM сама повідомляє Meta: заявка (Lead) → підтверджено (ConfirmedOrder, статус «В работе») → викуп (Purchase, «Продажа»). Події йдуть у піксель з посилання реклами <code>?px=ID</code>.</p>
+                            <p class="text-[11px] text-slate-400 font-medium">CRM сама повідомляє Meta: заявка (Lead) → підтверджено (ConfirmedOrder, статус «В работе») → викуп (Purchase, «Продажа»). Події йдуть у піксель з посилання реклами <code>?px=ID</code>. Підтвердження й викуп відправляються через 60 хв — якщо статус за цей час повернули назад, у Meta нічого не піде.</p>
                         </div>
                         <button onclick="toggleCapiLog()" class="px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider bg-slate-100 text-slate-600 hover:bg-slate-200 transition-all whitespace-nowrap">
                             <i class="fa-solid fa-list mr-1"></i> Журнал
@@ -3571,7 +3571,9 @@
                                 ? (/"test":true/.test(e.response || '') ? '<span class="text-amber-600 font-bold">✓ тест</span>' : '<span class="text-emerald-600 font-bold">✓</span>')
                                 : e.status === 'error'
                                     ? `<span class="text-rose-600 font-bold" title="${esc(e.response || '')}">✗ ${esc((e.response || '').slice(0, 60))}${e.attempts > 1 ? ' (спроб ' + e.attempts + ')' : ''}</span>`
-                                    : '<span class="text-slate-400">…</span>';
+                                    : e.status === 'waiting'
+                                        ? '<span class="text-slate-500" title="Відправиться, якщо статус протримається 60 хв">⏳ чекає 60 хв</span>'
+                                        : '<span class="text-slate-400">…</span>';
                             return `<tr class="border-t border-slate-100">
                                 <td class="px-3 py-1.5 text-slate-500 whitespace-nowrap">${new Date(e.sent_at || e.created_at).toLocaleString('uk-UA')}</td>
                                 <td class="px-3 py-1.5 font-bold">#${e.order_id} <span class="font-normal text-slate-400">${esc(e.full_name || '')}</span></td>
