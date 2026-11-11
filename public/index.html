@@ -1209,6 +1209,7 @@
                             <option value="revenueDesc">Виручка ↓</option>
                             <option value="marginDesc">Маржа ↓</option>
                             <option value="ordersDesc">Викуплено ↓</option>
+                            <option value="refusalDesc">% відмов ↓</option>
                             <option value="articleAsc">Артикул А→Я</option>
                         </select>
                     </div>
@@ -1223,6 +1224,7 @@
                                     <th class="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Собів.</th>
                                     <th class="px-4 py-3 text-[10px] font-black text-blue-500 uppercase tracking-widest text-right">Ad Spend</th>
                                     <th class="px-4 py-3 text-[10px] font-black text-rose-500 uppercase tracking-widest text-right">Поверн.</th>
+                                    <th class="px-4 py-3 text-[10px] font-black text-rose-500 uppercase tracking-widest text-center" title="Відмови ÷ (продажі + відмови) серед закритих посилок періоду. Відмова — Отказ/Возврат з ТТН">% відмов</th>
                                     <th class="px-4 py-3 text-[10px] font-black text-violet-500 uppercase tracking-widest text-center">ROAS</th>
                                     <th class="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">CPL</th>
                                     <th class="px-4 py-3 text-[10px] font-black text-emerald-500 uppercase tracking-widest text-right">Чист. пр.</th>
@@ -5555,6 +5557,11 @@
             renderRoiTable();
         }
 
+        // % відмов моделі: відмови ÷ (продажі + відмови); null — ще нічого не закрилось
+        function refusalPct(r) {
+            const ref = Number(r.refused) || 0, done = (Number(r.orders) || 0) + ref;
+            return done ? Math.round(ref / done * 100) : null;
+        }
         function renderRoiTable() {
             const tbody = document.getElementById('roiStatsTable');
             if (!tbody) return;
@@ -5568,11 +5575,12 @@
                 ordersDesc:  (a,b) => (b.orders||0) - (a.orders||0),
                 roiForecastDesc: (a,b) => (b.roi_forecast||0) - (a.roi_forecast||0),
                 roiForecastAsc:  (a,b) => (a.roi_forecast||0) - (b.roi_forecast||0),
+                refusalDesc: (a,b) => (refusalPct(b) ?? -1) - (refusalPct(a) ?? -1),
                 articleAsc:  (a,b) => (a.article || '').localeCompare(b.article || '')
             };
             rows.sort(sorters[sort] || sorters.profitDesc);
             if (!rows.length) {
-                tbody.innerHTML = `<tr><td colspan="12" class="p-8 text-center text-slate-400 font-medium">Немає даних за період</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="13" class="p-8 text-center text-slate-400 font-medium">Немає даних за період</td></tr>`;
                 return;
             }
             const uah = n => Number(n || 0).toLocaleString('uk-UA') + ' ₴';
@@ -5594,6 +5602,8 @@
                              : 'bg-slate-100 text-slate-400';
                 const npCls = (r.net_profit || 0) > 0 ? 'text-emerald-600' : (r.net_profit || 0) < 0 ? 'text-rose-600' : 'text-slate-500';
                 const noSpend = !r.ad_spend;
+                const refPct = refusalPct(r);
+                const refCls = refPct == null ? 'text-slate-300' : refPct <= 25 ? 'text-emerald-600' : refPct <= 40 ? 'text-amber-600' : 'text-rose-600';
                 return `
                 <tr class="hover:bg-slate-50 transition-all">
                     <td class="px-4 py-3 font-black text-slate-800 uppercase whitespace-nowrap">${esc(r.article)}</td>
@@ -5602,6 +5612,7 @@
                     <td class="px-4 py-3 text-right font-bold text-rose-500">${uah(r.cost)}</td>
                     <td class="px-4 py-3 text-right font-black text-blue-500">${uah(r.ad_spend)}</td>
                     <td class="px-4 py-3 text-right font-bold text-rose-500">${uah(r.returns_cost)}<div class="text-[10px] text-slate-400 font-medium">${r.refused} шт · кур'єр ${uah(r.courier_cost)}</div></td>
+                    <td class="px-4 py-3 text-center font-black ${refCls}">${refPct == null ? '—' : refPct + '%'}<div class="text-[10px] text-slate-400 font-medium">${r.refused || 0} з ${(r.orders || 0) + (r.refused || 0)}</div></td>
                     <td class="px-4 py-3 text-center">${noSpend ? '<span class="text-slate-300">—</span>' : `<span class="inline-flex items-center text-[11px] font-black px-2.5 py-1 rounded-full ${roasCls}">${roasV.toFixed(2)}×</span>`}</td>
                     <td class="px-4 py-3 text-right text-xs font-bold text-slate-600">${noSpend ? '—' : Math.round(r.cpl) + ' ₴'}</td>
                     <td class="px-4 py-3 text-right font-black ${npCls}">${uah(r.net_profit)}</td>
