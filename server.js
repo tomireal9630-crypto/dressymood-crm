@@ -3950,11 +3950,14 @@ const RETURNS_SELECT = `
   LEFT JOIN customers c ON c.id = o.customer_id`;
 
 // ===================== ВІДМОВА → TELEGRAM → VIBER =====================
-// Через 60 хв після відмови (якщо статус не повернули назад) бот звітів пише в Telegram-групу
-// картку відмови з кнопкою «Написати у Viber». Кнопка веде на /v/<token>: сторінка копіює
-// шаблон з «Повернення → Шаблон повідомлення» і відкриває чат Viber з клієнтом — пишеш зі свого акаунта.
-// Сповіщення — лише 9:00–21:00 (Київ), щоб не писати клієнтам уночі; нічні чекають до ранку.
+// Раз на день о REFUSAL_DIGEST_HOUR (Київ) бот звітів шле в Telegram-групу ОДНЕ зведення: усі нові
+// відмови (статус протримався ≥ 60 хв) з кнопкою «Написати у Viber» для кожної. Кнопка веде на /v/<token>:
+// сторінка копіює шаблон з «Повернення → Шаблон повідомлення» і відкриває чат Viber з клієнтом.
+// Якщо сервер о 10:00 перезапускався — зведення піде при першій нагоді до 21:00 того ж дня.
 const REFUSAL_NOTIFY_DELAY_MIN = 60;
+const REFUSAL_DIGEST_HOUR = 10;
+const REFUSAL_DIGEST_KEY = 'refusal_digest';
+const REFUSAL_DIGEST_CHUNK = 15; // відмов на одне повідомлення (ліміт довжини тексту й кнопок Telegram)
 const PUBLIC_URL = (process.env.PUBLIC_URL || 'https://crm.viollini.store').replace(/\/+$/, '');
 
 const htmlEsc = (v) => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -3989,39 +3992,65 @@ function kyivHour() {
   return Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Kyiv', hour: '2-digit', hour12: false }).format(new Date())) % 24;
 }
 
+function kyivDate() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kyiv' }).format(new Date()); // YYYY-MM-DD
+}
+
 async function notifyRefusals() {
   const token = (process.env.TG_REPORT_BOT_TOKEN || '').trim();
   const chatId = (process.env.TG_REPORT_CHAT_ID || '').trim();
   if (!token || !chatId) return;
   const h = kyivHour();
-  if (h < 9 || h >= 21) return;
+  if (h < REFUSAL_DIGEST_HOUR || h >= 21) return;
+  const today = kyivDate();
+  const st = await pool.query(`SELECT value FROM app_settings WHERE key = $1`, [REFUSAL_DIGEST_KEY]);
+  if (st.rows[0] && st.rows[0].value && st.rows[0].value.date === today) return; // сьогодні вже надіслано
 
   const r = await pool.query(`${RETURNS_SELECT}
     WHERE rt.tg_notified_at IS NULL AND rt.asked_at IS NULL
       AND rt.refused_at <= now() - interval '${REFUSAL_NOTIFY_DELAY_MIN} minutes'
-      AND rt.refused_at > now() - interval '3 days'
+      AND rt.refused_at > now() - interval '7 days'
       AND o.status = ANY($1)
-    ORDER BY rt.id LIMIT 20`, [RETURN_TRIGGER_STATUSES]);
+    ORDER BY rt.refused_at, rt.id LIMIT 100`, [RETURN_TRIGGER_STATUSES]);
 
-  for (const row of r.rows) {
-    // «Бронюємо» сповіщення — щоб паралельний запуск не надіслав його двічі
-    const claim = await pool.query(`
-      UPDATE returns SET tg_notified_at = now(), viber_token = COALESCE(viber_token, $2)
-      WHERE id = $1 AND tg_notified_at IS NULL RETURNING viber_token`,
-      [row.id, crypto.randomBytes(16).toString('hex')]);
-    if (!claim.rows.length) continue;
+  const markSent = () => pool.query(
+    `INSERT INTO app_settings (key, value) VALUES ($1, $2)
+     ON CONFLICT (key) DO UPDATE SET value = $2`, [REFUSAL_DIGEST_KEY, JSON.stringify({ date: today })]);
+  if (!r.rows.length) { await markSent(); return; } // відмов немає — нічого не шлемо
 
-    const phone = viberPhoneServer(row.customer_phone);
-    const text = [
-      `❌ <b>Відмова</b> · замовлення #${row.order_id}`,
-      `👤 ${htmlEsc(row.customer_name || '—')}${phone ? ' · +' + phone : ''}`,
-      `👗 ${htmlEsc(row.items_human || row.items_text || '—')}${row.articles ? ' (' + htmlEsc(row.articles) + ')' : ''}`,
-      `📦 ТТН ${htmlEsc(row.ttn || '—')}`,
-      phone ? '' : '⚠️ Номер не схожий на український — Viber-посилання не буде'
-    ].filter(Boolean).join('\n');
-    const body = { chat_id: chatId, text, parse_mode: 'HTML', disable_web_page_preview: true };
-    if (phone) {
-      body.reply_markup = { inline_keyboard: [[{ text: '💬 Написати у Viber', url: `${PUBLIC_URL}/v/${claim.rows[0].viber_token}` }]] };
+  // «Бронюємо» всі разом (і видаємо токени посилань), щоб паралельний запуск не надіслав їх двічі
+  const ids = r.rows.map(x => x.id);
+  const toks = r.rows.map(() => crypto.randomBytes(16).toString('hex'));
+  const claim = await pool.query(`
+    UPDATE returns rt SET tg_notified_at = now(), viber_token = COALESCE(rt.viber_token, t.tok)
+    FROM unnest($1::int[], $2::text[]) AS t(id, tok)
+    WHERE rt.id = t.id AND rt.tg_notified_at IS NULL
+    RETURNING rt.id, rt.viber_token`, [ids, toks]);
+  const tokenById = new Map(claim.rows.map(x => [x.id, x.viber_token]));
+  const rows = r.rows.filter(x => tokenById.has(x.id));
+  if (!rows.length) return;
+
+  for (let i = 0; i < rows.length; i += REFUSAL_DIGEST_CHUNK) {
+    const chunk = rows.slice(i, i + REFUSAL_DIGEST_CHUNK);
+    const lines = [];
+    if (i === 0) lines.push(`❌ <b>Відмови: ${rows.length}</b> — напиши клієнтам, що не підійшло`, '');
+    const buttons = [];
+    chunk.forEach((row, k) => {
+      const n = i + k + 1;
+      const phone = viberPhoneServer(row.customer_phone);
+      lines.push(`${n}. #${row.order_id} ${htmlEsc(row.customer_name || '—')} · ` +
+        `${htmlEsc(row.items_human || row.items_text || '—')}${row.articles ? ' (' + htmlEsc(row.articles) + ')' : ''}` +
+        (phone ? '' : ' · ⚠️ номер не український, без Viber'));
+      if (phone) {
+        const who = viberFirstNameServer(row.customer_name) || ('#' + row.order_id);
+        buttons.push({ text: `💬 ${n}. ${who}`.slice(0, 40), url: `${PUBLIC_URL}/v/${tokenById.get(row.id)}` });
+      }
+    });
+    const body = { chat_id: chatId, text: lines.join('\n'), parse_mode: 'HTML', disable_web_page_preview: true };
+    if (buttons.length) {
+      const kb = [];
+      for (let b = 0; b < buttons.length; b += 2) kb.push(buttons.slice(b, b + 2)); // по 2 кнопки в ряд
+      body.reply_markup = { inline_keyboard: kb };
     }
     try {
       const resp = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
@@ -4031,12 +4060,14 @@ async function notifyRefusals() {
       const j = await resp.json().catch(() => ({}));
       if (!j.ok) throw new Error(j.description || 'HTTP ' + resp.status);
     } catch (e) {
-      // Не дійшло — знімаємо бронь, наступний запуск спробує ще раз
-      await pool.query(`UPDATE returns SET tg_notified_at = NULL WHERE id = $1`, [row.id]);
-      console.error('[refusal notify]', row.order_id, e.message);
-      break;
+      // Не дійшло — знімаємо бронь із цієї й наступних частин; наступний запуск (через 5 хв) дошле їх
+      await pool.query(`UPDATE returns SET tg_notified_at = NULL WHERE id = ANY($1)`,
+        [rows.slice(i).map(x => x.id)]);
+      console.error('[refusal digest]', e.message);
+      return;
     }
   }
+  await markSent();
 }
 setInterval(() => { notifyRefusals().catch(e => console.error('[refusal notify]', e.message)); }, 5 * 60 * 1000);
 
