@@ -1832,6 +1832,53 @@
                         </div>
                     </form>
                 </div>
+
+                <div class="bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/40 border border-slate-100 p-10 max-w-3xl mt-8">
+                    <div class="mb-6 flex justify-between items-start gap-4">
+                        <div>
+                            <h3 class="text-xl font-black text-slate-800 uppercase italic"><i class="fa-solid fa-bullseye text-blue-500 mr-2"></i>Пікселі · Conversions API</h3>
+                            <p class="text-[11px] text-slate-400 font-medium">CRM сама повідомляє Meta: заявка (Lead) → підтверджено (ConfirmedOrder, статус «В работе») → викуп (Purchase, «Продажа»). Події йдуть у піксель з посилання реклами <code>?px=ID</code>.</p>
+                        </div>
+                        <button onclick="toggleCapiLog()" class="px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider bg-slate-100 text-slate-600 hover:bg-slate-200 transition-all whitespace-nowrap">
+                            <i class="fa-solid fa-list mr-1"></i> Журнал
+                        </button>
+                    </div>
+
+                    <div id="fbPixelsList" class="space-y-2 mb-6"></div>
+                    <div id="capiLog" class="hidden mb-6"></div>
+
+                    <form id="fbAddPixelForm" class="bg-slate-50 border border-slate-100 rounded-2xl p-5 space-y-4">
+                        <div class="text-xs font-black text-slate-500 uppercase tracking-widest">Додати піксель</div>
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">ID пікселя</label>
+                                <input type="text" name="pixel_id" required placeholder="1234567890123456" inputmode="numeric"
+                                    class="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-lg outline-none font-mono text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">Назва (для тебе, необов'язково)</label>
+                                <input type="text" name="name" placeholder="БМ-2 піксель"
+                                    class="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-lg outline-none font-bold text-sm">
+                            </div>
+                            <div class="col-span-2">
+                                <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">Токен Conversions API</label>
+                                <input type="text" name="access_token" required placeholder="EAAB..."
+                                    class="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-lg outline-none font-mono text-xs">
+                                <div class="text-[10px] text-slate-400 font-medium mt-1">Events Manager → піксель → Налаштування → Conversions API → «Створити маркер доступу»</div>
+                            </div>
+                            <div class="col-span-2">
+                                <label class="block text-[9px] font-black text-slate-400 uppercase mb-1">Test Event Code (лише для перевірки)</label>
+                                <input type="text" name="test_event_code" placeholder="TEST12345"
+                                    class="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-lg outline-none font-mono text-sm">
+                                <div class="text-[10px] text-slate-400 font-medium mt-1">Поки заповнено — події йдуть ТІЛЬКИ у вкладку Test Events і не впливають на рекламу. Для бойової роботи — очисти.</div>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <button type="submit" class="bg-blue-500 text-white px-5 py-2 rounded-lg font-black text-xs uppercase tracking-widest hover:bg-blue-600 transition-all">Додати + перевірити</button>
+                            <span id="fbPixelAddResult" class="text-sm font-bold"></span>
+                        </div>
+                    </form>
+                </div>
             </div>
 
             <div id="view-theme" class="view-content h-full">
@@ -2625,7 +2672,7 @@
             if (targetContent) targetContent.classList.add('active');
 
             if (view === 'theme') renderThemeCards();
-            if (view === 'settings') { loadNpSettings(); loadSmsSettings(); loadCheckboxSettings(); loadEconSettings(); loadFbAccounts(); }
+            if (view === 'settings') { loadNpSettings(); loadSmsSettings(); loadCheckboxSettings(); loadEconSettings(); loadFbAccounts(); loadFbPixels(); }
             if (view === 'regulars') loadRegulars();
             if (view === 'export') loadExport();
             if (view === 'returns') loadReturns();
@@ -3380,6 +3427,159 @@
                 if (!r.ok) throw new Error(j.error || 'Помилка');
                 alert('✓ Підключення працює.\nКабінет: ' + (j.info && j.info.name ? j.info.name : ''));
             } catch (e) { alert('✕ ' + e.message); }
+        }
+
+        // --- НАЛАШТУВАННЯ: ПІКСЕЛІ / CONVERSIONS API ---
+        async function loadFbPixels() {
+            const wrap = document.getElementById('fbPixelsList');
+            if (!wrap) return;
+            try {
+                const r = await fetch('/api/fb/pixels');
+                const list = await r.json();
+                if (!Array.isArray(list) || !list.length) {
+                    wrap.innerHTML = `<div class="text-center text-slate-400 italic text-sm py-6 border-2 border-dashed border-slate-200 rounded-xl">Жодного пікселя ще не додано</div>`;
+                    return;
+                }
+                wrap.innerHTML = list.map(p => {
+                    const ok = p.last_ok_at ? new Date(p.last_ok_at).toLocaleString('uk-UA') : '—';
+                    const err = p.last_error || '';
+                    const badge = !p.is_active
+                        ? `<span class="text-[10px] font-black text-slate-500 bg-slate-100 px-2 py-1 rounded">Вимкнено</span>`
+                        : p.test_event_code
+                            ? `<span class="text-[10px] font-black text-amber-600 bg-amber-50 px-2 py-1 rounded" title="Події йдуть лише в Test Events">ТЕСТ</span>`
+                            : err && (!p.last_ok_at || new Date(p.last_error_at) > new Date(p.last_ok_at))
+                                ? `<span class="text-[10px] font-black text-rose-600 bg-rose-50 px-2 py-1 rounded" title="${esc(err)}">✗ Помилка</span>`
+                                : `<span class="text-[10px] font-black text-emerald-600 bg-emerald-50 px-2 py-1 rounded">✓ Активний</span>`;
+                    const toggle = p.is_active
+                        ? `<button onclick="patchFbPixel(${p.id}, {is_active:false})" title="Вимкнути" class="text-amber-500 hover:text-amber-600 transition-all p-1.5"><i class="fa-solid fa-pause"></i></button>`
+                        : `<button onclick="patchFbPixel(${p.id}, {is_active:true})" title="Увімкнути" class="text-emerald-500 hover:text-emerald-600 transition-all p-1.5"><i class="fa-solid fa-play"></i></button>`;
+                    return `
+                    <div class="flex items-center gap-3 bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 ${p.is_active ? '' : 'opacity-60'}">
+                        <i class="fa-solid fa-bullseye text-blue-500 text-xl"></i>
+                        <div class="flex-1 min-w-0">
+                            <div class="font-bold text-slate-800 text-sm">${esc(p.name || 'Піксель')} <span class="font-mono text-[11px] text-slate-400">${esc(p.pixel_id)}</span></div>
+                            <div class="text-[10px] text-slate-400 font-medium">7 днів: Lead ${p.leads_7d} · Підтв. ${p.confirmed_7d} · Purchase ${p.purchases_7d}${p.errors_7d ? ` · <span class="text-rose-500">помилок ${p.errors_7d}</span>` : ''} · остання відправка ${esc(ok)} · токен ${esc(p.access_token)}</div>
+                            ${err ? `<div class="text-[10px] text-rose-500 font-medium mt-0.5 truncate" title="${esc(err)}">${esc(err)}</div>` : ''}
+                        </div>
+                        ${badge}
+                        ${toggle}
+                        <button onclick="editFbPixel(${p.id}, '${esc(p.test_event_code || '')}')" title="Змінити токен / Test Event Code" class="text-slate-400 hover:text-blue-500 transition-all p-1.5"><i class="fa-solid fa-pen"></i></button>
+                        <button onclick="testFbPixel(${p.id})" title="Перевірити" class="text-slate-400 hover:text-blue-500 transition-all p-1.5"><i class="fa-solid fa-circle-check"></i></button>
+                        <button onclick="deleteFbPixel(${p.id})" title="Видалити" class="text-slate-400 hover:text-rose-500 transition-all p-1.5"><i class="fa-solid fa-trash-can"></i></button>
+                    </div>`;
+                }).join('');
+            } catch (e) { /* мовчки */ }
+        }
+
+        let fbPixelsReady = false;
+        function setupFbPixels() {
+            if (fbPixelsReady) return;
+            fbPixelsReady = true;
+            const f = document.getElementById('fbAddPixelForm');
+            if (!f) return;
+            f.onsubmit = async (e) => {
+                e.preventDefault();
+                const res = document.getElementById('fbPixelAddResult');
+                if (res) { res.textContent = 'Перевірка…'; res.style.color = '#64748b'; }
+                try {
+                    const r = await fetch('/api/fb/pixels', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            pixel_id: f.pixel_id.value.trim(),
+                            name: f.name.value.trim(),
+                            access_token: f.access_token.value.trim(),
+                            test_event_code: f.test_event_code.value.trim()
+                        })
+                    });
+                    const j = await r.json();
+                    if (!r.ok) throw new Error(j.error || 'Помилка');
+                    if (res) { res.textContent = '✓ Піксель додано' + (j.name ? ': ' + j.name : ''); res.style.color = '#16a34a'; }
+                    f.reset();
+                    loadFbPixels();
+                } catch (err) {
+                    if (res) { res.textContent = '✕ ' + err.message; res.style.color = '#dc2626'; }
+                }
+            };
+        }
+
+        async function patchFbPixel(id, body) {
+            try {
+                const r = await fetch(`/api/fb/pixels/${id}`, {
+                    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                const j = await r.json();
+                if (!r.ok) throw new Error(j.error || 'Помилка');
+                loadFbPixels();
+                return true;
+            } catch (e) { alert('✕ ' + e.message); return false; }
+        }
+
+        async function editFbPixel(id, curTestCode) {
+            const token = prompt('Новий токен Conversions API (порожньо — не змінювати):', '');
+            if (token === null) return;
+            const code = prompt('Test Event Code (порожньо — бойовий режим, події йдуть у рекламу):', curTestCode || '');
+            if (code === null) return;
+            const body = { test_event_code: code.trim() };
+            if (token.trim()) body.access_token = token.trim();
+            if (await patchFbPixel(id, body)) alert('✓ Збережено');
+        }
+
+        async function deleteFbPixel(id) {
+            if (!confirm('Видалити піксель? Події в нього більше не відправлятимуться.')) return;
+            try {
+                await fetch(`/api/fb/pixels/${id}`, { method: 'DELETE' });
+                loadFbPixels();
+            } catch (e) { alert('Помилка: ' + e.message); }
+        }
+
+        async function testFbPixel(id) {
+            try {
+                const r = await fetch(`/api/fb/pixels/${id}/test`, { method: 'POST' });
+                const j = await r.json();
+                if (!r.ok) throw new Error(j.error || 'Помилка');
+                let msg = '✓ Токен працює. Піксель: ' + (j.name || '');
+                msg += j.testEvent
+                    ? '\n\nТестовий Lead відправлено — перевір Events Manager → Test Events.'
+                    : '\n\nЩоб надіслати тестову подію, вкажи Test Event Code (кнопка ✎).';
+                alert(msg);
+                loadFbPixels();
+            } catch (e) { alert('✕ ' + e.message); }
+        }
+
+        async function toggleCapiLog() {
+            const box = document.getElementById('capiLog');
+            if (!box) return;
+            if (!box.classList.contains('hidden')) { box.classList.add('hidden'); return; }
+            box.classList.remove('hidden');
+            box.innerHTML = '<div class="text-sm text-slate-400 py-3">Завантаження…</div>';
+            try {
+                const r = await fetch('/api/capi/log');
+                const rows = await r.json();
+                if (!Array.isArray(rows) || !rows.length) {
+                    box.innerHTML = '<div class="text-center text-slate-400 italic text-sm py-4 border-2 border-dashed border-slate-200 rounded-xl">Ще нічого не відправлялось</div>';
+                    return;
+                }
+                box.innerHTML = `<div class="max-h-80 overflow-auto border border-slate-100 rounded-xl">
+                    <table class="w-full text-[11px]">
+                        <thead class="bg-slate-50 text-slate-400 uppercase text-[9px] font-black sticky top-0"><tr>
+                            <th class="text-left px-3 py-2">Час</th><th class="text-left px-3 py-2">Замовл.</th>
+                            <th class="text-left px-3 py-2">Подія</th><th class="text-left px-3 py-2">Піксель</th><th class="text-left px-3 py-2">Результат</th>
+                        </tr></thead>
+                        <tbody>${rows.map(e => {
+                            const st = e.status === 'ok'
+                                ? (/"test":true/.test(e.response || '') ? '<span class="text-amber-600 font-bold">✓ тест</span>' : '<span class="text-emerald-600 font-bold">✓</span>')
+                                : e.status === 'error'
+                                    ? `<span class="text-rose-600 font-bold" title="${esc(e.response || '')}">✗ ${esc((e.response || '').slice(0, 60))}${e.attempts > 1 ? ' (спроб ' + e.attempts + ')' : ''}</span>`
+                                    : '<span class="text-slate-400">…</span>';
+                            return `<tr class="border-t border-slate-100">
+                                <td class="px-3 py-1.5 text-slate-500 whitespace-nowrap">${new Date(e.sent_at || e.created_at).toLocaleString('uk-UA')}</td>
+                                <td class="px-3 py-1.5 font-bold">#${e.order_id} <span class="font-normal text-slate-400">${esc(e.full_name || '')}</span></td>
+                                <td class="px-3 py-1.5">${esc(e.event_name)}</td>
+                                <td class="px-3 py-1.5 font-mono text-slate-400">${esc(e.pixel_id)}</td>
+                                <td class="px-3 py-1.5">${st}</td></tr>`;
+                        }).join('')}</tbody></table></div>`;
+            } catch (e) { box.innerHTML = '<div class="text-rose-500 text-sm">' + esc(e.message) + '</div>'; }
         }
 
         async function fbSyncNow() {
@@ -8043,6 +8243,7 @@
         setupCheckboxSettings();
         setupEconSettings();
         setupFbAccounts();
+        setupFbPixels();
         refreshData();
 
         // Автооновлення списку замовлень кожні 15 c (без перешкод під час редагування)

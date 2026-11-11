@@ -206,6 +206,48 @@ async function updateDatabaseSchema() {
         await pool.query(`ALTER TABLE fb_ad_accounts ADD COLUMN IF NOT EXISTS instagram_id VARCHAR(64) DEFAULT '';`);
         await pool.query(`ALTER TABLE fb_ad_accounts ADD COLUMN IF NOT EXISTS pixel_id VARCHAR(64) DEFAULT '';`);
 
+        // === META CONVERSIONS API ===
+        // Дані кліку, які лендинг передає разом із заявкою
+        await pool.query(`
+            ALTER TABLE orders
+            ADD COLUMN IF NOT EXISTS fb_pixel_id VARCHAR(32) DEFAULT '',
+            ADD COLUMN IF NOT EXISTS fb_event_id VARCHAR(64) DEFAULT '',
+            ADD COLUMN IF NOT EXISTS fbp VARCHAR(255) DEFAULT '',
+            ADD COLUMN IF NOT EXISTS fbc VARCHAR(512) DEFAULT '',
+            ADD COLUMN IF NOT EXISTS client_ip VARCHAR(64) DEFAULT '',
+            ADD COLUMN IF NOT EXISTS client_ua TEXT DEFAULT '';
+        `);
+        // Пікселі з токенами CAPI (токен генерується в Events Manager → піксель → Налаштування)
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS fb_pixels (
+                id SERIAL PRIMARY KEY,
+                pixel_id VARCHAR(32) NOT NULL UNIQUE,
+                name VARCHAR(255) DEFAULT '',
+                access_token TEXT NOT NULL,
+                test_event_code VARCHAR(64) DEFAULT '',
+                is_active BOOLEAN DEFAULT true,
+                last_ok_at TIMESTAMP WITH TIME ZONE,
+                last_error TEXT DEFAULT '',
+                last_error_at TIMESTAMP WITH TIME ZONE,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+        `);
+        // Журнал відправок: одна подія на замовлення — рівно один раз
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS capi_events (
+                id SERIAL PRIMARY KEY,
+                order_id INTEGER REFERENCES orders(id) ON DELETE CASCADE,
+                event_name VARCHAR(64) NOT NULL,
+                pixel_id VARCHAR(32) DEFAULT '',
+                status VARCHAR(16) NOT NULL DEFAULT 'pending',
+                attempts INTEGER NOT NULL DEFAULT 0,
+                response TEXT DEFAULT '',
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                sent_at TIMESTAMP WITH TIME ZONE,
+                UNIQUE (order_id, event_name)
+            );
+        `);
+
         // === КУРСИ ВАЛЮТ (історія авто-оновлень) ===
         await pool.query(`
             CREATE TABLE IF NOT EXISTS fx_rates (
@@ -786,6 +828,7 @@ app.patch('/api/orders/:id', checkAuth, async (req, res) => {
     // Відмова/повернення → заводимо повернення для обліку з кур'єром (і навпаки — знімаємо)
     if (req.body.status !== undefined) {
       await syncReturnForOrderStatus(req.params.id, req.body.status);
+      capiSyncOrder(req.params.id);
     }
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -2284,7 +2327,8 @@ async function runAdLaunch(launchId) {
       } else {
         spec.link_data = { image_hash: c.image_hash, link: cfg.link, message: cfg.message || '', name: cfg.title || '', description: cfg.description || '', call_to_action: cta };
       }
-      const creative = await fbPost(`${actUrl}/adcreatives`, { name: `${adsetName} — creative`, object_story_spec: spec, access_token: acc.access_token });
+      // url_tags: px=… — лендинг бере піксель з посилання, CRM шле події CAPI саме в нього
+      const creative = await fbPost(`${actUrl}/adcreatives`, { name: `${adsetName} — creative`, object_story_spec: spec, url_tags: `px=${acc.pixel_id}`, access_token: acc.access_token });
       const ad = await fbPost(`${actUrl}/ads`, { name: adsetName, adset_id: adset.id, creative: { creative_id: creative.id }, status: 'PAUSED', access_token: acc.access_token });
       ids.adsets.push({ adset_id: adset.id, creative_id: creative.id, ad_id: ad.id, name: adsetName });
       await say(`Оголошення «${adsetName}» → ${ad.id}`);
@@ -2865,6 +2909,7 @@ app.put('/api/orders/:id(\\d+)/full', checkAuth, async (req, res) => {
 
     await client.query('COMMIT');
     await syncReturnForOrderStatus(orderId, b.status || 'Новый');
+    capiSyncOrder(orderId);
     res.json({ success: true });
   } catch (err) {
     await client.query('ROLLBACK');
@@ -2909,6 +2954,14 @@ app.post('/api/landing/order', landingLimiter, async (req, res) => {
   const size = cut(req.body.size, 50);
   const color = cut(req.body.color, 50);
   const source = cut(req.body.source || req.get('referer') || 'Лендінг', 2000);
+  // Дані кліку для Meta Conversions API (лендинг з новим шаблоном)
+  const okRe = (v, re, n) => { const s = cut(v, n); return re.test(s) ? s : ''; };
+  const fbPixelId = okRe(req.body.pixel_id, /^\d{5,20}$/, 32);
+  const fbEventId = okRe(req.body.event_id, /^[\w-]{1,64}$/, 64);
+  const fbp = okRe(req.body.fbp, /^fb\.\d\.\d+\.\d+$/, 255);
+  const fbc = okRe(req.body.fbc, /^fb\.\d\.\d+\.[\w-]+$/, 512);
+  const clientIp = cut(req.body.ip, 64);
+  const clientUa = cut(req.body.ua, 500);
 
   const client = await pool.connect();
   try {
@@ -2935,8 +2988,9 @@ app.post('/api/landing/order', landingLimiter, async (req, res) => {
     }
 
     const order = await client.query(
-      `INSERT INTO orders (customer_id, full_name, status, source) VALUES ($1, $2, $3, $4) RETURNING id`,
-      [customerId, name, 'Новый', source]
+      `INSERT INTO orders (customer_id, full_name, status, source, fb_pixel_id, fb_event_id, fbp, fbc, client_ip, client_ua)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
+      [customerId, name, 'Новый', source, fbPixelId, fbEventId, fbp, fbc, clientIp, clientUa]
     );
     const orderId = order.rows[0].id;
 
@@ -2948,12 +3002,267 @@ app.post('/api/landing/order', landingLimiter, async (req, res) => {
 
     await client.query('COMMIT');
     res.json({ success: true, id: orderId });
+    capiSyncOrder(orderId); // Lead у Meta — у фоні, відповідь лендингу не чекає
   } catch (err) {
     await client.query('ROLLBACK');
     res.status(500).json({ error: err.message });
   } finally {
     client.release();
   }
+});
+
+// ===================== META CONVERSIONS API =====================
+// Сервер CRM сам повідомляє Meta, що сталося із заявкою. Піксель — той, з якого прийшла
+// заявка (лендинг передає fb_pixel_id з ?px= у посиланні реклами), токен — з fb_pixels.
+//   Lead           — заявка з лендингу (той самий event_id, що в браузерного пікселя → Meta рахує раз)
+//   ConfirmedOrder — оператор підтвердив («В работе») або замовлення вже далі по воронці
+//   Purchase       — посилку забрали («Продажа»), з сумою
+// Кожна подія на замовлення йде рівно один раз (UNIQUE у capi_events); помилки — до 5 спроб.
+const net = require('net');
+const CAPI_CONFIRMED_STATUSES = ['В работе', 'Доставка', 'В пути', 'На почте', 'Переадресация',
+  'Ошибка в ТТН', 'Продажа', 'Отказ', 'Возврат'];
+const CAPI_MAX_ATTEMPTS = 5;
+const sha256 = (s) => crypto.createHash('sha256').update(String(s)).digest('hex');
+
+// fbclid з URL переходу → fbc (якщо cookie _fbc не дійшла)
+function fbcFromSource(source, createdAt) {
+  const m = String(source || '').match(/[?&]fbclid=([\w-]+)/);
+  return m ? `fb.1.${new Date(createdAt).getTime()}.${m[1]}` : '';
+}
+
+function capiSyncOrder(orderId) {
+  return capiSyncOrderInner(Number(orderId)).catch(e => console.error('[CAPI]', orderId, e.message));
+}
+
+async function capiSyncOrderInner(orderId) {
+  const r = await pool.query(`
+    SELECT o.id, o.status, o.created_at, o.source, o.fb_pixel_id, o.fb_event_id, o.fbp, o.fbc,
+           o.client_ip, o.client_ua, o.customer_id, c.phone,
+           COALESCE((SELECT SUM(i.price * i.quantity) FROM order_items i WHERE i.order_id = o.id), 0) AS total,
+           ARRAY(SELECT DISTINCT i.article FROM order_items i WHERE i.order_id = o.id AND i.article <> '') AS articles
+    FROM orders o LEFT JOIN customers c ON c.id = o.customer_id
+    WHERE o.id = $1`, [orderId]);
+  const o = r.rows[0];
+  if (!o || !o.fb_pixel_id) return; // заявка без пікселя (старий лендинг / вручну) — нічого не шлемо
+
+  const px = (await pool.query(`SELECT * FROM fb_pixels WHERE pixel_id = $1`, [o.fb_pixel_id])).rows[0];
+  if (!px || !px.is_active) return; // піксель не додано в CRM або вимкнено
+
+  const due = [];
+  // Lead старший за 6 днів Meta вже не прийме (вікно 7 днів) — пропускаємо
+  if (Date.now() - new Date(o.created_at).getTime() < 6 * 86400000) due.push('Lead');
+  if (CAPI_CONFIRMED_STATUSES.includes(o.status)) due.push('ConfirmedOrder');
+  if (o.status === 'Продажа') due.push('Purchase');
+
+  for (const ev of due) {
+    // «Бронюємо» подію: нова, або минула спроба впала і ліміт спроб не вичерпано
+    const claim = await pool.query(`
+      INSERT INTO capi_events (order_id, event_name, pixel_id, status, attempts)
+      VALUES ($1, $2, $3, 'pending', 1)
+      ON CONFLICT (order_id, event_name) DO UPDATE
+        SET status = 'pending', attempts = capi_events.attempts + 1, pixel_id = EXCLUDED.pixel_id
+        WHERE capi_events.status = 'error' AND capi_events.attempts < ${CAPI_MAX_ATTEMPTS}
+      RETURNING id`, [o.id, ev, px.pixel_id]);
+    if (!claim.rows.length) continue; // вже відправлено / в процесі / вичерпано спроби
+
+    const ok = await capiSendEvent(px, o, ev, claim.rows[0].id);
+    if (!ok) break; // токен/піксель зламаний — решту не шлемо, спробуємо пізніше
+  }
+}
+
+function capiBuildEvent(o, ev) {
+  const base = o.fb_event_id || `crm${o.id}`;
+  const digits = String(o.phone || '').replace(/\D/g, '');
+  const fbc = o.fbc || fbcFromSource(o.source, o.created_at);
+  const user_data = { country: [sha256('ua')] };
+  if (digits) user_data.ph = [sha256(digits)];
+  if (o.customer_id) user_data.external_id = [sha256('c' + o.customer_id)];
+  if (o.fbp) user_data.fbp = o.fbp;
+  if (fbc) user_data.fbc = fbc;
+  if (net.isIP(String(o.client_ip || ''))) user_data.client_ip_address = o.client_ip;
+  if (o.client_ua) user_data.client_user_agent = o.client_ua;
+
+  const event = {
+    event_name: ev,
+    event_time: ev === 'Lead'
+      ? Math.floor(new Date(o.created_at).getTime() / 1000)
+      : Math.floor(Date.now() / 1000),
+    event_id: ev === 'Lead' ? base : `${base}-${ev}`,
+    // 'website' вимагає user agent; без нього — подія з CRM
+    action_source: o.client_ua ? 'website' : 'system_generated',
+    user_data,
+    custom_data: {
+      currency: 'UAH',
+      value: Number(o.total) || 0,
+      order_id: String(o.id),
+      content_type: 'product',
+      content_ids: (o.articles || []).map(a => String(a).replace(/^№/, ''))
+    }
+  };
+  if (/^https?:\/\//.test(o.source || '')) event.event_source_url = String(o.source).slice(0, 1000);
+  return event;
+}
+
+// true — відправлено; false — помилка (записана в журнал і в піксель)
+async function capiSendEvent(px, o, ev, logId) {
+  const body = { data: [capiBuildEvent(o, ev)], access_token: px.access_token };
+  if (px.test_event_code) body.test_event_code = px.test_event_code;
+  let j = {}, ok = false, errMsg = '', errCode = null;
+  try {
+    const resp = await fetch(`https://graph.facebook.com/${FB_API_VERSION}/${px.pixel_id}/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(15000)
+    });
+    j = await resp.json().catch(() => ({}));
+    ok = resp.ok && !j.error;
+    if (!ok) {
+      errMsg = (j.error && (j.error.error_user_msg || j.error.message)) || ('HTTP ' + resp.status);
+      errCode = j.error && j.error.code;
+    }
+  } catch (e) { errMsg = e.message; }
+
+  if (ok) {
+    await pool.query(`UPDATE capi_events SET status='ok', sent_at=now(), response=$2 WHERE id=$1`,
+      [logId, JSON.stringify({ events_received: j.events_received, fbtrace_id: j.fbtrace_id, test: !!px.test_event_code })]);
+    await pool.query(`UPDATE fb_pixels SET last_ok_at=now() WHERE id=$1`, [px.id]);
+    return true;
+  }
+  await pool.query(`UPDATE capi_events SET status='error', response=$2 WHERE id=$1`, [logId, errMsg.slice(0, 1000)]);
+  // 190 = токен недійсний (бан БМ / токен відкликано) → вимикаємо піксель, заявки приймаються як завжди
+  await pool.query(
+    `UPDATE fb_pixels SET last_error=$2, last_error_at=now()${errCode === 190 ? ', is_active=false' : ''} WHERE id=$1`,
+    [px.id, errMsg.slice(0, 1000)]);
+  console.error(`[CAPI] order ${o.id} ${ev} → pixel ${px.pixel_id}: ${errMsg}`);
+  return false;
+}
+
+// Повтор невдалих відправок (мережа, тимчасові помилки Meta)
+async function capiRetryFailed() {
+  const r = await pool.query(`
+    SELECT DISTINCT order_id FROM capi_events
+    WHERE status = 'error' AND attempts < $1 AND created_at > now() - interval '3 days'
+    LIMIT 300`, [CAPI_MAX_ATTEMPTS]);
+  for (const row of r.rows) await capiSyncOrder(row.order_id);
+}
+setInterval(() => { capiRetryFailed().catch(e => console.error('[CAPI retry]', e.message)); }, 15 * 60 * 1000);
+
+// --- Пікселі (CRUD) ---
+const maskToken = (t) => t ? '…' + String(t).slice(-6) : '';
+const cleanTestCode = (v) => String(v || '').replace(/[^\w-]/g, '').slice(0, 64);
+
+async function fbCheckPixel(pixelId, token) {
+  const j = await fbGet(`https://graph.facebook.com/${FB_API_VERSION}/${pixelId}?fields=id,name&access_token=${encodeURIComponent(token)}`);
+  return { id: j.id, name: j.name || '' };
+}
+
+app.get('/api/fb/pixels', checkAuth, async (req, res) => {
+  try {
+    const r = await pool.query(`
+      SELECT p.id, p.pixel_id, p.name, p.access_token, p.test_event_code, p.is_active,
+             p.last_ok_at, p.last_error, p.last_error_at, p.created_at,
+             COUNT(e.id) FILTER (WHERE e.status = 'ok' AND e.event_name = 'Lead')::int AS leads_7d,
+             COUNT(e.id) FILTER (WHERE e.status = 'ok' AND e.event_name = 'ConfirmedOrder')::int AS confirmed_7d,
+             COUNT(e.id) FILTER (WHERE e.status = 'ok' AND e.event_name = 'Purchase')::int AS purchases_7d,
+             COUNT(e.id) FILTER (WHERE e.status = 'error')::int AS errors_7d
+      FROM fb_pixels p
+      LEFT JOIN capi_events e ON e.pixel_id = p.pixel_id AND e.created_at > now() - interval '7 days'
+      GROUP BY p.id ORDER BY p.created_at DESC`);
+    res.json(r.rows.map(p => ({ ...p, access_token: maskToken(p.access_token) })));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/fb/pixels', checkAuth, async (req, res) => {
+  const pixelId = String(req.body.pixel_id || '').trim();
+  const token = String(req.body.access_token || '').trim();
+  if (!/^\d{5,20}$/.test(pixelId)) return res.status(400).json({ error: 'ID пікселя — лише цифри' });
+  if (!token) return res.status(400).json({ error: 'Вставте токен Conversions API' });
+  try {
+    const info = await fbCheckPixel(pixelId, token);
+    const name = String(req.body.name || '').trim() || info.name;
+    const r = await pool.query(`
+      INSERT INTO fb_pixels (pixel_id, name, access_token, test_event_code)
+      VALUES ($1, $2, $3, $4) RETURNING id`,
+      [pixelId, name.slice(0, 255), token, cleanTestCode(req.body.test_event_code)]);
+    res.json({ success: true, id: r.rows[0].id, name });
+  } catch (err) {
+    const msg = /unique/i.test(err.message) ? 'Цей піксель уже додано' : 'Meta не прийняла токен: ' + err.message;
+    res.status(400).json({ error: msg });
+  }
+});
+
+app.patch('/api/fb/pixels/:id(\\d+)', checkAuth, async (req, res) => {
+  try {
+    const cur = (await pool.query(`SELECT * FROM fb_pixels WHERE id = $1`, [req.params.id])).rows[0];
+    if (!cur) return res.status(404).json({ error: 'Not found' });
+    const upd = {};
+    if (req.body.name !== undefined) upd.name = String(req.body.name).trim().slice(0, 255);
+    if (req.body.test_event_code !== undefined) upd.test_event_code = cleanTestCode(req.body.test_event_code);
+    if (req.body.is_active !== undefined) upd.is_active = Boolean(req.body.is_active);
+    if (req.body.access_token) {
+      const token = String(req.body.access_token).trim();
+      await fbCheckPixel(cur.pixel_id, token);
+      upd.access_token = token;
+      upd.is_active = true;
+      upd.last_error = '';
+    }
+    const keys = Object.keys(upd);
+    if (!keys.length) return res.status(400).json({ error: 'Нічого оновити' });
+    const vals = keys.map(k => upd[k]);
+    vals.push(req.params.id);
+    await pool.query(`UPDATE fb_pixels SET ${keys.map((k, i) => `${k} = $${i + 1}`).join(', ')} WHERE id = $${vals.length}`, vals);
+    res.json({ success: true });
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+app.delete('/api/fb/pixels/:id(\\d+)', checkAuth, async (req, res) => {
+  try {
+    await pool.query(`DELETE FROM fb_pixels WHERE id = $1`, [req.params.id]);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Перевірка: токен живий; якщо заданий Test Event Code — ще й тестова подія в Events Manager → Test Events
+app.post('/api/fb/pixels/:id(\\d+)/test', checkAuth, async (req, res) => {
+  try {
+    const px = (await pool.query(`SELECT * FROM fb_pixels WHERE id = $1`, [req.params.id])).rows[0];
+    if (!px) return res.status(404).json({ error: 'Not found' });
+    const info = await fbCheckPixel(px.pixel_id, px.access_token);
+    let testEvent = null;
+    if (px.test_event_code) {
+      const resp = await fetch(`https://graph.facebook.com/${FB_API_VERSION}/${px.pixel_id}/events`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          test_event_code: px.test_event_code,
+          access_token: px.access_token,
+          data: [{
+            event_name: 'Lead', event_time: Math.floor(Date.now() / 1000), event_id: 'crmtest' + Date.now(),
+            action_source: 'system_generated', user_data: { ph: [sha256('380000000000')], country: [sha256('ua')] }
+          }]
+        }),
+        signal: AbortSignal.timeout(15000)
+      });
+      const j = await resp.json().catch(() => ({}));
+      if (!resp.ok || j.error) throw new Error((j.error && (j.error.error_user_msg || j.error.message)) || 'HTTP ' + resp.status);
+      testEvent = { events_received: j.events_received };
+    }
+    await pool.query(`UPDATE fb_pixels SET last_ok_at=now(), last_error='' WHERE id=$1`, [px.id]);
+    res.json({ success: true, name: info.name, testEvent });
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+// Журнал останніх відправок
+app.get('/api/capi/log', checkAuth, async (req, res) => {
+  try {
+    const r = await pool.query(`
+      SELECT e.id, e.order_id, e.event_name, e.pixel_id, e.status, e.attempts, e.response, e.created_at, e.sent_at,
+             o.full_name, o.status AS order_status
+      FROM capi_events e LEFT JOIN orders o ON o.id = e.order_id
+      ORDER BY e.id DESC LIMIT 100`);
+    res.json(r.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // ===================== NOVA POSHTA ИНТЕГРАЦИЯ =====================
@@ -3215,6 +3524,7 @@ async function generateTtnForOrder(orderId, s, sender) {
      WHERE id=$3`,
     [ttn, doc.Ref || '', orderId]
   );
+  capiSyncOrder(orderId);
   return ttn;
 }
 
@@ -3361,6 +3671,7 @@ async function refreshNpStatuses() {
         if (newStatus && RETURN_TRIGGER_STATUSES.includes(newStatus)) {
           try { await ensureReturnForOrder(row.id); } catch (e) {}
         }
+        if (newStatus) capiSyncOrder(row.id);
         updated++;
       }
     }
