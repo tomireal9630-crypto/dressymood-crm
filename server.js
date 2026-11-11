@@ -334,6 +334,12 @@ async function updateDatabaseSchema() {
         // Причина відмови (з'ясовуємо у клієнта у Viber) + коли написали
         await pool.query(`ALTER TABLE returns ADD COLUMN IF NOT EXISTS reason VARCHAR(32) DEFAULT '';`);
         await pool.query(`ALTER TABLE returns ADD COLUMN IF NOT EXISTS asked_at TIMESTAMP WITH TIME ZONE;`);
+        // Відмова → Telegram з кнопкою «Написати у Viber». Наявні повернення при першому запуску
+        // отримують now() — щоб бот не розіслав сповіщення про всі старі відмови; далі DEFAULT немає.
+        await pool.query(`ALTER TABLE returns ADD COLUMN IF NOT EXISTS tg_notified_at TIMESTAMP WITH TIME ZONE DEFAULT NOW();`);
+        await pool.query(`ALTER TABLE returns ALTER COLUMN tg_notified_at DROP DEFAULT;`);
+        await pool.query(`ALTER TABLE returns ADD COLUMN IF NOT EXISTS viber_token VARCHAR(40);`);
+        await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_returns_viber_token ON returns(viber_token);`);
         // Контроль платного зберігання: НП сама не оформлює повернення, якщо клієнт відмовився на касі (код 103)
         await pool.query(`ALTER TABLE returns ADD COLUMN IF NOT EXISTS need_return BOOLEAN DEFAULT false;`);
         await pool.query(`ALTER TABLE returns ADD COLUMN IF NOT EXISTS storage_price NUMERIC DEFAULT 0;`);           // зберігання у відділенні клієнта
@@ -3943,6 +3949,153 @@ const RETURNS_SELECT = `
   FROM returns rt
   JOIN orders o ON o.id = rt.order_id
   LEFT JOIN customers c ON c.id = o.customer_id`;
+
+// ===================== ВІДМОВА → TELEGRAM → VIBER =====================
+// Через 60 хв після відмови (якщо статус не повернули назад) бот звітів пише в Telegram-групу
+// картку відмови з кнопкою «Написати у Viber». Кнопка веде на /v/<token>: сторінка копіює
+// шаблон з «Повернення → Шаблон повідомлення» і відкриває чат Viber з клієнтом — пишеш зі свого акаунта.
+// Сповіщення — лише 9:00–21:00 (Київ), щоб не писати клієнтам уночі; нічні чекають до ранку.
+const REFUSAL_NOTIFY_DELAY_MIN = 60;
+const PUBLIC_URL = (process.env.PUBLIC_URL || 'https://crm.viollini.store').replace(/\/+$/, '');
+
+const htmlEsc = (v) => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+// 380XXXXXXXXX або '' (як viberPhone на фронті)
+function viberPhoneServer(raw) {
+  let d = String(raw || '').replace(/\D/g, '');
+  if (d.startsWith('80')) d = '3' + d;
+  else if (d.startsWith('0')) d = '38' + d;
+  return /^380\d{9}$/.test(d) ? d : '';
+}
+
+// ПІБ буває «Ім'я Прізвище» і «Прізвище Ім'я» — та сама евристика, що й viberFirstName на фронті
+const SURNAME_RE = /(енко|єнко|ко|ук|юк|чук|ов|ова|ев|ева|єв|єва|ін|іна|ин|ина|ський|ська|цький|цька|ский|ская|ич|ак|як|ій)$/i;
+const COMMON_NAMES = /^(ірина|ирина|марина|алина|аліна|катерина|екатерина|галина|кристина|христина|дарина|полина|поліна|арина|карина|ангелина|ангеліна|валентина|антонина|антоніна|олександр|дмитро|андрій|сергій|юлій|віталій|виталий|василий|анатолій|геннадій|ярослав)$/i;
+function viberFirstNameServer(full) {
+  const parts = String(full || '').trim().split(/\s+/).filter(Boolean);
+  if (parts.length < 2) return parts[0] || '';
+  const looksSurname = (SURNAME_RE.test(parts[0]) && !COMMON_NAMES.test(parts[0]))
+    || (/[ая]$/i.test(parts[1]) && !/[ая]$/i.test(parts[0]) && !COMMON_NAMES.test(parts[0]));
+  return looksSurname ? parts[1] : parts[0];
+}
+
+function refusalViberText(template, r) {
+  return String(template || '')
+    .replace(/\{NAME\}/g, viberFirstNameServer(r.customer_name))
+    .replace(/\{TOV\}/g, r.items_human || r.items_text || '')
+    .replace(/\s+([,!?.])/g, '$1').replace(/,\s*!/g, '!');
+}
+
+function kyivHour() {
+  return Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Kyiv', hour: '2-digit', hour12: false }).format(new Date())) % 24;
+}
+
+async function notifyRefusals() {
+  const token = (process.env.TG_REPORT_BOT_TOKEN || '').trim();
+  const chatId = (process.env.TG_REPORT_CHAT_ID || '').trim();
+  if (!token || !chatId) return;
+  const h = kyivHour();
+  if (h < 9 || h >= 21) return;
+
+  const r = await pool.query(`${RETURNS_SELECT}
+    WHERE rt.tg_notified_at IS NULL AND rt.asked_at IS NULL
+      AND rt.refused_at <= now() - interval '${REFUSAL_NOTIFY_DELAY_MIN} minutes'
+      AND rt.refused_at > now() - interval '3 days'
+      AND o.status = ANY($1)
+    ORDER BY rt.id LIMIT 20`, [RETURN_TRIGGER_STATUSES]);
+
+  for (const row of r.rows) {
+    // «Бронюємо» сповіщення — щоб паралельний запуск не надіслав його двічі
+    const claim = await pool.query(`
+      UPDATE returns SET tg_notified_at = now(), viber_token = COALESCE(viber_token, $2)
+      WHERE id = $1 AND tg_notified_at IS NULL RETURNING viber_token`,
+      [row.id, crypto.randomBytes(16).toString('hex')]);
+    if (!claim.rows.length) continue;
+
+    const phone = viberPhoneServer(row.customer_phone);
+    const text = [
+      `❌ <b>Відмова</b> · замовлення #${row.order_id}`,
+      `👤 ${htmlEsc(row.customer_name || '—')}${phone ? ' · +' + phone : ''}`,
+      `👗 ${htmlEsc(row.items_human || row.items_text || '—')}${row.articles ? ' (' + htmlEsc(row.articles) + ')' : ''}`,
+      `📦 ТТН ${htmlEsc(row.ttn || '—')}`,
+      phone ? '' : '⚠️ Номер не схожий на український — Viber-посилання не буде'
+    ].filter(Boolean).join('\n');
+    const body = { chat_id: chatId, text, parse_mode: 'HTML', disable_web_page_preview: true };
+    if (phone) {
+      body.reply_markup = { inline_keyboard: [[{ text: '💬 Написати у Viber', url: `${PUBLIC_URL}/v/${claim.rows[0].viber_token}` }]] };
+    }
+    try {
+      const resp = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body), signal: AbortSignal.timeout(15000)
+      });
+      const j = await resp.json().catch(() => ({}));
+      if (!j.ok) throw new Error(j.description || 'HTTP ' + resp.status);
+    } catch (e) {
+      // Не дійшло — знімаємо бронь, наступний запуск спробує ще раз
+      await pool.query(`UPDATE returns SET tg_notified_at = NULL WHERE id = $1`, [row.id]);
+      console.error('[refusal notify]', row.order_id, e.message);
+      break;
+    }
+  }
+}
+setInterval(() => { notifyRefusals().catch(e => console.error('[refusal notify]', e.message)); }, 5 * 60 * 1000);
+
+// Публічна сторінка з кнопки в Telegram (відкривається на телефоні, без входу в CRM).
+// Доступ — лише за випадковим токеном конкретної відмови.
+app.get('/v/:token([0-9a-f]{32})', async (req, res) => {
+  res.set({ 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex, nofollow', 'Referrer-Policy': 'no-referrer' });
+  const page = (title, inner) => `<!doctype html><html lang="uk"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>${htmlEsc(title)}</title>
+<style>
+  body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#f4f4f8;color:#1e1b2e}
+  .w{max-width:480px;margin:0 auto;padding:20px 16px}
+  h1{font-size:18px;margin:4px 0 4px}
+  .m{color:#6b6880;font-size:14px;margin:0 0 16px}
+  .t{background:#fff;border:1px solid #e3e1ec;border-radius:14px;padding:14px;font-size:15px;line-height:1.45;white-space:pre-wrap;margin-bottom:16px}
+  .b{display:block;width:100%;box-sizing:border-box;text-align:center;background:#7360f2;color:#fff;border:0;border-radius:14px;padding:16px;font-size:17px;font-weight:700;text-decoration:none;cursor:pointer}
+  .s{display:block;text-align:center;margin-top:14px;color:#7360f2;font-size:14px}
+  .ok{display:none;color:#178a4c;font-size:14px;text-align:center;margin-top:12px}
+</style></head><body><div class="w">${inner}</div></body></html>`;
+  try {
+    const r = await pool.query(`${RETURNS_SELECT} WHERE rt.viber_token = $1`, [req.params.token]);
+    const row = r.rows[0];
+    if (!row) return res.status(404).send(page('Посилання недійсне', '<h1>Посилання недійсне</h1><p class="m">Можливо, відмову вже видалили з CRM.</p>'));
+    if (!RETURN_TRIGGER_STATUSES.includes(row.order_status)) {
+      return res.send(page('Відмову скасовано', `<h1>Писати не потрібно</h1><p class="m">Замовлення #${row.order_id} уже не у статусі відмови (зараз: ${htmlEsc(row.order_status)}).</p>`));
+    }
+    const phone = viberPhoneServer(row.customer_phone);
+    if (!phone) return res.send(page('Немає номера', `<h1>Номер не схожий на український</h1><p class="m">${htmlEsc(row.customer_phone || '')}</p>`));
+
+    const msg = refusalViberText((await getViberSettings()).refusalTemplate, row);
+    await pool.query(`UPDATE returns SET asked_at = COALESCE(asked_at, now()) WHERE id = $1`, [row.id]);
+
+    const chat = `viber://chat?number=%2B${phone}`;
+    const withDraft = `${chat}&draft=${encodeURIComponent(msg)}`;
+    res.send(page('Написати у Viber', `
+      <h1>${htmlEsc(row.customer_name || 'Клієнт')}</h1>
+      <p class="m">+${phone} · замовлення #${row.order_id}</p>
+      <div class="t" id="msg">${htmlEsc(msg)}</div>
+      <a class="b" id="go" href="${htmlEsc(withDraft)}">Скопіювати текст і відкрити Viber</a>
+      <div class="ok" id="ok">✓ Текст скопійовано. Якщо поле у Viber порожнє — затисни його → «Вставити».</div>
+      <a class="s" href="${htmlEsc(chat)}">Відкрити чат без тексту</a>
+      <script>
+        var text = ${JSON.stringify(msg).replace(/</g, '\\u003c')};
+        function fallbackCopy() {
+          var ta = document.createElement('textarea'); ta.value = text; ta.setAttribute('readonly', '');
+          ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.appendChild(ta);
+          ta.select(); try { document.execCommand('copy'); } catch (e) {} document.body.removeChild(ta);
+        }
+        document.getElementById('go').addEventListener('click', function () {
+          try { if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).catch(fallbackCopy); else fallbackCopy(); }
+          catch (e) { fallbackCopy(); }
+          document.getElementById('ok').style.display = 'block';
+        });
+      </script>`));
+  } catch (err) {
+    res.status(500).send(page('Помилка', '<h1>Помилка</h1><p class="m">' + htmlEsc(err.message) + '</p>'));
+  }
+});
 
 // Список повернень з фільтрами
 app.get('/api/returns', checkAuth, async (req, res) => {
