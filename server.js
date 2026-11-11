@@ -1266,6 +1266,7 @@ app.get('/api/stats/roi', checkAuth, async (req, res) => {
         returns_cost: returnsCost,
         sms_cost: smsTotal,
         courier_cost: courierTotal,
+        refused_courier_cost: refusedTotal * courierCost, // кур'єр лише за посилки, що повернулись
         overhead_cost: overheadTotal,
         net_profit: netProfit,
         roas,

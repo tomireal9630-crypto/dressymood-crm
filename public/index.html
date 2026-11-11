@@ -1159,6 +1159,7 @@
                             <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Виручка</div>
                             <div id="roiKpiRevenue" class="text-xl font-black text-slate-800">0 ₴</div>
                             <div class="text-[10px] text-slate-400 mt-1"><span id="roiKpiOrders">0</span> прод · <span id="roiKpiUnits">0</span> шт</div>
+                            <div class="text-[10px] text-slate-400">собів. <span id="roiKpiCogs">0</span> ₴</div>
                         </div>
                         <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-4">
                             <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Ad Spend</div>
@@ -1171,9 +1172,10 @@
                             <div class="text-[10px] text-slate-400 mt-1">CPL <span id="roiKpiCpl">0</span> ₴</div>
                         </div>
                         <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-4">
-                            <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Собів.+Поверн.+Кур'єр</div>
+                            <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1" title="Прямі втрати через відмови: зворотна доставка НП + кур'єр за посилки, що повернулись">Втрати на відмовах</div>
                             <div id="roiKpiCosts" class="text-xl font-black text-rose-500">0 ₴</div>
-                            <div class="text-[10px] text-slate-400 mt-1"><span id="roiKpiRefused">0</span> відмов на НП · кур'єр <span id="roiKpiCourier">0</span> ₴</div>
+                            <div class="text-[10px] text-slate-400 mt-1"><span id="roiKpiRefused">0</span> відмов на НП</div>
+                            <div class="text-[10px] text-slate-400">поверн. <span id="roiKpiReturns">0</span> · кур'єр <span id="roiKpiCourier">0</span> ₴</div>
                         </div>
                         <div class="bg-white rounded-2xl shadow-sm border-2 border-emerald-200 p-4">
                             <div class="text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-1">Чистий прибуток</div>
@@ -5514,9 +5516,11 @@
             document.getElementById('roiKpiLeads').textContent = int(t.leads);
             document.getElementById('roiKpiRoas').textContent = (Number(t.roas || 0)).toFixed(2) + '×';
             document.getElementById('roiKpiCpl').textContent = Math.round(t.cpl || 0);
-            document.getElementById('roiKpiCosts').textContent = uah((Number(t.cost) || 0) + (Number(t.returns_cost) || 0) + (Number(t.courier_cost) || 0));
-            const courierEl = document.getElementById('roiKpiCourier');
-            if (courierEl) courierEl.textContent = int(Math.round(t.courier_cost || 0));
+            // Собівартість — окремо під виручкою; картка «Втрати на відмовах» = повернення + кур'єр лише за відмови
+            document.getElementById('roiKpiCogs').textContent = int(Math.round(t.cost || 0));
+            document.getElementById('roiKpiCosts').textContent = uah(Math.round((Number(t.returns_cost) || 0) + (Number(t.refused_courier_cost) || 0)));
+            document.getElementById('roiKpiReturns').textContent = int(Math.round(t.returns_cost || 0));
+            document.getElementById('roiKpiCourier').textContent = int(Math.round(t.refused_courier_cost || 0));
             document.getElementById('roiKpiRefused').textContent = int(t.refused);
             document.getElementById('roiKpiNetProfit').textContent = uah(t.net_profit);
             const npEl = document.getElementById('roiKpiNetProfit');
