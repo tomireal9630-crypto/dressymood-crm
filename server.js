@@ -3191,9 +3191,26 @@ setInterval(() => { capiProcessQueue().catch(e => console.error('[CAPI queue]', 
 const maskToken = (t) => t ? '…' + String(t).slice(-6) : '';
 const cleanTestCode = (v) => String(v || '').replace(/[^\w-]/g, '').slice(0, 64);
 
-async function fbCheckPixel(pixelId, token) {
-  const j = await fbGet(`https://graph.facebook.com/${FB_API_VERSION}/${pixelId}?fields=id,name&access_token=${encodeURIComponent(token)}`);
-  return { id: j.id, name: j.name || '' };
+// Перевірка токена — пробною відправкою. Токен CAPI з Events Manager уміє ЛИШЕ слати події
+// (читати піксель — «Missing Permission»). Подія — кастомна CRMConnectionCheck, а не Lead:
+// Meta враховує навіть події з test_event_code, тож лідів і оптимізацію перевірка не чіпає.
+// З Test Event Code вона з'являється у вкладці «Тестування подій».
+async function fbCheckPixel(pixelId, token, testCode) {
+  const body = {
+    access_token: token,
+    data: [{
+      event_name: 'CRMConnectionCheck', event_time: Math.floor(Date.now() / 1000), event_id: 'crmcheck' + Date.now(),
+      action_source: 'system_generated', user_data: { external_id: [sha256('crm-connection-check')], country: [sha256('ua')] }
+    }]
+  };
+  if (testCode) body.test_event_code = testCode;
+  const resp = await fetch(`https://graph.facebook.com/${FB_API_VERSION}/${pixelId}/events`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body), signal: AbortSignal.timeout(15000)
+  });
+  const j = await resp.json().catch(() => ({}));
+  if (!resp.ok || j.error) throw new Error((j.error && (j.error.error_user_msg || j.error.message)) || 'HTTP ' + resp.status);
+  return { events_received: j.events_received };
 }
 
 app.get('/api/fb/pixels', checkAuth, async (req, res) => {
@@ -3218,8 +3235,8 @@ app.post('/api/fb/pixels', checkAuth, async (req, res) => {
   if (!/^\d{5,20}$/.test(pixelId)) return res.status(400).json({ error: 'ID пікселя — лише цифри' });
   if (!token) return res.status(400).json({ error: 'Вставте токен Conversions API' });
   try {
-    const info = await fbCheckPixel(pixelId, token);
-    const name = String(req.body.name || '').trim() || info.name;
+    await fbCheckPixel(pixelId, token, cleanTestCode(req.body.test_event_code));
+    const name = String(req.body.name || '').trim();
     const r = await pool.query(`
       INSERT INTO fb_pixels (pixel_id, name, access_token, test_event_code)
       VALUES ($1, $2, $3, $4) RETURNING id`,
@@ -3241,7 +3258,7 @@ app.patch('/api/fb/pixels/:id(\\d+)', checkAuth, async (req, res) => {
     if (req.body.is_active !== undefined) upd.is_active = Boolean(req.body.is_active);
     if (req.body.access_token) {
       const token = String(req.body.access_token).trim();
-      await fbCheckPixel(cur.pixel_id, token);
+      await fbCheckPixel(cur.pixel_id, token, upd.test_event_code ?? cur.test_event_code);
       upd.access_token = token;
       upd.is_active = true;
       upd.last_error = '';
@@ -3262,33 +3279,14 @@ app.delete('/api/fb/pixels/:id(\\d+)', checkAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// Перевірка: токен живий; якщо заданий Test Event Code — ще й тестова подія в Events Manager → Test Events
+// Перевірка: пробна подія CRMConnectionCheck (з Test Event Code — видно у «Тестуванні подій»)
 app.post('/api/fb/pixels/:id(\\d+)/test', checkAuth, async (req, res) => {
   try {
     const px = (await pool.query(`SELECT * FROM fb_pixels WHERE id = $1`, [req.params.id])).rows[0];
     if (!px) return res.status(404).json({ error: 'Not found' });
-    const info = await fbCheckPixel(px.pixel_id, px.access_token);
-    let testEvent = null;
-    if (px.test_event_code) {
-      const resp = await fetch(`https://graph.facebook.com/${FB_API_VERSION}/${px.pixel_id}/events`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          test_event_code: px.test_event_code,
-          access_token: px.access_token,
-          data: [{
-            event_name: 'Lead', event_time: Math.floor(Date.now() / 1000), event_id: 'crmtest' + Date.now(),
-            action_source: 'system_generated', user_data: { ph: [sha256('380000000000')], country: [sha256('ua')] }
-          }]
-        }),
-        signal: AbortSignal.timeout(15000)
-      });
-      const j = await resp.json().catch(() => ({}));
-      if (!resp.ok || j.error) throw new Error((j.error && (j.error.error_user_msg || j.error.message)) || 'HTTP ' + resp.status);
-      testEvent = { events_received: j.events_received };
-    }
+    const r = await fbCheckPixel(px.pixel_id, px.access_token, px.test_event_code);
     await pool.query(`UPDATE fb_pixels SET last_ok_at=now(), last_error='' WHERE id=$1`, [px.id]);
-    res.json({ success: true, name: info.name, testEvent });
+    res.json({ success: true, name: px.name, testEvent: px.test_event_code ? r : null });
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
 
