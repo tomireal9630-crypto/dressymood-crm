@@ -3631,27 +3631,44 @@ async function autoReceiptAfterTtn(orderId) {
   }
 }
 
-// Масово: експрес-накладні для всіх посилок у дорозі з ТТН, де чека ще немає
+// Експрес-накладні для всіх посилок у дорозі з ТТН, де чека ще немає.
+// auto=true (фоновий повтор): пропускаємо замовлення, де вже ≥10 помилок — не спамимо Checkbox.
+async function createMissingEttns(s, auto) {
+  const q = await pool.query(`
+    SELECT o.id FROM orders o
+    WHERE o.status IN ('В работе','Доставка','В пути','На почте')
+      AND lower(trim(o.payment_type)) = 'на счет'
+      AND regexp_replace(COALESCE(o.ttn, ''), '[[:space:]]', '', 'g') ~ '^[0-9]{14}$'
+      AND COALESCE(o.checkbox_ettn_id, '') = '' AND COALESCE(o.checkbox_receipt_id, '') = ''
+      AND ($1::boolean IS FALSE OR
+           (SELECT count(*) FROM checkbox_log l WHERE l.order_id = o.id AND l.status = 'error') < 10)
+    ORDER BY o.id ASC`, [!!auto]);
+  let created = 0, failed = 0;
+  const errors = [];
+  for (const row of q.rows) {
+    try { await createReceiptForOrder(row.id, s); created++; }
+    catch (e) { failed++; errors.push({ id: row.id, error: e.message }); }
+  }
+  return { total: q.rows.length, created, failed, errors };
+}
+
 app.post('/api/orders/receipts/bulk', checkAuth, async (req, res) => {
   try {
     const s = await getCheckboxSettings();
     if (!checkboxReady(s)) throw new Error('Спершу заповніть Налаштування Checkbox');
-    const q = await pool.query(`
-      SELECT id FROM orders
-      WHERE status IN ('Доставка','В пути','На почте')
-        AND lower(trim(payment_type)) = 'на счет'
-        AND regexp_replace(COALESCE(ttn, ''), '[[:space:]]', '', 'g') ~ '^[0-9]{14}$'
-        AND COALESCE(checkbox_ettn_id, '') = '' AND COALESCE(checkbox_receipt_id, '') = ''
-      ORDER BY id ASC`);
-    let created = 0, failed = 0;
-    const errors = [];
-    for (const row of q.rows) {
-      try { await createReceiptForOrder(row.id, s); created++; }
-      catch (e) { failed++; errors.push({ id: row.id, error: e.message }); }
-    }
-    res.json({ success: true, total: q.rows.length, created, failed, errors: errors.slice(0, 30) });
+    const r = await createMissingEttns(s, false);
+    res.json({ success: true, ...r, errors: r.errors.slice(0, 30) });
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
+
+// Фоновий повтор: ЕТТН, що не створилась (таймаут Checkbox) або ТТН вписали вручну, —
+// інакше посилку оплатять без чека (так сталось із #370, #371 у жовтні)
+async function retryMissingEttns() {
+  const s = await getCheckboxSettings();
+  if (!checkboxReady(s)) return;
+  const r = await createMissingEttns(s, true);
+  if (r.total) console.log(`[checkbox ettn retry] ${r.created}/${r.total}`, r.errors.slice(0, 5));
+}
 
 // Оновлення статусів посилок ----------------------------------------
 // Номер ЕН переадресації, створеної на основі цієї ЕН (остання, якщо їх кілька)
@@ -4559,6 +4576,7 @@ setInterval(async () => {
   try { await refreshNpStatuses(); } catch (e) {}
   try { await syncReturns(); } catch (e) { console.error('[returns sync]', e.message); }
   try { await autoSendSms(); } catch (e) {}
+  try { await retryMissingEttns(); } catch (e) { console.error('[checkbox ettn retry]', e.message); }
   try { await refreshAllEttn(); } catch (e) { console.error('[checkbox ettn]', e.message); }
 }, 30 * 60 * 1000);
 
@@ -4738,25 +4756,66 @@ async function checkboxDropEttnIfTtnChanged(orderId, newTtn) {
   }
 }
 
-// Зміна каси: тримаємо відкритою 07:00–23:30, о 23:45+ закриваємо (Z-звіт) —
-// зміна не може бути відкрита довше 24 год
+// Зміна каси: тримаємо відкритою 07:00–23:30, з 23:45 до 07:00 закриваємо (Z-звіт) —
+// зміна не може бути відкрита довше 24 год.
+// Закриття пробуємо всю ніч (кожні 10 хв), а не лише 23:45–00:00: один збій Checkbox
+// не має лишати зміну відкритою на наступну добу. Зміну, відкриту ще вчора, закриваємо
+// і вдень — наступний запуск відкриє нову.
+// Без відкритої зміни Checkbox НЕ фіскалізує чеки післяплати (10–12.11.2026 зміна
+// не відкривалась 2,5 доби — чеки видались пачкою із запізненням), тому збій → Telegram.
+const kyivDay = (d) => new Date(d).toLocaleDateString('sv-SE'); // YYYY-MM-DD у Europe/Kyiv (process.env.TZ)
 async function checkboxShiftCron() {
   const s = await getCheckboxSettings();
   if (!checkboxReady(s)) return;
   const now = new Date();
   const min = now.getHours() * 60 + now.getMinutes();
-  if (min >= 7 * 60 && min < 23 * 60 + 30) {
-    await checkboxEnsureShift(s);
-  } else if (min >= 23 * 60 + 45) {
-    const cur = await checkboxCurrentShift(s);
-    if (!cur || cur.status !== 'OPENED') return;
+  const dayTime = min >= 7 * 60 && min < 23 * 60 + 30;
+  const nightTime = min >= 23 * 60 + 45 || min < 7 * 60;
+
+  const cur = await checkboxCurrentShift(s);
+  const opened = cur && cur.status === 'OPENED';
+  const stale = opened && cur.opened_at && kyivDay(cur.opened_at) !== kyivDay(now);
+  if (opened && (nightTime || stale)) {
     await checkboxApi(s, '/shifts/close', 'POST', { skip_client_name_check: true });
     checkboxState.shiftId = null;
-    console.log('[checkbox] зміну закрито');
+    console.log('[checkbox] зміну закрито' + (stale && !nightTime ? ' (відкрита з минулої доби)' : ''));
+    return; // нову (якщо день) відкриє наступний запуск — закриття в Checkbox не миттєве
+  }
+  if (dayTime) await checkboxEnsureShift(s);
+}
+
+// Алерт про збій каси — не частіше разу на 2 год; коли запрацювало — одне повідомлення «відновлено»
+const checkboxAlert = { lastAt: 0, active: false };
+async function checkboxTg(text) {
+  const token = (process.env.TG_REPORT_BOT_TOKEN || '').trim();
+  const chatId = (process.env.TG_REPORT_CHAT_ID || '').trim();
+  if (!token || !chatId) return;
+  try {
+    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text, disable_web_page_preview: true }),
+      signal: AbortSignal.timeout(15000)
+    });
+  } catch (e) { console.error('[checkbox tg]', e.message); }
+}
+async function runCheckboxShiftCron() {
+  try {
+    await checkboxShiftCron();
+    if (checkboxAlert.active) {
+      checkboxAlert.active = false; checkboxAlert.lastAt = 0;
+      await checkboxTg('✅ Каса Checkbox знову працює — зміна в порядку.');
+    }
+  } catch (e) {
+    console.error('[checkbox shift]', e.message);
+    checkboxAlert.active = true;
+    if (Date.now() - checkboxAlert.lastAt < 2 * 60 * 60 * 1000) return;
+    checkboxAlert.lastAt = Date.now();
+    await checkboxTg('⚠️ Каса Checkbox: не вдалось відкрити/закрити зміну.\n' + e.message +
+      '\n\nПоки зміна закрита, чеки по оплачених посилках не видаються. Перевірте кабінет Checkbox (ключ КЕП, статус каси) або відкрийте зміну вручну.');
   }
 }
-setInterval(() => { checkboxShiftCron().catch(e => console.error('[checkbox shift]', e.message)); }, 10 * 60 * 1000);
-setTimeout(() => { checkboxShiftCron().catch(e => console.error('[checkbox shift]', e.message)); }, 60 * 1000);
+setInterval(runCheckboxShiftCron, 10 * 60 * 1000);
+setTimeout(runCheckboxShiftCron, 60 * 1000);
 
 // Налаштування Checkbox -------------------------------------------------
 app.get('/api/settings/checkbox', checkAuth, async (req, res) => {
