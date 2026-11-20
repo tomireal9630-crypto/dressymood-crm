@@ -15,7 +15,18 @@ app.set('trust proxy', 1);
 // SSL: увімкнуто для зовнішніх provider'ів (Supabase/Render/AWS). Для внутрішньої Docker-мережі (Coolify/локально) — вимкнено.
 const _dbUrl = process.env.DATABASE_URL || '';
 const _useSsl = /supabase|render\.com|amazonaws|neon\.tech/i.test(_dbUrl) || process.env.PGSSL === 'true';
-const pool = new Pool({ connectionString: _dbUrl, ssl: _useSsl ? { rejectUnauthorized: false } : false });
+const pool = new Pool({
+  connectionString: _dbUrl,
+  ssl: _useSsl ? { rejectUnauthorized: false } : false,
+  connectionTimeoutMillis: 10000, // не чекати базу вічно — краще швидка помилка, лендинг повторить
+  keepAlive: true,
+});
+// Обрив простоюючого з'єднання (Supabase/Supavisor) без цього обробника валить увесь процес
+pool.on('error', (err) => console.error('[DB pool] idle client error:', err.message));
+// Необроблена помилка в async-коді не повинна вбивати сервер (Node ≥15 за замовчуванням падає)
+process.on('unhandledRejection', (reason) => {
+  console.error('[unhandledRejection]', reason && reason.stack ? reason.stack : reason);
+});
 // Київський час для всіх SQL-запитів (NOW(), CURRENT_DATE, date_trunc — все в Europe/Kyiv)
 pool.on('connect', (client) => {
   client.query("SET TIMEZONE TO 'Europe/Kyiv'").catch(err => console.error('SET TIMEZONE error:', err.message));
@@ -726,7 +737,14 @@ app.post('/api/orders/manual', checkAuth, async (req, res) => {
   const list = Array.isArray(items) ? items.filter(i => i && (i.article || i.name)) : [];
   if (list.length === 0) return res.status(400).json({ error: 'Додайте хоча б один товар' });
 
-  const client = await pool.connect();
+  // connect поза try: якщо база недоступна — 503, а не завислий запит / падіння процесу
+  let client;
+  try {
+    client = await pool.connect();
+  } catch (err) {
+    console.error('[DB connect]', req.path, err.message);
+    return res.status(503).json({ error: 'База даних тимчасово недоступна, спробуйте ще раз' });
+  }
   try {
     await client.query('BEGIN');
 
@@ -2825,7 +2843,14 @@ app.put('/api/orders/:id(\\d+)/full', checkAuth, async (req, res) => {
   // Поза транзакцією: звертається в Checkbox і пише в orders сама
   await checkboxDropEttnIfTtnChanged(orderId, b.ttn || '').catch(e => console.error('[checkbox ettn drop]', e.message));
 
-  const client = await pool.connect();
+  // connect поза try: якщо база недоступна — 503, а не завислий запит / падіння процесу
+  let client;
+  try {
+    client = await pool.connect();
+  } catch (err) {
+    console.error('[DB connect]', req.path, err.message);
+    return res.status(503).json({ error: 'База даних тимчасово недоступна, спробуйте ще раз' });
+  }
   try {
     await client.query('BEGIN');
 
@@ -2971,7 +2996,14 @@ app.post('/api/landing/order', landingLimiter, async (req, res) => {
   const clientIp = cut(req.body.ip, 64);
   const clientUa = cut(req.body.ua, 500);
 
-  const client = await pool.connect();
+  // connect поза try: якщо база недоступна — 503, а не завислий запит / падіння процесу
+  let client;
+  try {
+    client = await pool.connect();
+  } catch (err) {
+    console.error('[DB connect]', req.path, err.message);
+    return res.status(503).json({ error: 'База даних тимчасово недоступна, спробуйте ще раз' });
+  }
   try {
     await client.query('BEGIN');
 
