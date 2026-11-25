@@ -746,7 +746,7 @@ app.post('/api/orders/manual', checkAuth, async (req, res) => {
     return res.status(503).json({ error: 'База даних тимчасово недоступна, спробуйте ще раз' });
   }
   try {
-    await client.query('BEGIN');
+    await client.query('BEGIN READ WRITE');
 
     // Прив'язка лише за телефоном; ім'я існуючого клієнта НЕ перетираємо
     const cust = await client.query('SELECT id FROM customers WHERE phone = $1', [phone]);
@@ -2852,7 +2852,7 @@ app.put('/api/orders/:id(\\d+)/full', checkAuth, async (req, res) => {
     return res.status(503).json({ error: 'База даних тимчасово недоступна, спробуйте ще раз' });
   }
   try {
-    await client.query('BEGIN');
+    await client.query('BEGIN READ WRITE');
 
     const ord = await client.query('SELECT customer_id FROM orders WHERE id = $1', [orderId]);
     if (!ord.rows.length) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Замовлення не знайдено' }); }
@@ -3005,7 +3005,7 @@ app.post('/api/landing/order', landingLimiter, async (req, res) => {
     return res.status(503).json({ error: 'База даних тимчасово недоступна, спробуйте ще раз' });
   }
   try {
-    await client.query('BEGIN');
+    await client.query('BEGIN READ WRITE');
 
     // Постачальник — зі складу за артикулом (лендинги шлють захардкоджене значення);
     // те, що прислав лендинг, лише fallback для артикулів, яких немає на складі
